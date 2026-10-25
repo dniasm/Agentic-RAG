@@ -391,10 +391,15 @@ def run_agent(
     history: list[dict],
     memories: list[dict],
     doc_names: list[str],
+    callbacks: list | None = None,
 ) -> AgentState:
+    config = {"recursion_limit": _RECURSION_LIMIT}
+    if callbacks:
+        config["callbacks"] = callbacks
+
     return get_graph().invoke(
         _initial_state(query, user, history, memories, doc_names),
-        {"recursion_limit": _RECURSION_LIMIT},
+        config,
     )
 
 

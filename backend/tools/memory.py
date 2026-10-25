@@ -101,6 +101,7 @@ def extract_and_save_memories(
     user_id: str,
     message: str,
     history: list[dict],
+    callbacks: list | None = None,
 ) -> None:
     """
     Extract durable user-specific memories from the latest user message.
@@ -297,7 +298,13 @@ or explicit memory operation, return an empty facts list.
 """
 
         extractor = structured(MemoryExtraction, fast=True)
-        result = extractor.invoke(prompt)
+        result = extractor.invoke(
+            prompt,
+            config={
+                "callbacks": callbacks or [],
+                "metadata": {"usage_step": "memory_extract"},
+            },
+        )
 
         log.info(
             "Memory extraction returned %d operation(s): %s",

@@ -8,6 +8,7 @@ from fastapi.responses import StreamingResponse
 
 from backend.api.dependencies import get_current_user
 from backend.config.settings import settings
+from backend.config.usage import UsageTracker, record as record_usage
 from backend.graph.workflow import run_agent, stream_agent
 from backend.memory.store import (
     ensure_memory_collection,
@@ -106,6 +107,8 @@ def _persist(
     user_id: str,
     user_message: str,
     history: list[dict],
+    tracker: UsageTracker,
+    memory_count: int,
 ) -> dict:
     latency_ms = int((time.perf_counter() - started) * 1000)
 
@@ -117,6 +120,7 @@ def _persist(
         "evaluation": state.get("evaluation"),
         "trace": state.get("trace", []),
         "latency_ms": latency_ms,
+        "usage": tracker.summary(),  # the answer's tokens; memory extraction runs after this is saved
     }
 
     msg = db.add_message(
@@ -133,9 +137,21 @@ def _persist(
             user_id=user_id,
             message=user_message,
             history=history,
+            callbacks=[tracker],
         )
     except Exception:
         log.exception("Key-value memory extraction failed")
+
+    record_usage(
+        tracker,
+        conversation_id=conv["id"],
+        tool=state.get("tool"),
+        intent=state.get("intent"),
+        message_chars=len(user_message),
+        history_messages=len(history),
+        memories=memory_count,
+        latency_ms=latency_ms,
+    )
 
     # Save the exchange as a semantic memory episode.
     answer = state.get("answer", "").strip()
@@ -243,6 +259,7 @@ def _error_state(e: Exception) -> dict:
 def chat(req: ChatRequest, user: dict = Depends(get_current_user)):
     conv, history, memories, doc_names = _prepare(req, user)
     started = time.perf_counter()
+    tracker = UsageTracker()
 
     try:
         state = run_agent(
@@ -251,6 +268,7 @@ def chat(req: ChatRequest, user: dict = Depends(get_current_user)):
             history,
             memories,
             doc_names,
+            callbacks=[tracker],
         )
     except Exception as e:
         state = _error_state(e)
@@ -262,6 +280,8 @@ def chat(req: ChatRequest, user: dict = Depends(get_current_user)):
         user["id"],
         req.message,
         history,
+        tracker,
+        len(memories),
     )
 
 
@@ -270,6 +290,7 @@ def chat_stream(req: ChatRequest, user: dict = Depends(get_current_user)):
     """Stream metadata, status, trace steps, answer drafts, and final result."""
     conv, history, memories, doc_names = _prepare(req, user)
     started = time.perf_counter()
+    tracker = UsageTracker()
 
     def sse(event: str, data: dict) -> str:
         return f"event: {event}\ndata: {json.dumps(data, default=str)}\n\n"
@@ -292,6 +313,7 @@ def chat_stream(req: ChatRequest, user: dict = Depends(get_current_user)):
                 history,
                 memories,
                 doc_names,
+                callbacks=[tracker],
             ):
                 if kind == "final":
                     final = payload
@@ -326,6 +348,8 @@ def chat_stream(req: ChatRequest, user: dict = Depends(get_current_user)):
                 user["id"],
                 req.message,
                 history,
+                tracker,
+                len(memories),
             ),
         )
 

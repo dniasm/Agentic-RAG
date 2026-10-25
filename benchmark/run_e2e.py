@@ -76,7 +76,7 @@ def run_one(q: dict, user: dict, doc_names: list[str]) -> dict:
     start = time.perf_counter()
     first_words, final, error, starts = None, {}, None, []
     try:
-        for kind, payload in stream_agent(q["question"], user, [], doc_names, callbacks=[counter]):
+        for kind, payload in stream_agent(q["question"], user, [], [], doc_names, callbacks=[counter]):
             now = time.perf_counter() - start
             if kind == "status":
                 starts.append((now, payload["node"]))
