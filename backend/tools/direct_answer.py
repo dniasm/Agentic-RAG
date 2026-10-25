@@ -210,6 +210,34 @@ def answer(
     ):
         return "", True, gate
 
+    return clean_answer(invoke_answer(_messages(query, history, memories))), False, gate
+
+
+SMALL_TALK = """The user is making small talk: a greeting, thanks, a goodbye, sharing something about
+themselves, or asking who you are or what you can do. Reply warmly and naturally in 1-3 sentences, in the
+same voice you use for every other answer. If it fits, mention that you can answer questions from their
+uploaded documents, search the web for recent information, and answer general questions.
+The user's name is {username}. They currently have {doc_count} document(s) indexed."""
+
+
+def converse(
+    query: str,
+    history: list[dict],
+    username: str,
+    doc_count: int,
+    memories: list[dict] | None = None,
+) -> str:
+    """Small talk, written by the same model and persona as every other answer."""
+    note = SMALL_TALK.format(username=username, doc_count=doc_count)
+    return clean_answer(invoke_answer(_messages(query, history, memories or [], note)))
+
+
+def _messages(
+    query: str,
+    history: list[dict],
+    memories: list[dict],
+    mode_note: str | None = None,
+) -> list:
     memory_text = "\n".join(
         f"{m['memory_key']}: {m['memory_value']}"
         for m in memories
@@ -226,6 +254,7 @@ def answer(
             "remember details that are absent from both the supplied history "
             "and the supplied memories."
         ),
+        *([SystemMessage(mode_note)] if mode_note else []),
         *history_to_messages(history),
         HumanMessage(query),
     ]
@@ -237,4 +266,4 @@ def answer(
             message.content,
         )
 
-    return clean_answer(invoke_answer(messages)), False, gate
+    return messages

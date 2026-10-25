@@ -4,13 +4,19 @@ from datetime import date
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
 
-def history_to_messages(history: list[dict]) -> list[BaseMessage]:
+def history_to_messages(history: list[dict], keep_full: int = 2, older_max_chars: int = 800) -> list[BaseMessage]:
+    """Chat history as messages. The last `keep_full` messages (the previous exchange) are kept whole,
+    because follow-ups refer to them; older ones are shortened, since long answers re-sent on every turn
+    were a large share of each prompt."""
     out: list[BaseMessage] = []
-    for m in history:
+    for i, m in enumerate(history):
+        content = m["content"]
+        if i < len(history) - keep_full and len(content) > older_max_chars:
+            content = content[:older_max_chars].rstrip() + " …"
         if m["role"] == "user":
-            out.append(HumanMessage(m["content"]))
+            out.append(HumanMessage(content))
         elif m["role"] == "assistant":
-            out.append(AIMessage(m["content"]))
+            out.append(AIMessage(content))
     return out
 
 

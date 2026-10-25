@@ -27,7 +27,9 @@ class Settings(BaseSettings):
 
     # --- LLMs (Groq) ---
     llm_model: str = "openai/gpt-oss-120b"        # answer generation
-    fast_llm_model: str = "openai/gpt-oss-20b"    # routing, grading, rewriting, evaluation
+    fast_llm_model: str = "openai/gpt-oss-20b"    # routing and other short decisions
+    # Memory extraction: its own Groq rate limit, and no hidden reasoning tokens (gpt-oss always reasons).
+    memory_llm_model: str = "qwen/qwen3.8-27b"
     open_router_model: str = "nvidia/nemotron-3-ultra-550b-a55b:free"
     open_router_base_url: str = "https://openrouter.ai/api/v1"
     llm_temperature: float = 0.0

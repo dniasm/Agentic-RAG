@@ -29,6 +29,9 @@ log = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Chat"])
 
+EPISODE_LIMIT = 3          # past-conversation memories added to each request
+EPISODE_MAX_CHARS = 800    # characters kept from each
+
 
 # ----------------------------------------------------------------
 # Helpers
@@ -62,10 +65,12 @@ def _prepare(
     try:
         ensure_memory_collection()
 
+        # Each episode is up to ~4,000 characters and goes into several prompts (router, knowledge gate,
+        # answer), so only the closest few are used, shortened.
         semantic_memories = search_memories(
             user["id"],
             req.message,
-            limit=5,
+            limit=EPISODE_LIMIT,
         )
 
         for memory in semantic_memories:
@@ -74,11 +79,15 @@ def _prepare(
             if score < 0.45:
                 continue
 
+            text = memory["text"]
+            if len(text) > EPISODE_MAX_CHARS:
+                text = text[:EPISODE_MAX_CHARS].rstrip() + " …"
+
             memories.append({
                 "memory_key": (
                     f"past_conversation_{memory.get('kind', 'episodic')}"
                 ),
-                "memory_value": memory["text"],
+                "memory_value": text,
                 "memory_source": "semantic",
                 "memory_score": score,
                 "conversation_id": memory.get("conversation_id"),

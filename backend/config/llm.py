@@ -49,6 +49,18 @@ def get_fast_llm() -> ChatGroq:
 
 
 @lru_cache
+def get_memory_llm() -> ChatGroq:
+    """Qwen: extracts persistent memories. Separate rate limit from gpt-oss, and it answers without
+    hidden reasoning, so a structured extraction costs a few dozen output tokens instead of hundreds."""
+    return ChatGroq(
+        model=settings.memory_llm_model,
+        temperature=0,
+        api_key=settings.groq_api_key,
+        max_retries=2,
+    )
+
+
+@lru_cache
 def get_judge_llm() -> ChatGroq:
     """Large model for reviews and answer evaluation: deterministic, with lighter hidden reasoning.
     Same verdicts in testing, ~60% fewer output tokens, which matters under the free tier's TPM limit."""
@@ -97,11 +109,16 @@ def consume_backup_flag() -> bool:
 
 
 # ---------------------------------------------------------------- structured output
+# Groq guarantees schema-valid output for these models with strict json_schema (constrained decoding).
+_STRICT_MODELS = {"openai/gpt-oss-20b", "openai/gpt-oss-120b"}
+
+
 def _plain_json(llm: ChatGroq, model_cls):
     """Fallback: ask for the JSON in plain text and validate it ourselves."""
     fields = json.dumps(model_cls.model_json_schema().get("properties", {}), ensure_ascii=False)
 
     def run(prompt):
+        log.info("Structured output for %s fell back to plain JSON on %s", model_cls.__name__, llm.model_name)
         text = prompt if isinstance(prompt, str) else str(prompt)
         reply = llm.invoke(
             f"{text}\n\nReply with ONLY a JSON object (no prose, no code fences) with exactly these fields:\n{fields}"
@@ -115,23 +132,35 @@ def _plain_json(llm: ChatGroq, model_cls):
 
 
 def _structured_for(llm: ChatGroq, model_cls):
-    """json_schema mode first, then plain JSON validated with pydantic."""
-    primary = llm.with_structured_output(model_cls, method="json_schema")
+    """Schema-constrained output first, then plain JSON validated with pydantic.
+
+    gpt-oss: strict json_schema. Without `strict`, Groq only checks the output afterwards, and gpt-oss
+    intermittently writes its reasoning where the JSON belongs (`json_validate_failed` /
+    `output_parse_failed`); every failure re-sent the whole prompt. Strict mode constrains decoding instead.
+    Other models (Qwen): tool calling. In testing Qwen's json_schema mode returned empty results.
+    """
+    if llm.model_name in _STRICT_MODELS:
+        primary = llm.with_structured_output(model_cls, method="json_schema", strict=True)
+    else:
+        primary = llm.with_structured_output(model_cls, method="function_calling")
     return primary.with_fallbacks([_plain_json(llm, model_cls).with_retry(stop_after_attempt=2)])
 
 
-def structured(model_cls, fast: bool = True, backup: bool = False):
+def structured(model_cls, fast: bool = True, backup: bool = False, memory: bool = False):
     """Schema-constrained output, returned as an instance of `model_cls`.
 
-    1st try: Groq's native json_schema mode (far more reliable than tool-calling on gpt-oss).
-    Fallback: Groq's JSON enforcement intermittently returns an *empty* generation for some prompts
-    (`json_validate_failed`), and because these calls are deterministic, retrying the same request
-    fails the same way. Asking for plain JSON and validating it with pydantic succeeds in those cases.
+    fast=True: the small model (routing and other short decisions).
+    fast=False: the large model (reviews, evaluation, the knowledge gate).
+    memory=True: the memory model (Qwen), falling back to the small model if Qwen is unavailable.
 
     backup=True (large-model calls only): if the large model is unavailable (e.g. its quota is used up),
     let the small model do the job instead. Used for answer evaluation, not for reviews: a model
     reviewing its own decision adds nothing, so reviews are simply skipped when the large model is out.
     """
+    if memory:
+        return _structured_for(get_memory_llm(), model_cls).with_fallbacks(
+            [_structured_for(get_fast_llm(), model_cls)]
+        )
     if fast:
         return _structured_for(get_fast_llm(), model_cls)
     chain = _structured_for(get_judge_llm(), model_cls)

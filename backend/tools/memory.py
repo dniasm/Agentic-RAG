@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -72,10 +73,18 @@ MEMORY_CUES = (
 )
 
 
+# Words that show the user is talking about themselves, or about what to remember.
+_PERSONAL = re.compile(
+    r"\b(i|i'm|im|i've|i'd|i'll|me|my|mine|myself|we|our|"
+    r"remember|forget|favou?rite|prefer|call me|your name)\b"
+)
+
+
 def _may_contain_memory(message: str) -> bool:
-    """Cheap filter to avoid an LLM call for ordinary messages."""
+    """Cheap filter to avoid an LLM call for messages with nothing personal in them
+    ("thanks!", "what is BM25?")."""
     text = message.casefold().replace("’", "'")
-    return any(cue.replace("’", "'") in text for cue in MEMORY_CUES)
+    return any(cue.replace("’", "'") in text for cue in MEMORY_CUES) or bool(_PERSONAL.search(text))
 
 def _memory_values(raw: str) -> list[str]:
     try:
@@ -113,6 +122,10 @@ def extract_and_save_memories(
     if not message or not message.strip():
         return
 
+    if not _may_contain_memory(message):
+        log.info("Memory extraction skipped: nothing personal in the message")
+        return
+
     try:
         # Existing memories let the extractor reuse keys when correcting
         # facts, rather than creating duplicate entries for the same fact.
@@ -123,181 +136,57 @@ def extract_and_save_memories(
             for m in existing_memories
         ) or "(no saved memories)"
 
-        # Include recent context, but treat assistant messages as context,
-        # not as proof that a fact about the user is true.
-        recent_history = history[-6:]
+        # Only the previous exchange, shortened: enough to resolve references
+        # ("that one", "actually, ...") without re-sending long answers.
+        recent_history = history[-2:]
         history_text = "\n".join(
-            f"{m['role']}: {m['content']}"
+            f"{m['role']}: {' '.join(m['content'].split())[:400]}"
             for m in recent_history
         ) or "(no previous conversation)"
 
-        prompt = f"""
-You are the persistent-memory manager for a personal AI assistant.
-
-Extract useful information from the LATEST USER MESSAGE that will
-improve future personalization, continuity, and assistance.
+        prompt = f"""You manage the persistent memory of a personal AI assistant.
+Return memory operations for durable, useful facts the LATEST USER MESSAGE states about the user.
+Return an empty list if it states none.
 
 EXISTING MEMORIES:
 {existing_text}
 
-RECENT CONVERSATION:
+PREVIOUS EXCHANGE (context only; never a source of facts):
 {history_text}
 
 LATEST USER MESSAGE:
 {message}
 
-Return zero or more structured memory operations using the required schema.
+WHAT TO SAVE
+- Identity and background (name, location, occupation, education, languages), preferences, likes and
+  dislikes, favourites, hobbies, habits, goals, ongoing projects, and how the user wants answers.
+- Every distinct fact in the message, including casual ones ("coffee over tea" is a preference).
+- Explicit requests to remember, update or forget something.
 
-## 1. WHAT TO REMEMBER
+WHAT NOT TO SAVE
+- Questions, one-off tasks, passing remarks with no future value.
+- Anything said by the assistant, or details of hypotheticals, role-play or fiction.
+- Guesses: liking something does not make it a favourite.
 
-Capture all distinct, useful personal facts expressed in the latest
-user message, including:
+KEYS: short, stable, lowercase snake_case (preferred_name, location, occupation, hobbies, liked_drinks,
+favorite_drink, response_style). Reuse an existing key for the same kind of fact. Use plural keys for
+collections (hobbies, liked_foods, liked_drinks, interests) and singular keys for single facts
+(preferred_name, favorite_drink). One value per operation.
 
-- Identity and background: name, location, education, occupation,
-  languages, roles, and relevant life circumstances.
-- Preferences: favorites, likes, dislikes, rankings, communication style,
-  learning preferences, and recurring choices.
-- Interests and habits: hobbies, foods, drinks, entertainment, activities,
-  everyday habits, and meaningful experiences.
-- Goals and commitments: ambitions, plans, deadlines, and ongoing goals.
-- Work and projects: technologies, tools, architecture, constraints,
-  design decisions, hardware, and requirements likely to matter later.
-- Continuity: names assigned to the assistant, recurring topics, and
-  previous discussions the user wants to revisit.
-- Changes and instructions: corrections, updated circumstances, and
-  explicit requests to remember, update, or forget information.
+ACTIONS
+- add: a key that does not exist yet.
+- append: another value for an existing collection. Keep the existing values.
+- replace: ONLY when the user corrects or changes a single fact ("actually I moved to Kathmandu").
+- forget: ONLY when the user asks to forget something; value = the item to remove, or "*" for the whole key.
+Liking something new never replaces an existing like.
 
-A single message can contain multiple facts. Extract EVERY distinct,
-useful fact rather than stopping after the first or most important one.
+Examples (the operations depend on what EXISTING MEMORIES already contain):
+- No drink memories yet; "I also like coffee, but milk tea is my favourite drink"
+  -> liked_drinks add "coffee"; favorite_drink add "milk tea". Both facts are saved.
+- Existing "hobbies: trekking"; "I play futsal on weekends too" -> hobbies append "futsal".
+- Existing "location: Pokhara"; "I moved to Kathmandu last month" -> location replace "Kathmandu"."""
 
-Casual preferences matter too. A favorite flower, preferred candy,
-or fondness for coffee can help personalize future conversations even
-if mentioned only once.
-
-## 2. INTERPRET THE MESSAGE IN CONTEXT
-
-Use the recent conversation to understand references, informal wording,
-comparisons, corrections, and implied meanings that are clear from context.
-
-Examples:
-- "Coffee over tea, every time." expresses a preference.
-- "Actually, I graduated last month." updates education status.
-- "I like tulips, but roses are my favorite." expresses two distinct facts.
-- "Keep explaining things that way." may establish a communication
-  preference when the preceding context makes the meaning clear.
-- "Let's revisit that Titanic question sometime." indicates an interest
-  in returning to a previous discussion.
-
-Do not require explicit phrases such as "remember this."
-
-Only establish or update facts supported by the latest user message.
-Use history to interpret that message, not as permission to repeatedly
-extract every old fact.
-
-Never treat assistant-generated statements as evidence about the user.
-Do not turn hypothetical scenarios, fictional roleplay, quoted claims,
-or assumptions into personal facts.
-
-### Strict Personal-Fact Boundary
-
-Before saving any fact, determine whose life, preference, experience, or circumstance it describes.
-
-- Save facts about the user, not facts about the assistant or a hypothetical character.
-- If the user asks the assistant to imagine being human, roleplay a character, or reason through a hypothetical scenario, treat the scenario's details as fictional or hypothetical unless the user independently establishes them as facts about themselves.
-- Details such as a hypothetical spouse, children, occupation, location, possessions, or emergency circumstances must not be saved as user memories merely because they appear repeatedly in the conversation.
-- Assistant-generated statements are never evidence of user attributes, even when the assistant repeats or elaborates on them.
-- When the subject of a potentially personal fact is ambiguous, do not save it as a personal fact.
-- Extract only facts supported by the latest user message, using history to interpret their meaning and ownership.
-
-## 3. SELECT USEFUL FACTS
-
-Prefer information that could help answer future questions, personalize
-responses, or continue ongoing work.
-
-Generally save personal preferences, favorites, dislikes, interests,
-habits, meaningful experiences, and relevant background when clearly
-expressed, even if casual or mentioned once.
-
-Do not save every passing thought, isolated question, temporary activity,
-or one-time instruction that has no likely future value.
-
-Do not exaggerate or invent facts. Liking coffee does not necessarily
-mean drinking it daily; mentioning a food does not automatically mean
-it is a favorite.
-
-When a fact is personal, specific, and plausibly useful later, lean
-toward saving it rather than discarding it merely because its long-term
-importance is uncertain.
-
-Do not infer sensitive personal attributes or invent missing details.
-
-## 4. MEMORY KEYS AND VALUES
-
-Use concise, stable, lowercase keys, such as:
-preferred_name, location, education, response_style, learning_preference,
-favorite_flower, favorite_candy, favorite_drink, assistant_name,
-active_project.
-
-Reuse existing keys for the same underlying fact. Use separate keys
-for genuinely distinct facts; group closely related facts only when
-their individual meanings remain clear.
-
-Keep values concise but informative enough to be understood without
-the original conversation.
-
-For project-specific facts, include the project name in the key or
-value when necessary to prevent confusion between projects.
-
-## 5. UPDATE EXISTING MEMORIES
-
-Compare new facts with existing memories before choosing an action.
-
-- ADD: Use action="add" for a new memory key that does not exist.
-- APPEND: Use action="append" to add a distinct value to an existing
-  multivalued memory. Preserve existing values and avoid duplicates.
-- REPLACE: Use action="replace" only when the user clearly corrects
-  a fact or changes an existing preference.
-- NON-CONTRADICTORY PREFERENCES: Preserve compatible facts.
-  "I also love lemonade" must not replace "coffee is my favorite drink."
-- FAVORITES: Distinguish a collection of liked items from a singular
-  favorite. For example, favorite_drinks may contain ["coffee",
-  "lemonade"], while favorite_drink remains "coffee".
-- AMBIGUITY: Do not overwrite a specific existing fact based on a guess.
-- DUPLICATES: Do not append a value that is already present.
-- Do not delete unrelated facts just because a related preference changes.
-
-Do not delete unrelated facts just because a related preference changes.
-
-## 6. FORGETTING
-
-Use action="forget" only when the user clearly requests that a stored
-fact be forgotten or deleted.
-
-Identify the exact existing memory key. If the user requests forgetting
-multiple facts, return an operation for each clearly identified key.
-
-If the request is ambiguous, do not delete anything. Updating a fact
-normally requires action="save", not "forget".
-
-## 7. FINAL CHECK
-
-Before returning, review the latest user message and verify that:
-- Every distinct, useful fact has been considered.
-- Multiple facts in one message have not been overlooked.
-- Existing memories have been updated consistently.
-- No unsupported personal claims or unnecessary duplicates were added.
-- Explicit save, update, and forget instructions were handled correctly.
-
-Return only the required structured output with facts containing the
-appropriate key, value, and action: "add", "append", "replace", or
-"forget".
-
-If the message contains no useful new information, correction, update,
-or explicit memory operation, return an empty facts list.
-
-"""
-
-        extractor = structured(MemoryExtraction, fast=True)
+        extractor = structured(MemoryExtraction, memory=True)
         result = extractor.invoke(
             prompt,
             config={
@@ -337,14 +226,15 @@ or explicit memory operation, return an empty facts list.
 
             current = memory_map.get(key)
 
-            if fact.action == "add":
-                # Never overwrite an existing key with an add operation.
-                if current is None and value:
+            if fact.action == "add" and current is None:
+                if value:
                     db.save_memory(user_id, key, value)
                     memory_map[key] = value
                     log.info("Added memory key '%s'", key)
 
-            elif fact.action == "append":
+            elif fact.action in ("add", "append"):
+                # "add" on a key that already exists is treated as append: never
+                # overwrite, and never silently drop the new value either.
                 if not value:
                     continue
 

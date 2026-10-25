@@ -375,6 +375,7 @@ def greeting_node(state: AgentState) -> dict:
         state.get("history", []),
         state.get("username", "there"),
         len(state.get("doc_names", [])),
+        state.get("memories", []),
     )
 
     return {
@@ -382,7 +383,7 @@ def greeting_node(state: AgentState) -> dict:
         "tool": "greeting",
         "sources": [],
         "evaluation": None,
-        "notices": [],
+        "notices": _notices_after_writing(state),
         "trace": [
             _step("greeting", "Responded conversationally.")
         ],
