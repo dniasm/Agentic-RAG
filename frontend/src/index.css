@@ -1,0 +1,25 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Rendered agent answers (react-markdown) */
+@layer components {
+  .markdown { @apply leading-relaxed space-y-3 break-words; }
+  .markdown h1, .markdown h2, .markdown h3, .markdown h4 { @apply font-semibold text-white mt-4 first:mt-0; }
+  .markdown h1 { @apply text-lg; }
+  .markdown h2 { @apply text-base; }
+  .markdown h3, .markdown h4 { @apply text-sm; }
+  .markdown strong { @apply text-white font-semibold; }
+  .markdown ul { @apply list-disc pl-5 space-y-1; }
+  .markdown ol { @apply list-decimal pl-5 space-y-1; }
+  .markdown li > ul, .markdown li > ol { @apply mt-1; }
+  .markdown a { @apply text-indigo-400 underline underline-offset-2 hover:text-indigo-300; }
+  .markdown code { @apply bg-slate-800 text-indigo-200 rounded px-1 py-0.5 text-[0.85em]; }
+  .markdown pre { @apply bg-slate-950 border border-slate-800 rounded-lg p-3 overflow-x-auto; }
+  .markdown pre code { @apply bg-transparent p-0 text-slate-200; }
+  .markdown blockquote { @apply border-l-2 border-slate-700 pl-3 text-slate-400; }
+  .markdown table { @apply w-full text-xs border-collapse block overflow-x-auto; }
+  .markdown th { @apply text-left font-semibold text-slate-200 bg-slate-800/60 border border-slate-700 px-2 py-1.5; }
+  .markdown td { @apply border border-slate-800 px-2 py-1.5 align-top; }
+  .markdown hr { @apply border-slate-800; }
+}

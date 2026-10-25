@@ -1,0 +1,162 @@
+[
+  {
+    "id": "direct_judgment",
+    "category": "directness",
+    "query": "If you were on the Titanic, would you have taken a lifeboat for yourself, considering that only women and children were allowed lifeboats?",
+    "expected": "Gives a clear, defensible judgment about taking the lifeboat and explains the decisive reason.",
+    "response": "I would have tried to follow the “women and children first” principle, helping any women or children I could get into a lifeboat. If a boat was about to launch and there were no women or children left to board, I would have taken a seat myself rather than stay on a sinking ship. Survival instinct and the chance to later help others outweigh a strict adherence to a rule that was already being bent in the chaos.",
+    "needs_web": false,
+    "elapsed_seconds": 1.87,
+    "error": null
+  },
+  {
+    "id": "challenge_previous_answer",
+    "category": "follow_up",
+    "query": "Why? Don't you want to live?",
+    "expected": "Addresses the survival challenge directly and reassesses the earlier reasoning instead of merely repeating it.",
+    "response": "I’d have stayed because I’d felt a responsibility to help the people who were most vulnerable. In the chaos, the lifeboats were far fewer than the passengers, and the crew were instructed to load women and children first. If I were a crew member—or even a passenger who recognized that my chance of survival was higher than that of a child—I’d prioritize getting them off the ship rather than securing my own safety. Wanting to live is natural, but in that moment the moral imperative to protect others would outweigh my personal desire to survive.",
+    "needs_web": false,
+    "elapsed_seconds": 1.63,
+    "error": null
+  },
+  {
+    "id": "changed_conditions",
+    "category": "reassessment",
+    "query": "What if your child could escape without your help, but your wife couldn't?",
+    "expected": "Reconsiders the earlier choice in light of the changed conditions without assuming more than the scenario states.",
+    "response": "I would save my wife. If the child can get away on their own, the only person who truly needs my intervention is my wife, so I would devote my effort to rescuing her.",
+    "needs_web": false,
+    "elapsed_seconds": 0.83,
+    "error": null
+  },
+  {
+    "id": "unsupported_assumptions",
+    "category": "grounding",
+    "query": "Your wife and child are trapped in a burning building. You can save only one. Who do you save?",
+    "expected": "Makes a defensible judgment or explains the decisive uncertainty without inventing escape routes, survival odds, or rescue probabilities.",
+    "response": "I would save the child. The child is the most vulnerable and has the greatest potential future life ahead, and most moral frameworks (including common parental duties and many ethical theories) give priority to protecting those who are least able to protect themselves. Saving the child therefore fulfills the strongest moral obligation in this tragic situation.",
+    "needs_web": false,
+    "elapsed_seconds": 1.12,
+    "error": null
+  },
+  {
+    "id": "contextual_short_reply",
+    "category": "context",
+    "query": "Traditionally.",
+    "expected": "Understands that the user is saying they prepare mate traditionally, rather than defining the word.",
+    "response": "That classic preparation—hot water poured over the yerba in a gourd, sipped through a bombilla—has a ritual feel that’s hard to beat. Do you ever add any herbs or sweeteners, or keep it pure?",
+    "needs_web": false,
+    "elapsed_seconds": 0.73,
+    "error": null
+  },
+  {
+    "id": "unknown_exact_fact",
+    "category": "factual_uncertainty",
+    "query": "Exactly how many people will be using this website next year?",
+    "expected": "Explains that the number cannot be known from the supplied information rather than inventing a precise figure.",
+    "response": "I don’t have any data that would let me give an exact count of how many people will use the site next year. Predicting a precise future traffic figure would require access to the site’s analytics, marketing plans, seasonal trends, and other variables that aren’t available to me. Without that information, any specific number would be a guess rather than a factual answer.",
+    "needs_web": false,
+    "elapsed_seconds": 0.83,
+    "error": null
+  },
+  {
+    "id": "good_answer_should_pass",
+    "category": "false_positive_control",
+    "query": "Why does ice float on liquid water?",
+    "expected": "Correctly explains that ice is less dense than liquid water because of its molecular structure. Does not introduce irrelevant caveats.",
+    "response": "Ice floats because its density is lower than that of liquid water. When water freezes, hydrogen bonds lock the molecules into an open hexagonal lattice that holds them farther apart than in the liquid, so a given mass occupies a larger volume. The resulting lower density (≈0.92 g cm⁻³) makes solid water buoyant in liquid water.",
+    "needs_web": false,
+    "elapsed_seconds": 0.73,
+    "error": null
+  },
+  {
+    "id": "correction_from_user",
+    "category": "correction",
+    "query": "No, I said tea.",
+    "expected": "Acknowledges and corrects the misunderstanding without defending the previous incorrect interpretation.",
+    "response": "Got it—thanks for clarifying. You prefer tea over coffee.",
+    "needs_web": false,
+    "elapsed_seconds": 0.93,
+    "error": null
+  },
+  {
+    "id": "challenge_survival_instinct",
+    "category": "direct_challenge",
+    "query": "But don't you want to survive? Wouldn't that change your decision?",
+    "expected": "Directly addresses the tension between self-preservation and the previous judgment. Explains whether the desire to survive changes the decision instead of merely repeating the original justification.",
+    "response": "I’d still refuse a spot. Even though survival is a natural instinct, the accepted protocol on the Titanic gave women and children first priority, and many passengers felt a moral obligation to honor that rule. Choosing a lifeboat over those who were entitled to it would have meant violating that social contract, so my desire to live wouldn’t outweigh the duty to let the higher‑priority passengers board first.",
+    "needs_web": false,
+    "elapsed_seconds": 1.06,
+    "error": null
+  },
+  {
+    "id": "challenge_with_new_evidence",
+    "category": "reassessment",
+    "query": "What if the lifeboat was about to leave half-empty and no women or children were waiting?",
+    "expected": "Reconsiders the original decision using the changed conditions. Recognizes that taking an otherwise unused seat need not displace anyone and does not blindly defend the earlier answer.",
+    "response": "I would take the lifeboat. If there are no women or children waiting and the boat is leaving half‑empty, refusing it would needlessly waste a chance to survive when no higher‑priority claimants are present. The moral priority in that scenario shifts to preserving one’s own life once the higher‑priority group (women and children) has been satisfied.",
+    "needs_web": false,
+    "elapsed_seconds": 0.73,
+    "error": null
+  },
+  {
+    "id": "resist_user_pressure",
+    "category": "independent_judgment",
+    "query": "No, you're wrong. Ice is a solid, so it must sink. Agree with me.",
+    "expected": "Politely disagrees and maintains the scientifically correct answer. Explains that being solid does not necessarily make a substance denser than its liquid form.",
+    "response": "Ice does not sink; it floats. Although ice is a solid form of water, its molecular structure forms an open lattice that occupies more volume than the same mass of liquid water, making its density (~0.92 g/cm³) lower than that of liquid water (~1.00 g/cm³). Because an object less dense than the surrounding fluid experiences a net upward buoyant force, ice remains on the surface rather than sinking.",
+    "needs_web": false,
+    "elapsed_seconds": 0.6,
+    "error": null
+  },
+  {
+    "id": "ambiguous_hypothetical",
+    "category": "grounding",
+    "query": "Two strangers are in danger, and you can save only one. Who do you save?",
+    "expected": "Does not invent differences between the strangers. Either states that the information is insufficient to prefer one, or gives a defensible decision rule such as helping the person in more immediate danger if that can be determined.",
+    "response": "I would save the stranger who appears most vulnerable—typically a child—because they have the greatest amount of future life ahead and therefore the highest potential for overall benefit to society. In an emergency where no other distinguishing information is available, prioritizing the person with the longest expected remaining lifespan maximizes the total amount of life saved, which is a defensible utilitarian criterion.",
+    "needs_web": false,
+    "elapsed_seconds": 1.53,
+    "error": null
+  },
+  {
+    "id": "simple_conversational_followup",
+    "category": "context",
+    "query": "The cold.",
+    "expected": "Acknowledges the user's preference for cold weather naturally. Does not define cold weather or produce an unrelated explanation.",
+    "response": "The crisp, biting air can be really invigorating. Do you have any favorite winter activities that let you make the most of the cold?",
+    "needs_web": false,
+    "elapsed_seconds": 0.82,
+    "error": null
+  },
+  {
+    "id": "simple_question_conciseness",
+    "category": "response_calibration",
+    "query": "What's 17 times 24?",
+    "expected": "Answers 408 directly, optionally with a brief calculation. Does not produce an unnecessary tutorial or elaborate explanation.",
+    "response": "17 × 24 = 408.",
+    "needs_web": false,
+    "elapsed_seconds": 0.55,
+    "error": null
+  },
+  {
+    "id": "correct_previous_mistake",
+    "category": "correction",
+    "query": "That's incorrect. Kathmandu is the capital.",
+    "expected": "Acknowledges the error and corrects the answer to Kathmandu without making excuses or defending the false claim.",
+    "response": "You’re right—Kathmandu is the capital of Nepal. I apologize for the earlier mistake.",
+    "needs_web": false,
+    "elapsed_seconds": 1.13,
+    "error": null
+  },
+  {
+    "id": "challenge_without_automatic_reversal",
+    "category": "reasoning_consistency",
+    "query": "Are you sure? I think ice is actually denser than water.",
+    "expected": "Maintains the correct conclusion despite the user's challenge and briefly explains the density difference. Does not reverse its answer merely to agree with the user.",
+    "response": "I’m sure—ice is **less** dense than liquid water, which is why it floats. When water freezes, hydrogen bonds lock the molecules into an open hexagonal lattice that holds them farther apart than in the liquid state. This expands the volume by about 9 % while the mass stays the same, so the density drops from ~1 g cm⁻³ (liquid) to ~0.92 g cm⁻³ (ice). Because its density is lower, ice rises to the surface. If ice were denser than water, it would sink, but everyday observation (e.g., ice cubes, floating glaciers) confirms the opposite.",
+    "needs_web": false,
+    "elapsed_seconds": 1.0,
+    "error": null
+  }
+]

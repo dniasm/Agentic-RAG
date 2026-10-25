@@ -1,0 +1,514 @@
+{
+  "stage": "0",
+  "timestamp": "2026-10-02T12:56:18",
+  "summary": {
+    "questions": 10,
+    "errors": 0,
+    "correct route": "10/10",
+    "answer contains gold phrase": "5/7",
+    "used expected document": "8/8",
+    "evaluator: sufficient": "10/10",
+    "median latency (s)": 4.0,
+    "median first words (s)": 2.3,
+    "tokens per question by model": {
+      "openai/gpt-oss-20b": 2241,
+      "openai/gpt-oss-120b": 3394
+    },
+    "embedding requests (total)": 0,
+    "Tavily credits (total)": 2,
+    "median seconds per step": {
+      "evaluate": 0.74,
+      "fallback": 0.0,
+      "generate_rag": 1.37,
+      "generate_web": 4.95,
+      "grade": 0.59,
+      "retrieve": 0.01,
+      "router": 0.68,
+      "web_search": 2.44
+    }
+  },
+  "rows": [
+    {
+      "id": "ccs-supervisor",
+      "category": "exact_term",
+      "question": "Who supervised the ISP complaint classification project?",
+      "tool": "rag",
+      "notices": [],
+      "used_expected_doc": true,
+      "answer_has_gold": true,
+      "correct_route": true,
+      "eval_sufficient": true,
+      "eval_score": 5,
+      "latency": 4.3,
+      "first_words": 3.1,
+      "step_seconds": {
+        "router": 1.22,
+        "retrieve": 0.19,
+        "grade": 0.6,
+        "generate_rag": 1.12,
+        "evaluate": 1.16
+      },
+      "embedding_requests": 0,
+      "tavily_credits": 0,
+      "tokens": {
+        "openai/gpt-oss-20b": {
+          "calls": 2,
+          "input": 2124,
+          "output": 190
+        },
+        "openai/gpt-oss-120b": {
+          "calls": 2,
+          "input": 1283,
+          "output": 200
+        }
+      },
+      "steps": [
+        "router",
+        "review",
+        "retrieve",
+        "grade_documents",
+        "review",
+        "generate",
+        "evaluate",
+        "finalize"
+      ],
+      "error": null,
+      "answer_preview": "**Supervisor:** Mr. Pratik Joshi was the project supervisor for the “ISP Complaint Classification and Management System Using SVM” project[1][2]."
+    },
+    {
+      "id": "ccs-tdidf",
+      "category": "typo",
+      "question": "how is tdidf used in the complaint system",
+      "tool": "rag",
+      "notices": [],
+      "used_expected_doc": true,
+      "answer_has_gold": false,
+      "correct_route": true,
+      "eval_sufficient": true,
+      "eval_score": 5,
+      "latency": 3.8,
+      "first_words": 1.9,
+      "step_seconds": {
+        "router": 0.6,
+        "retrieve": 0.02,
+        "grade": 0.57,
+        "generate_rag": 1.79,
+        "evaluate": 0.8
+      },
+      "embedding_requests": 0,
+      "tavily_credits": 0,
+      "tokens": {
+        "openai/gpt-oss-20b": {
+          "calls": 2,
+          "input": 2399,
+          "output": 181
+        },
+        "openai/gpt-oss-120b": {
+          "calls": 2,
+          "input": 3568,
+          "output": 682
+        }
+      },
+      "steps": [
+        "router",
+        "review",
+        "retrieve",
+        "grade_documents",
+        "review",
+        "generate",
+        "evaluate",
+        "finalize"
+      ],
+      "error": null,
+      "answer_preview": "**Role of TF‑IDF in the complaint‑classification system**\n\n| Step | What is done | Why it matters |\n|------|--------------|----------------|\n| 1. Text preprocessing | Customer narratives are tokenized, stop‑words removed, and lemmatized. | "
+    },
+    {
+      "id": "ccs-weakness",
+      "category": "paraphrase",
+      "question": "What are the weaknesses of the complaint classifier?",
+      "tool": "rag",
+      "notices": [],
+      "used_expected_doc": true,
+      "answer_has_gold": false,
+      "correct_route": true,
+      "eval_sufficient": true,
+      "eval_score": 5,
+      "latency": 3.2,
+      "first_words": 2.1,
+      "step_seconds": {
+        "router": 0.81,
+        "retrieve": 0.01,
+        "grade": 0.57,
+        "generate_rag": 1.17,
+        "evaluate": 0.65
+      },
+      "embedding_requests": 0,
+      "tavily_credits": 0,
+      "tokens": {
+        "openai/gpt-oss-20b": {
+          "calls": 2,
+          "input": 2311,
+          "output": 191
+        },
+        "openai/gpt-oss-120b": {
+          "calls": 2,
+          "input": 1565,
+          "output": 396
+        }
+      },
+      "steps": [
+        "router",
+        "review",
+        "retrieve",
+        "grade_documents",
+        "review",
+        "generate",
+        "evaluate",
+        "finalize"
+      ],
+      "error": null,
+      "answer_preview": "**Weaknesses of the complaint classifier**\n\n| Weakness | Explanation |\n|----------|-------------|\n| **Dependence on training data quality & coverage** | The system’s performance is tied to how comprehensive and clean the training dataset is"
+    },
+    {
+      "id": "nlp-smoothing",
+      "category": "exact_term",
+      "question": "Which smoothing techniques are described for n-gram language models?",
+      "tool": "rag",
+      "notices": [],
+      "used_expected_doc": true,
+      "answer_has_gold": true,
+      "correct_route": true,
+      "eval_sufficient": true,
+      "eval_score": 5,
+      "latency": 4.0,
+      "first_words": 2.6,
+      "step_seconds": {
+        "router": 1.27,
+        "retrieve": 0.01,
+        "grade": 0.61,
+        "generate_rag": 1.37,
+        "evaluate": 0.74
+      },
+      "embedding_requests": 0,
+      "tavily_credits": 0,
+      "tokens": {
+        "openai/gpt-oss-20b": {
+          "calls": 2,
+          "input": 2322,
+          "output": 212
+        },
+        "openai/gpt-oss-120b": {
+          "calls": 2,
+          "input": 2482,
+          "output": 628
+        }
+      },
+      "steps": [
+        "router",
+        "review",
+        "retrieve",
+        "grade_documents",
+        "review",
+        "generate",
+        "evaluate",
+        "finalize"
+      ],
+      "error": null,
+      "answer_preview": "**Smoothing techniques mentioned for n‑gram language models**\n\n| Technique | Brief description (as given in the excerpts) |\n|-----------|----------------------------------------------|\n| **Laplace (add‑one) smoothing** | Adds one to every n"
+    },
+    {
+      "id": "rg-vectorize",
+      "category": "paraphrase",
+      "question": "What are some ways to turn text into numbers for machine learning?",
+      "tool": "rag",
+      "notices": [],
+      "used_expected_doc": true,
+      "answer_has_gold": true,
+      "correct_route": true,
+      "eval_sufficient": true,
+      "eval_score": 5,
+      "latency": 3.7,
+      "first_words": 2.0,
+      "step_seconds": {
+        "router": 0.63,
+        "retrieve": 0.01,
+        "grade": 0.59,
+        "generate_rag": 1.74,
+        "evaluate": 0.71
+      },
+      "embedding_requests": 0,
+      "tavily_credits": 0,
+      "tokens": {
+        "openai/gpt-oss-20b": {
+          "calls": 2,
+          "input": 2269,
+          "output": 185
+        },
+        "openai/gpt-oss-120b": {
+          "calls": 2,
+          "input": 3329,
+          "output": 744
+        }
+      },
+      "steps": [
+        "router",
+        "review",
+        "retrieve",
+        "grade_documents",
+        "review",
+        "generate",
+        "evaluate",
+        "finalize"
+      ],
+      "error": null,
+      "answer_preview": "**Common techniques for converting text into numeric representations**\n\n| Technique | How it works | Typical use‑cases |\n|-----------|--------------|-------------------|\n| **CountVectorizer (Bag‑of‑Words)** | Builds a matrix of raw word cou"
+    },
+    {
+      "id": "wiki-bm25-b",
+      "category": "exact_term",
+      "question": "What value is usually chosen for the b parameter in BM25?",
+      "tool": "rag",
+      "notices": [],
+      "used_expected_doc": true,
+      "answer_has_gold": true,
+      "correct_route": true,
+      "eval_sufficient": true,
+      "eval_score": 5,
+      "latency": 2.6,
+      "first_words": 1.8,
+      "step_seconds": {
+        "router": 0.64,
+        "retrieve": 0.01,
+        "grade": 0.53,
+        "generate_rag": 0.71,
+        "evaluate": 0.7
+      },
+      "embedding_requests": 0,
+      "tavily_credits": 0,
+      "tokens": {
+        "openai/gpt-oss-20b": {
+          "calls": 2,
+          "input": 2300,
+          "output": 162
+        },
+        "openai/gpt-oss-120b": {
+          "calls": 2,
+          "input": 1115,
+          "output": 151
+        }
+      },
+      "steps": [
+        "router",
+        "review",
+        "retrieve",
+        "grade_documents",
+        "review",
+        "generate",
+        "evaluate",
+        "finalize"
+      ],
+      "error": null,
+      "answer_preview": "The BM25 formulation typically uses **\\(b = 0.75\\)** as the default value for the length‑normalisation parameter[1]."
+    },
+    {
+      "id": "wiki-invindex",
+      "category": "paraphrase",
+      "question": "How can a search engine find which documents contain a word without scanning all of them?",
+      "tool": "rag",
+      "notices": [],
+      "used_expected_doc": true,
+      "answer_has_gold": true,
+      "correct_route": true,
+      "eval_sufficient": true,
+      "eval_score": 5,
+      "latency": 2.9,
+      "first_words": 1.9,
+      "step_seconds": {
+        "router": 0.65,
+        "retrieve": 0.01,
+        "grade": 0.48,
+        "generate_rag": 1.02,
+        "evaluate": 0.7
+      },
+      "embedding_requests": 0,
+      "tavily_credits": 0,
+      "tokens": {
+        "openai/gpt-oss-20b": {
+          "calls": 2,
+          "input": 1824,
+          "output": 166
+        },
+        "openai/gpt-oss-120b": {
+          "calls": 2,
+          "input": 1799,
+          "output": 331
+        }
+      },
+      "steps": [
+        "router",
+        "review",
+        "retrieve",
+        "grade_documents",
+        "review",
+        "generate",
+        "evaluate",
+        "finalize"
+      ],
+      "error": null,
+      "answer_preview": "A search engine avoids scanning every document by **pre‑building an inverted index**.  \n\n* The inverted index stores a **mapping from each word (or term) to the list of documents that contain it** – the opposite of a forward index that maps"
+    },
+    {
+      "id": "sum-ccs",
+      "category": "summary",
+      "question": "Summarize the ISP complaint classification project.",
+      "tool": "rag",
+      "notices": [],
+      "used_expected_doc": true,
+      "answer_has_gold": false,
+      "correct_route": true,
+      "eval_sufficient": true,
+      "eval_score": 5,
+      "latency": 4.1,
+      "first_words": 2.3,
+      "step_seconds": {
+        "router": 0.68,
+        "retrieve": 0.01,
+        "grade": 0.51,
+        "generate_rag": 2.11,
+        "evaluate": 0.79
+      },
+      "embedding_requests": 0,
+      "tavily_credits": 0,
+      "tokens": {
+        "openai/gpt-oss-20b": {
+          "calls": 2,
+          "input": 2031,
+          "output": 182
+        },
+        "openai/gpt-oss-120b": {
+          "calls": 2,
+          "input": 2753,
+          "output": 842
+        }
+      },
+      "steps": [
+        "router",
+        "review",
+        "retrieve",
+        "grade_documents",
+        "review",
+        "generate",
+        "evaluate",
+        "finalize"
+      ],
+      "error": null,
+      "answer_preview": "**ISP Complaint Classification Project – Summary**\n\n| Aspect | Details |\n|--------|---------|\n| **Problem addressed** | • No standardized automated system for ISP complaint handling in Nepal; complaints were processed manually, causing inco"
+    },
+    {
+      "id": "oos-australia",
+      "category": "out_of_scope",
+      "question": "What is the capital of Australia?",
+      "tool": "web_search",
+      "notices": [
+        "Information matching your question wasn't found in your documents, so it was resolved with a web search."
+      ],
+      "used_expected_doc": false,
+      "answer_has_gold": false,
+      "correct_route": true,
+      "eval_sufficient": true,
+      "eval_score": 5,
+      "latency": 6.0,
+      "first_words": 5.1,
+      "step_seconds": {
+        "router": 0.79,
+        "retrieve": 0.02,
+        "grade": 1.15,
+        "fallback": 0.0,
+        "web_search": 2.22,
+        "generate_web": 1.09,
+        "evaluate": 0.69
+      },
+      "embedding_requests": 0,
+      "tavily_credits": 1,
+      "tokens": {
+        "openai/gpt-oss-20b": {
+          "calls": 2,
+          "input": 1574,
+          "output": 143
+        },
+        "openai/gpt-oss-120b": {
+          "calls": 3,
+          "input": 3485,
+          "output": 374
+        }
+      },
+      "steps": [
+        "router",
+        "review",
+        "retrieve",
+        "grade_documents",
+        "review",
+        "fallback",
+        "web_search",
+        "generate",
+        "evaluate",
+        "finalize"
+      ],
+      "error": null,
+      "answer_preview": "**The capital of Australia is Canberra**, located in the Australian Capital Territory (ACT) [4].  \n\n- It was purpose‑built after the ACT was formed in 1908 to serve as the nation’s administrative centre.  \n- Canberra sits roughly halfway be"
+    },
+    {
+      "id": "oos-sourdough",
+      "category": "out_of_scope",
+      "question": "How do I bake sourdough bread?",
+      "tool": "web_search",
+      "notices": [
+        "Information matching your question wasn't found in your documents, so it was resolved with a web search."
+      ],
+      "used_expected_doc": false,
+      "answer_has_gold": false,
+      "correct_route": true,
+      "eval_sufficient": true,
+      "eval_score": 5,
+      "latency": 25.2,
+      "first_words": 5.4,
+      "step_seconds": {
+        "router": 0.6,
+        "retrieve": 0.02,
+        "grade": 1.27,
+        "fallback": 0.0,
+        "web_search": 2.44,
+        "generate_web": 4.95,
+        "evaluate": 15.95
+      },
+      "embedding_requests": 0,
+      "tavily_credits": 1,
+      "tokens": {
+        "openai/gpt-oss-20b": {
+          "calls": 2,
+          "input": 1500,
+          "output": 146
+        },
+        "openai/gpt-oss-120b": {
+          "calls": 3,
+          "input": 5964,
+          "output": 2247
+        }
+      },
+      "steps": [
+        "router",
+        "review",
+        "retrieve",
+        "grade_documents",
+        "review",
+        "fallback",
+        "web_search",
+        "generate",
+        "evaluate",
+        "finalize"
+      ],
+      "error": null,
+      "answer_preview": "**How to Bake a Classic Artisan‑Style Sourdough Loaf**  \n*(Based on the most common, up‑to‑date home‑baking methods found in the sources)*  \n\n---\n\n## 1. What You’ll Need  \n\n| Ingredient (for one loaf) | Approx. Amount |\n|-------------------"
+    }
+  ]
+}

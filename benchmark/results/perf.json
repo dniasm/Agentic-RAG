@@ -1,0 +1,40 @@
+{
+  "startup": {
+    "python start, memory MB": 17.1,
+    "import backend: seconds": 2.3,
+    "after import, memory MB": 168.7,
+    "open Qdrant: seconds": 0.2,
+    "after Qdrant, memory MB": 212.1,
+    "load cross-encoder (incl. torch import): seconds": 8.4,
+    "after cross-encoder, memory MB": 660.2,
+    "process start -> ready: seconds": 11.0
+  },
+  "rerank latency (ms, median of 5)": {
+    "10 candidates": 775,
+    "20 candidates": 1687,
+    "40 candidates": 2816
+  },
+  "MMR 12 -> 6 (ms, incl. fetching stored vectors)": 1,
+  "keyword search (ms)": 31,
+  "concurrency (search + rerank of 20)": {
+    "one at a time, each (ms)": [
+      596,
+      806,
+      1237
+    ],
+    "3 simultaneous, each (ms)": [
+      2320,
+      2518,
+      2893
+    ],
+    "3 simultaneous, total wall time (ms)": 2925,
+    "errors": 0
+  },
+  "upload of nlp.pdf (local work only)": {
+    "chunks": 163,
+    "read + chunk (s)": 2.6,
+    "BM25 vectors (s)": 0.02,
+    "embedding: Google calls (1 per chunk)": 163,
+    "embedding: estimated wait under the free tier's 100/min limit (s)": 60
+  }
+}

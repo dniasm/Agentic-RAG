@@ -1,0 +1,16 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+
+# runtime data
+backend/data/
+backend/vector_db/qdrant_data/
+backend/documents/*/
+
+# third-party PDFs (benchmark corpus inputs; not ours to redistribute)
+*.pdf
+
+# frontend
+frontend/node_modules/
+frontend/dist/

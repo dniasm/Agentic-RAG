@@ -1,0 +1,884 @@
+{
+  "stage": "2-rerank",
+  "timestamp": "2026-10-02T12:48:21",
+  "rows": [
+    {
+      "id": "ccs-supervisor",
+      "category": "exact_term",
+      "question": "Who supervised the ISP complaint classification project?",
+      "first_relevant_rank": 1,
+      "hit1": true,
+      "hit3": true,
+      "hit5": true,
+      "rr": 1.0,
+      "in_docs": true,
+      "decision_correct": true,
+      "signal": 0.9996,
+      "latency": 12.845,
+      "parts": {
+        "search": 0.333,
+        "rerank": 0.764,
+        "mmr": 0.0
+      },
+      "top3": [
+        "CCS_using_SVM.pdf",
+        "CCS_using_SVM.pdf",
+        "CCS_using_SVM.pdf"
+      ]
+    },
+    {
+      "id": "ccs-categories",
+      "category": "exact_term",
+      "question": "Which four categories are ISP complaints classified into?",
+      "first_relevant_rank": 1,
+      "hit1": true,
+      "hit3": true,
+      "hit5": true,
+      "rr": 1.0,
+      "in_docs": true,
+      "decision_correct": true,
+      "signal": 0.9994,
+      "latency": 0.75,
+      "parts": {
+        "search": 0.071,
+        "rerank": 0.68,
+        "mmr": 0.0
+      },
+      "top3": [
+        "CCS_using_SVM.pdf",
+        "CCS_using_SVM.pdf",
+        "CCS_using_SVM.pdf"
+      ]
+    },
+    {
+      "id": "ccs-stack",
+      "category": "exact_term",
+      "question": "Which tech stack was used to build the complaint classification system?",
+      "first_relevant_rank": 9,
+      "hit1": false,
+      "hit3": false,
+      "hit5": false,
+      "rr": 0.1111111111111111,
+      "in_docs": true,
+      "decision_correct": true,
+      "signal": 0.8066,
+      "latency": 0.629,
+      "parts": {
+        "search": 0.049,
+        "rerank": 0.581,
+        "mmr": 0.0
+      },
+      "top3": [
+        "CCS_using_SVM.pdf",
+        "CCS_using_SVM.pdf",
+        "CCS_using_SVM.pdf"
+      ]
+    },
+    {
+      "id": "ccs-members",
+      "category": "exact_term",
+      "question": "Who are the members of the CCS project group?",
+      "first_relevant_rank": 1,
+      "hit1": true,
+      "hit3": true,
+      "hit5": true,
+      "rr": 1.0,
+      "in_docs": true,
+      "decision_correct": true,
+      "signal": 0.1477,
+      "latency": 1.861,
+      "parts": {
+        "search": 0.046,
+        "rerank": 1.815,
+        "mmr": 0.0
+      },
+      "top3": [
+        "CCS_using_SVM.pdf",
+        "CCS_using_SVM.pdf",
+        "CCS_using_SVM.pdf"
+      ]
+    },
+    {
+      "id": "ccs-9897",
+      "category": "exact_term",
+      "question": "Which study reported SVM reaching 98.97% accuracy on customer requests?",
+      "first_relevant_rank": 1,
+      "hit1": true,
+      "hit3": true,
+      "hit5": true,
+      "rr": 1.0,
+      "in_docs": true,
+      "decision_correct": true,
+      "signal": 0.9907,
+      "latency": 1.177,
+      "parts": {
+        "search": 0.05,
+        "rerank": 1.127,
+        "mmr": 0.0
+      },
+      "top3": [
+        "CCS_using_SVM.pdf",
+        "CCS_using_SVM.pdf",
+        "support_vector_machine.md"
+      ]
+    },
+    {
+      "id": "ccs-method",
+      "category": "paraphrase",
+      "question": "How did the team build the software step by step?",
+      "first_relevant_rank": 1,
+      "hit1": true,
+      "hit3": true,
+      "hit5": true,
+      "rr": 1.0,
+      "in_docs": true,
+      "decision_correct": true,
+      "signal": 0.2337,
+      "latency": 1.754,
+      "parts": {
+        "search": 0.047,
+        "rerank": 1.708,
+        "mmr": 0.0
+      },
+      "top3": [
+        "CCS_using_SVM.pdf",
+        "CCS_using_SVM.pdf",
+        "CCS_using_SVM.pdf"
+      ]
+    },
+    {
+      "id": "ccs-weakness",
+      "category": "paraphrase",
+      "question": "What are the weaknesses of the complaint classifier?",
+      "first_relevant_rank": 4,
+      "hit1": false,
+      "hit3": false,
+      "hit5": true,
+      "rr": 0.25,
+      "in_docs": true,
+      "decision_correct": true,
+      "signal": 0.26,
+      "latency": 0.997,
+      "parts": {
+        "search": 0.047,
+        "rerank": 0.95,
+        "mmr": 0.0
+      },
+      "top3": [
+        "CCS_using_SVM.pdf",
+        "CCS_using_SVM.pdf",
+        "CCS_using_SVM.pdf"
+      ]
+    },
+    {
+      "id": "ccs-preprocess",
+      "category": "paraphrase",
+      "question": "Which cleaning steps are applied to complaint text before it is classified?",
+      "first_relevant_rank": 1,
+      "hit1": true,
+      "hit3": true,
+      "hit5": true,
+      "rr": 1.0,
+      "in_docs": true,
+      "decision_correct": true,
+      "signal": 0.964,
+      "latency": 0.996,
+      "parts": {
+        "search": 0.048,
+        "rerank": 0.948,
+        "mmr": 0.0
+      },
+      "top3": [
+        "CCS_using_SVM.pdf",
+        "CCS_using_SVM.pdf",
+        "CCS_using_SVM.pdf"
+      ]
+    },
+    {
+      "id": "ccs-tdidf",
+      "category": "typo",
+      "question": "how is tdidf used in the complaint system",
+      "first_relevant_rank": 1,
+      "hit1": true,
+      "hit3": true,
+      "hit5": true,
+      "rr": 1.0,
+      "in_docs": true,
+      "decision_correct": true,
+      "signal": 0.9471,
+      "latency": 0.669,
+      "parts": {
+        "search": 0.043,
+        "rerank": 0.626,
+        "mmr": 0.0
+      },
+      "top3": [
+        "CCS_using_SVM.pdf",
+        "CCS_using_SVM.pdf",
+        "CCS_using_SVM.pdf"
+      ]
+    },
+    {
+      "id": "nlp-smoothing",
+      "category": "exact_term",
+      "question": "Which smoothing techniques are described for n-gram language models?",
+      "first_relevant_rank": 1,
+      "hit1": true,
+      "hit3": true,
+      "hit5": true,
+      "rr": 1.0,
+      "in_docs": true,
+      "decision_correct": true,
+      "signal": 0.9941,
+      "latency": 0.795,
+      "parts": {
+        "search": 0.042,
+        "rerank": 0.753,
+        "mmr": 0.0
+      },
+      "top3": [
+        "nlp.pdf",
+        "nlp.pdf",
+        "nlp.pdf"
+      ]
+    },
+    {
+      "id": "nlp-perplexity",
+      "category": "paraphrase",
+      "question": "How do we measure how good a language model is on a test set?",
+      "first_relevant_rank": 1,
+      "hit1": true,
+      "hit3": true,
+      "hit5": true,
+      "rr": 1.0,
+      "in_docs": true,
+      "decision_correct": true,
+      "signal": 0.9983,
+      "latency": 0.737,
+      "parts": {
+        "search": 0.044,
+        "rerank": 0.693,
+        "mmr": 0.0
+      },
+      "top3": [
+        "nlp.pdf",
+        "nlp.pdf",
+        "nlp.pdf"
+      ]
+    },
+    {
+      "id": "nlp-treebank",
+      "category": "exact_term",
+      "question": "Which POS tag set does NLTK use?",
+      "first_relevant_rank": 1,
+      "hit1": true,
+      "hit3": true,
+      "hit5": true,
+      "rr": 1.0,
+      "in_docs": true,
+      "decision_correct": true,
+      "signal": 0.996,
+      "latency": 1.368,
+      "parts": {
+        "search": 0.041,
+        "rerank": 1.327,
+        "mmr": 0.0
+      },
+      "top3": [
+        "nlp.pdf",
+        "nlp.pdf",
+        "part_of_speech_tagging.md"
+      ]
+    },
+    {
+      "id": "nlp-bigram",
+      "category": "exact_term",
+      "question": "What is a bigram?",
+      "first_relevant_rank": 1,
+      "hit1": true,
+      "hit3": true,
+      "hit5": true,
+      "rr": 1.0,
+      "in_docs": true,
+      "decision_correct": true,
+      "signal": 0.96,
+      "latency": 0.795,
+      "parts": {
+        "search": 0.041,
+        "rerank": 0.754,
+        "mmr": 0.0
+      },
+      "top3": [
+        "nlp.pdf",
+        "n_gram.md",
+        "nlp.pdf"
+      ]
+    },
+    {
+      "id": "nlp-lemma-uk",
+      "category": "typo",
+      "question": "what is lemmatisation",
+      "first_relevant_rank": 1,
+      "hit1": true,
+      "hit3": true,
+      "hit5": true,
+      "rr": 1.0,
+      "in_docs": false,
+      "decision_correct": false,
+      "signal": 0.052,
+      "latency": 0.881,
+      "parts": {
+        "search": 0.041,
+        "rerank": 0.839,
+        "mmr": 0.0
+      },
+      "top3": [
+        "nlp_research_gate.pdf",
+        "nlp.pdf",
+        "CCS_using_SVM.pdf"
+      ]
+    },
+    {
+      "id": "rg-presenter",
+      "category": "exact_term",
+      "question": "Who presented the Natural Language Processing slides?",
+      "first_relevant_rank": 1,
+      "hit1": true,
+      "hit3": true,
+      "hit5": true,
+      "rr": 1.0,
+      "in_docs": true,
+      "decision_correct": true,
+      "signal": 0.9997,
+      "latency": 0.687,
+      "parts": {
+        "search": 0.05,
+        "rerank": 0.637,
+        "mmr": 0.0
+      },
+      "top3": [
+        "nlp_research_gate.pdf",
+        "nlp.pdf",
+        "word2vec.md"
+      ]
+    },
+    {
+      "id": "rg-vectorize",
+      "category": "paraphrase",
+      "question": "What are some ways to turn text into numbers for machine learning?",
+      "first_relevant_rank": null,
+      "hit1": false,
+      "hit3": false,
+      "hit5": false,
+      "rr": 0.0,
+      "in_docs": true,
+      "decision_correct": true,
+      "signal": 0.9704,
+      "latency": 0.718,
+      "parts": {
+        "search": 0.043,
+        "rerank": 0.675,
+        "mmr": 0.0
+      },
+      "top3": [
+        "CCS_using_SVM.pdf",
+        "nlp_research_gate.pdf",
+        "nlp_research_gate.pdf"
+      ]
+    },
+    {
+      "id": "rg-stem-vs-lemma",
+      "category": "paraphrase",
+      "question": "How is stemming different from lemmatization?",
+      "first_relevant_rank": 1,
+      "hit1": true,
+      "hit3": true,
+      "hit5": true,
+      "rr": 1.0,
+      "in_docs": true,
+      "decision_correct": true,
+      "signal": 0.9442,
+      "latency": 0.873,
+      "parts": {
+        "search": 0.047,
+        "rerank": 0.826,
+        "mmr": 0.0
+      },
+      "top3": [
+        "nlp.pdf",
+        "nlp_research_gate.pdf",
+        "CCS_using_SVM.pdf"
+      ]
+    },
+    {
+      "id": "wiki-bm25-who",
+      "category": "exact_term",
+      "question": "Who developed the probabilistic framework behind BM25?",
+      "first_relevant_rank": 1,
+      "hit1": true,
+      "hit3": true,
+      "hit5": true,
+      "rr": 1.0,
+      "in_docs": true,
+      "decision_correct": true,
+      "signal": 0.9983,
+      "latency": 0.945,
+      "parts": {
+        "search": 0.055,
+        "rerank": 0.89,
+        "mmr": 0.0
+      },
+      "top3": [
+        "okapi_bm25.md",
+        "okapi_bm25.md",
+        "word_embedding.md"
+      ]
+    },
+    {
+      "id": "wiki-bm-stands",
+      "category": "exact_term",
+      "question": "What does BM stand for in Okapi BM25?",
+      "first_relevant_rank": 1,
+      "hit1": true,
+      "hit3": true,
+      "hit5": true,
+      "rr": 1.0,
+      "in_docs": true,
+      "decision_correct": true,
+      "signal": 0.9997,
+      "latency": 0.951,
+      "parts": {
+        "search": 0.044,
+        "rerank": 0.907,
+        "mmr": 0.0
+      },
+      "top3": [
+        "okapi_bm25.md",
+        "okapi_bm25.md",
+        "okapi_bm25.md"
+      ]
+    },
+    {
+      "id": "wiki-bm25-b",
+      "category": "exact_term",
+      "question": "What value is usually chosen for the b parameter in BM25?",
+      "first_relevant_rank": 6,
+      "hit1": false,
+      "hit3": false,
+      "hit5": false,
+      "rr": 0.16666666666666666,
+      "in_docs": true,
+      "decision_correct": true,
+      "signal": 0.9953,
+      "latency": 0.932,
+      "parts": {
+        "search": 0.049,
+        "rerank": 0.882,
+        "mmr": 0.0
+      },
+      "top3": [
+        "okapi_bm25.md",
+        "okapi_bm25.md",
+        "okapi_bm25.md"
+      ]
+    },
+    {
+      "id": "wiki-tdidf",
+      "category": "typo",
+      "question": "explain tdidf weighting",
+      "first_relevant_rank": 1,
+      "hit1": true,
+      "hit3": true,
+      "hit5": true,
+      "rr": 1.0,
+      "in_docs": true,
+      "decision_correct": true,
+      "signal": 0.1654,
+      "latency": 1.623,
+      "parts": {
+        "search": 0.037,
+        "rerank": 1.586,
+        "mmr": 0.0
+      },
+      "top3": [
+        "tf_idf.md",
+        "latent_semantic_analysis.md",
+        "tf_idf.md"
+      ]
+    },
+    {
+      "id": "wiki-tfidf-ok",
+      "category": "exact_term",
+      "question": "What is TF-IDF?",
+      "first_relevant_rank": 1,
+      "hit1": true,
+      "hit3": true,
+      "hit5": true,
+      "rr": 1.0,
+      "in_docs": true,
+      "decision_correct": true,
+      "signal": 0.9999,
+      "latency": 1.712,
+      "parts": {
+        "search": 0.055,
+        "rerank": 1.657,
+        "mmr": 0.0
+      },
+      "top3": [
+        "tf_idf.md",
+        "CCS_using_SVM.pdf",
+        "tf_idf.md"
+      ]
+    },
+    {
+      "id": "wiki-invindex",
+      "category": "paraphrase",
+      "question": "How can a search engine find which documents contain a word without scanning all of them?",
+      "first_relevant_rank": 1,
+      "hit1": true,
+      "hit3": true,
+      "hit5": true,
+      "rr": 1.0,
+      "in_docs": true,
+      "decision_correct": true,
+      "signal": 0.513,
+      "latency": 1.065,
+      "parts": {
+        "search": 0.059,
+        "rerank": 1.007,
+        "mmr": 0.0
+      },
+      "top3": [
+        "inverted_index.md",
+        "tf_idf.md",
+        "inverted_index.md"
+      ]
+    },
+    {
+      "id": "wiki-mrr",
+      "category": "exact_term",
+      "question": "What is MRR?",
+      "first_relevant_rank": 1,
+      "hit1": true,
+      "hit3": true,
+      "hit5": true,
+      "rr": 1.0,
+      "in_docs": false,
+      "decision_correct": false,
+      "signal": 0.0709,
+      "latency": 0.827,
+      "parts": {
+        "search": 0.044,
+        "rerank": 0.783,
+        "mmr": 0.0
+      },
+      "top3": [
+        "mean_reciprocal_rank.md",
+        "support_vector_machine.md",
+        "precision_and_recall.md"
+      ]
+    },
+    {
+      "id": "wiki-nb-indep",
+      "category": "paraphrase",
+      "question": "Which classifier assumes the features are independent of each other given the class?",
+      "first_relevant_rank": 1,
+      "hit1": true,
+      "hit3": true,
+      "hit5": true,
+      "rr": 1.0,
+      "in_docs": true,
+      "decision_correct": true,
+      "signal": 0.9998,
+      "latency": 1.878,
+      "parts": {
+        "search": 0.048,
+        "rerank": 1.831,
+        "mmr": 0.0
+      },
+      "top3": [
+        "naive_bayes_classifier.md",
+        "naive_bayes_classifier.md",
+        "CCS_using_SVM.pdf"
+      ]
+    },
+    {
+      "id": "wiki-w2v-who",
+      "category": "exact_term",
+      "question": "Who created word2vec?",
+      "first_relevant_rank": 2,
+      "hit1": false,
+      "hit3": true,
+      "hit5": true,
+      "rr": 0.5,
+      "in_docs": true,
+      "decision_correct": true,
+      "signal": 0.9998,
+      "latency": 1.57,
+      "parts": {
+        "search": 0.043,
+        "rerank": 1.528,
+        "mmr": 0.0
+      },
+      "top3": [
+        "word_embedding.md",
+        "word2vec.md",
+        "word2vec.md"
+      ]
+    },
+    {
+      "id": "wiki-cosine",
+      "category": "paraphrase",
+      "question": "How do you measure the angle between two vectors?",
+      "first_relevant_rank": 1,
+      "hit1": true,
+      "hit3": true,
+      "hit5": true,
+      "rr": 1.0,
+      "in_docs": true,
+      "decision_correct": true,
+      "signal": 0.9842,
+      "latency": 1.66,
+      "parts": {
+        "search": 0.044,
+        "rerank": 1.616,
+        "mmr": 0.0
+      },
+      "top3": [
+        "cosine_similarity.md",
+        "cosine_similarity.md",
+        "cosine_similarity.md"
+      ]
+    },
+    {
+      "id": "wiki-ner",
+      "category": "exact_term",
+      "question": "What is NER?",
+      "first_relevant_rank": 1,
+      "hit1": true,
+      "hit3": true,
+      "hit5": true,
+      "rr": 1.0,
+      "in_docs": true,
+      "decision_correct": true,
+      "signal": 0.9995,
+      "latency": 1.116,
+      "parts": {
+        "search": 0.039,
+        "rerank": 1.077,
+        "mmr": 0.0
+      },
+      "top3": [
+        "named_entity_recognition.md",
+        "nlp_research_gate.pdf",
+        "named_entity_recognition.md"
+      ]
+    },
+    {
+      "id": "wiki-porter",
+      "category": "exact_term",
+      "question": "What is the Porter stemmer?",
+      "first_relevant_rank": 1,
+      "hit1": true,
+      "hit3": true,
+      "hit5": true,
+      "rr": 1.0,
+      "in_docs": true,
+      "decision_correct": true,
+      "signal": 0.9883,
+      "latency": 1.504,
+      "parts": {
+        "search": 0.139,
+        "rerank": 1.365,
+        "mmr": 0.0
+      },
+      "top3": [
+        "stemming.md",
+        "nlp.pdf",
+        "stemming.md"
+      ]
+    },
+    {
+      "id": "sum-ccs",
+      "category": "summary",
+      "question": "Summarize the ISP complaint classification project.",
+      "first_relevant_rank": 1,
+      "hit1": true,
+      "hit3": true,
+      "hit5": true,
+      "rr": 1.0,
+      "in_docs": true,
+      "decision_correct": true,
+      "signal": 0.9978,
+      "latency": 0.817,
+      "parts": {
+        "search": 0.064,
+        "rerank": 0.753,
+        "mmr": 0.0
+      },
+      "top3": [
+        "CCS_using_SVM.pdf",
+        "CCS_using_SVM.pdf",
+        "CCS_using_SVM.pdf"
+      ]
+    },
+    {
+      "id": "sum-bm25",
+      "category": "summary",
+      "question": "Give me an overview of the BM25 ranking function.",
+      "first_relevant_rank": 1,
+      "hit1": true,
+      "hit3": true,
+      "hit5": true,
+      "rr": 1.0,
+      "in_docs": true,
+      "decision_correct": true,
+      "signal": 0.998,
+      "latency": 1.541,
+      "parts": {
+        "search": 0.062,
+        "rerank": 1.479,
+        "mmr": 0.0
+      },
+      "top3": [
+        "okapi_bm25.md",
+        "okapi_bm25.md",
+        "okapi_bm25.md"
+      ]
+    },
+    {
+      "id": "oos-australia",
+      "category": "out_of_scope",
+      "question": "What is the capital of Australia?",
+      "first_relevant_rank": null,
+      "hit1": false,
+      "hit3": false,
+      "hit5": false,
+      "rr": 0.0,
+      "in_docs": false,
+      "decision_correct": true,
+      "signal": 0.0002,
+      "latency": 2.298,
+      "parts": {
+        "search": 0.053,
+        "rerank": 2.245,
+        "mmr": 0.0
+      },
+      "top3": [
+        "CCS_using_SVM.pdf",
+        "CCS_using_SVM.pdf",
+        "CCS_using_SVM.pdf"
+      ]
+    },
+    {
+      "id": "oos-sourdough",
+      "category": "out_of_scope",
+      "question": "How do I bake sourdough bread?",
+      "first_relevant_rank": null,
+      "hit1": false,
+      "hit3": false,
+      "hit5": false,
+      "rr": 0.0,
+      "in_docs": false,
+      "decision_correct": true,
+      "signal": 0.0001,
+      "latency": 2.359,
+      "parts": {
+        "search": 0.065,
+        "rerank": 2.294,
+        "mmr": 0.0
+      },
+      "top3": [
+        "CCS_using_SVM.pdf",
+        "CCS_using_SVM.pdf",
+        "CCS_using_SVM.pdf"
+      ]
+    },
+    {
+      "id": "oos-weather",
+      "category": "out_of_scope",
+      "question": "What is the weather in Kathmandu today?",
+      "first_relevant_rank": null,
+      "hit1": false,
+      "hit3": false,
+      "hit5": false,
+      "rr": 0.0,
+      "in_docs": false,
+      "decision_correct": true,
+      "signal": 0.0002,
+      "latency": 1.908,
+      "parts": {
+        "search": 0.052,
+        "rerank": 1.856,
+        "mmr": 0.0
+      },
+      "top3": [
+        "CCS_using_SVM.pdf",
+        "CCS_using_SVM.pdf",
+        "CCS_using_SVM.pdf"
+      ]
+    },
+    {
+      "id": "oos-worldcup",
+      "category": "out_of_scope",
+      "question": "Who won the 2022 FIFA World Cup?",
+      "first_relevant_rank": null,
+      "hit1": false,
+      "hit3": false,
+      "hit5": false,
+      "rr": 0.0,
+      "in_docs": false,
+      "decision_correct": true,
+      "signal": 0.0003,
+      "latency": 1.732,
+      "parts": {
+        "search": 0.064,
+        "rerank": 1.668,
+        "mmr": 0.0
+      },
+      "top3": [
+        "CCS_using_SVM.pdf",
+        "nlp_research_gate.pdf",
+        "nlp_research_gate.pdf"
+      ]
+    }
+  ],
+  "embedding_requests": 0,
+  "summary": {
+    "hit@1": 83.9,
+    "hit@3": 87.1,
+    "hit@5": 90.3,
+    "MRR@10": 0.872,
+    "in-scope judged 'in docs'": 93.5,
+    "out-of-scope judged 'not in docs'": 100.0,
+    "median latency (s)": 1.06,
+    "Google embedding requests": 0,
+    "by_category": {
+      "exact_term": {
+        "n": 17,
+        "hit@5": 88.2,
+        "MRR@10": 0.869
+      },
+      "paraphrase": {
+        "n": 9,
+        "hit@5": 88.9,
+        "MRR@10": 0.806
+      },
+      "summary": {
+        "n": 2,
+        "hit@5": 100.0,
+        "MRR@10": 1.0
+      },
+      "typo": {
+        "n": 3,
+        "hit@5": 100.0,
+        "MRR@10": 1.0
+      }
+    },
+    "median seconds per part": {
+      "mmr": 0.0,
+      "rerank": 0.95,
+      "search": 0.048
+    }
+  }
+}
