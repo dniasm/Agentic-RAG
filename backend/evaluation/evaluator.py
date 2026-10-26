@@ -89,14 +89,12 @@ Judge:
 
 
 def evaluate_answer(query: str, answer: str, context: str | None = None) -> dict:
+    """Raises if neither model could evaluate; the caller decides what an unchecked answer means
+    (evaluate_node keeps it, marked as unverified)."""
     context_block = f"Context the answer must be based on:\n{context[:6000]}\n\n" if context else ""
-    try:
-        # The large model judges: a weaker model should not grade a stronger model's answer.
-        # backup=True: if the large model's quota is exhausted, the small model evaluates instead.
-        r = structured(AnswerEval, fast=False, backup=True).invoke(
-            EVAL_PROMPT.format(query=query, answer=answer, context_block=context_block)
-        )
-        return r.model_dump()
-    except Exception as e:
-        log.warning("Answer evaluation failed, accepting answer: %s", e)
-        return {"sufficient": True, "grounded": True, "score": 3, "missing": "", "error": str(e)}
+    # The large model judges: a weaker model should not grade a stronger model's answer.
+    # backup=True: if the large model's quota is exhausted, the small model evaluates instead.
+    r = structured(AnswerEval, fast=False, backup=True).invoke(
+        EVAL_PROMPT.format(query=query, answer=answer, context_block=context_block)
+    )
+    return r.model_dump()

@@ -32,7 +32,15 @@ def generate(query: str, docs: list[dict], history: list[dict]) -> str | None:
     prompt = f"Document excerpts:\n\n{format_context(docs)}\n\n---\nQuestion: {query}"
     messages = [SystemMessage(SYSTEM), *history_to_messages(history), HumanMessage(prompt)]
     text = clean_answer(invoke_answer(messages))
-    return None if NO_ANSWER in text else text
+    # The sentinel means "nothing at all" only when it IS the reply. The model sometimes writes a partial
+    # answer and then adds the sentinel for the uncovered part; discarding the whole answer then sent the
+    # user "not found" after they had watched the answer being written.
+    without = text.replace(NO_ANSWER, "").strip(" \n.:-—")
+    if len(without) < 40:
+        return None
+    if NO_ANSWER in text:
+        text = text.replace(NO_ANSWER, "The documents don't cover the rest of this question.").strip()
+    return text
 
 
 def to_sources(docs: list[dict]) -> list[dict]:

@@ -32,6 +32,11 @@ BACKUP_NOTICE = (
     "written by the lighter model and may be less detailed."
 )
 
+UNVERIFIED_NOTICE = (
+    "This answer couldn't be automatically checked against its sources "
+    "(the checking model was unavailable), so verify important details."
+)
+
 NO_DOCS_NOTICE = (
     "You asked for an answer from your uploaded documents, but no documents "
     "are available. I will try answering from the model's own knowledge "
@@ -324,6 +329,10 @@ def router_node(state: AgentState) -> dict:
         detail = f"Using web search. {reason}"
 
     else:
+        # Auto deliberately starts with model knowledge, NOT documents. Starting with documents whenever
+        # any were uploaded sent casual and philosophical questions into the RAG pipeline. Questions that
+        # really need the documents are still caught: the knowledge gate refuses anything that refers to
+        # the user's own material, and the fallback then tries the documents next.
         intent = "direct"
         detail = f"Using model knowledge first in auto mode. {reason}"
 
@@ -1056,6 +1065,8 @@ def evaluate_node(state: AgentState) -> dict:
     else:
         context = None
 
+    notices = list(state.get("notices", []))
+
     try:
         ev = evaluate_answer(
             state["standalone_query"],
@@ -1063,23 +1074,29 @@ def evaluate_node(state: AgentState) -> dict:
             context,
         )
     except Exception as exc:
-        # Fail closed for source-grounded answers: if evaluation itself fails,
-        # do not claim that the answer has been verified.
-        log.exception("Answer evaluation failed: %s", exc)
+        # Neither model could check the answer (usually both are rate-limited). Rejecting it would
+        # throw away an answer that was written from real sources and leave the user with nothing;
+        # passing it silently would claim a check that never happened. So: keep it, at the lowest
+        # score (any checked candidate beats it), and tell the user it is unchecked.
+        log.warning("Answer evaluation failed, returning the answer as unverified: %s", exc)
 
         ev = {
-            "sufficient": False,
-            "grounded": False if tool in ("rag", "web_search") else True,
-            "score": 0,
-            "missing": "The answer could not be evaluated reliably.",
+            "sufficient": True,
+            "grounded": True,
+            "score": 1,
+            "missing": "",
+            "verified": False,
+            "error": str(exc)[:200],
         }
+        if UNVERIFIED_NOTICE not in notices:
+            notices.append(UNVERIFIED_NOTICE)
 
     candidate = {
         "answer": state.get("answer", ""),
         "tool": tool,
         "sources": state.get("sources", []),
         "evaluation": ev,
-        "notices": list(state.get("notices", [])),
+        "notices": notices,
     }
 
     best = state.get("best")
@@ -1113,6 +1130,7 @@ def evaluate_node(state: AgentState) -> dict:
     update = {
         "evaluation": ev,
         "best": best,
+        "notices": notices,
         "trace": [
             _step(
                 "evaluate",
@@ -1133,6 +1151,8 @@ def evaluate_node(state: AgentState) -> dict:
 # ============================================================
 
 def fallback_node(state: AgentState) -> dict:
+    """Move to the next untried source in the order the user's preference implies (the graph's only
+    fallback; workflow.py used to carry a second copy with a different order)."""
     current = state.get("intent")
     nxt = next_source(state)
 
@@ -1143,6 +1163,7 @@ def fallback_node(state: AgentState) -> dict:
                 _step(
                     "fallback",
                     "All eligible sources have been tried.",
+                    tried_sources=state.get("tried_sources", []),
                 )
             ],
         }
@@ -1164,7 +1185,7 @@ def fallback_node(state: AgentState) -> dict:
     return {
         "intent": nxt,
         "attempts": 0,
-        "search_queries": [state["standalone_query"]],
+        "search_queries": [state.get("standalone_query") or state["query"]],
         "rewrite_reason": "",
         "answer": "",
         "tool": None,

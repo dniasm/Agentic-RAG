@@ -1,10 +1,11 @@
 """Agentic RAG workflow graph.
 
-Source selection respects the user's intent:
+Source selection respects the user's intent (order defined in nodes._source_order):
 - documents: RAG -> model knowledge -> web
-- model knowledge: model knowledge -> web
-- web: web -> model knowledge
-- auto: documents (if available) -> model knowledge -> web
+- model knowledge: model knowledge -> RAG -> web
+- web: web -> RAG -> model knowledge
+- auto: RAG -> model knowledge -> web
+RAG is skipped when the user has no documents.
 
 Every search retry is bounded. Failed sources are not retried after fallback,
 and source-specific state is cleared when moving to another source.
@@ -27,27 +28,6 @@ SOURCE_NODE = {
     "direct": "direct",
 }
 
-# The user's source preference determines the fallback order.
-# Documents are only searched when available and appropriate for the request.
-SOURCE_ORDERS = {
-    "documents": ("rag", "direct", "web_search"),
-    "model_knowledge": ("direct", "web_search"),
-    "web": ("web_search", "direct"),
-    "auto": ("rag", "direct", "web_search"),
-}
-
-
-def _source_order(state: AgentState) -> tuple[str, ...]:
-    """Return the source order appropriate for this request."""
-    preference = state.get("source_preference", "auto")
-    order = SOURCE_ORDERS.get(preference, SOURCE_ORDERS["auto"])
-
-    if not state.get("doc_names"):
-        order = tuple(source for source in order if source != "rag")
-
-    return order
-
-
 def _budget(state: AgentState) -> int:
     """Maximum search rounds allowed for the current source."""
     if state.get("intent") == "web_search":
@@ -57,17 +37,6 @@ def _budget(state: AgentState) -> int:
         return max(1, settings.max_retrieval_attempts)
 
     return 1
-
-
-def _next_source(state: AgentState) -> str | None:
-    """Find the next untried source without revisiting exhausted sources."""
-    tried = set(state.get("tried_sources", []))
-
-    for source in _source_order(state):
-        if source not in tried:
-            return source
-
-    return None
 
 
 # ---------------------------------------------------------------------
@@ -122,11 +91,13 @@ def route_after_grade(state: AgentState) -> str:
         if zone == "high":
             return "generate_rag"
 
-        # A partial cross-encoder match gets a bounded retry.
+        # A partial cross-encoder match gets WEAK_MATCH_RETRIES reworded searches on top of the normal
+        # budget. (It used to be min(budget, 1 + retries): with MAX_RETRIEVAL_ATTEMPTS=1 that is 1, so
+        # the retry never happened and every partial match went straight to the next source.)
         if (
             zone == "mid"
             and state.get("attempts", 0)
-            < min(_budget(state), 1 + settings.weak_match_retries)
+            < _budget(state) + settings.weak_match_retries
         ):
             return "rewrite"
 
@@ -192,71 +163,6 @@ def route_after_fallback(state: AgentState) -> str:
 
 
 # ---------------------------------------------------------------------
-# Fallback node
-#
-# The fallback implementation lives here instead of calling
-# nodes.fallback_node(), because that node's fixed hierarchy can select
-# RAG after a user explicitly requested model knowledge or web search.
-
-
-def fallback_node(state: AgentState) -> dict:
-    current = state.get("intent", "direct")
-    next_source = _next_source(state)
-
-    if next_source is None:
-        return {
-            "intent": "exhausted",
-            "trace": [
-                nodes._step(
-                    "fallback",
-                    "All eligible sources have been tried.",
-                    tried_sources=state.get("tried_sources", []),
-                )
-            ],
-        }
-
-    notice = nodes.FALLBACK_NOTICES.get((current, next_source))
-
-    if current == "rag" and state.get("docs_search_failed"):
-        notice = (
-            "Your documents couldn't be searched because the search service "
-            f"was unavailable, so this answer comes from "
-            f"{nodes.SOURCE_NAMES[next_source]}."
-        )
-
-    notices = list(state.get("notices", []))
-    if notice and notice not in notices:
-        notices.append(notice)
-
-    # Reset data belonging to the previous source. Preserve the best answer,
-    # accumulated trace, rewritten-query history, and tried-source history.
-    return {
-        "intent": next_source,
-        "attempts": 0,
-        "search_queries": [state.get("standalone_query", state["query"])],
-        "rewrite_reason": "",
-        "answer": "",
-        "tool": None,
-        "sources": [],
-        "evaluation": None,
-        "documents": [],
-        "web_results": [],
-        "docs_off_topic": False,
-        "docs_search_failed": False,
-        "match_zone": "",
-        "notices": notices,
-        "trace": [
-            nodes._step(
-                "fallback",
-                f"Nothing usable from {nodes.SOURCE_NAMES.get(current, current)} "
-                f"→ trying {nodes.SOURCE_NAMES[next_source]}.",
-                source=next_source,
-            )
-        ],
-    }
-
-
-# ---------------------------------------------------------------------
 # Graph construction
 
 
@@ -273,7 +179,7 @@ def build_graph():
     graph.add_node("web_search", nodes.web_search_node)
     graph.add_node("generate_web", nodes.generate_web_node)
     graph.add_node("evaluate", nodes.evaluate_node)
-    graph.add_node("fallback", fallback_node)
+    graph.add_node("fallback", nodes.fallback_node)
     graph.add_node("no_results", nodes.no_results_node)
     graph.add_node("finalize", nodes.finalize_node)
 

@@ -11,6 +11,7 @@ import logging
 import re
 import threading
 import time
+from datetime import date
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import parse_qs, unquote, urlparse
 
@@ -33,16 +34,30 @@ _HEADERS = {
     "Accept-Language": "en-US,en;q=0.9",
 }
 
-_PAGE_CHARS = 2500
+# Characters kept per result. Tavily's snippets are ~1,000-1,400 characters, so this mainly caps fetched
+# DuckDuckGo pages; at 2,500 a 7-result search sent ~4,000 tokens to the answer writer alone.
+_PAGE_CHARS = 1500
 _MAX_CACHE_ENTRIES = 500
 
+# Asking for news: search news articles.
 _NEWS_TERMS = re.compile(
     r"\b("
-    r"news|headlines?|breaking|latest|today|tonight|"
-    r"this morning|this evening|current events"
+    r"news|headlines?|breaking|current events"
     r")\b",
     re.IGNORECASE,
 )
+# News about today specifically: restrict to the past day, otherwise the past week.
+_TODAY_TERMS = re.compile(r"\b(today|tonight|this morning|this evening|breaking)\b", re.IGNORECASE)
+# Asking for the current state of something ("latest Python release"): a general search, with the year
+# added. Searching news for these returned only that day's unrelated articles (tested 2026-10-26).
+_RECENCY_TERMS = re.compile(
+    r"\b("
+    r"latest|newest|current|currently|recent|recently|now|today|nowadays|"
+    r"up[- ]to[- ]date|as of|this (?:year|month|week)|still"
+    r")\b",
+    re.IGNORECASE,
+)
+_YEAR = re.compile(r"\b(19|20)\d{2}\b")
 
 # Process-wide cache and statistics.
 _cache: dict[tuple[str, int], tuple[float, list[dict]]] = {}
@@ -63,6 +78,14 @@ class SearchBlocked(Exception):
 def _is_news_query(query: str) -> bool:
     """Identify queries that explicitly ask for current news."""
     return bool(_NEWS_TERMS.search(query))
+
+
+def _with_year(query: str) -> str:
+    """Add the current year to a "latest / current ..." query that names no year, so search engines
+    favour up-to-date pages. News queries are filtered by date instead."""
+    if _is_news_query(query) or _YEAR.search(query) or not _RECENCY_TERMS.search(query):
+        return query
+    return f"{query} {date.today().year}"
 
 
 # ---------------------------------------------------------------------
@@ -141,7 +164,7 @@ def _tavily(query: str, n: int) -> list[dict]:
 
     if _is_news_query(query):
         params["topic"] = "news"
-        params["time_range"] = "day"
+        params["time_range"] = "day" if _TODAY_TERMS.search(query) else "week"
 
     response = client.search(**params)
 
@@ -397,7 +420,7 @@ def _cache_key(query: str, n: int) -> tuple[str, int]:
 
 def search(query: str, n: int | None = None) -> list[dict]:
     """Search the web and reuse recent results for identical queries."""
-    query = " ".join(query.split())
+    query = _with_year(" ".join(query.split()))
 
     if not query:
         return []
@@ -503,6 +526,8 @@ Rules:
 - Base factual claims on the supplied search results.
 - Cite sources inline using their bracket number, e.g. [1].
 - Prefer recent and authoritative sources for current events.
+- For "latest" or "current" questions, give the newest version, figure or state the results
+  support, and prefer official sources (e.g. the project's own site) over older articles.
 - Treat publication dates as evidence only when the source supplies them.
 - Do not invent publication dates, scores, standings, or other facts.
 - If the results do not answer the question, say so clearly.

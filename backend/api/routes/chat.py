@@ -156,6 +156,11 @@ def _persist(
         conversation_id=conv["id"],
         tool=state.get("tool"),
         intent=state.get("intent"),
+        # Routing, so misroutes can be found and costed: what the router chose and the path taken.
+        message=user_message[:200],
+        source_preference=state.get("source_preference"),
+        route_reason=state.get("route_reason"),
+        path=[step.get("node") for step in state.get("trace", [])],
         message_chars=len(user_message),
         history_messages=len(history),
         memories=memory_count,
