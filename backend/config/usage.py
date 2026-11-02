@@ -24,7 +24,17 @@ _file_lock = threading.Lock()
 
 
 def _blank() -> dict:
-    return {"calls": 0, "input": 0, "output": 0, "reasoning": 0}
+    return {"calls": 0, "input": 0, "output": 0, "reasoning": 0, "cached": 0}
+
+
+def _cached_tokens(msg, usage: dict) -> int:
+    """Prompt tokens served from Groq's cache. LangChain's usage_metadata may not carry them, so fall back to
+    the raw usage Groq returned (token_usage.prompt_tokens_details.cached_tokens)."""
+    cached = (usage.get("input_token_details") or {}).get("cache_read")
+    if cached is None:
+        raw = ((getattr(msg, "response_metadata", None) or {}).get("token_usage") or {})
+        cached = (raw.get("prompt_tokens_details") or {}).get("cached_tokens")
+    return int(cached or 0)
 
 
 class UsageTracker(BaseCallbackHandler):
@@ -48,11 +58,13 @@ class UsageTracker(BaseCallbackHandler):
                     usage = getattr(msg, "usage_metadata", None) or {}
                     model = (getattr(msg, "response_metadata", None) or {}).get("model_name", "?")
                     reasoning = (usage.get("output_token_details") or {}).get("reasoning", 0) or 0
+                    cached = _cached_tokens(msg, usage)
                     for bucket in (self.by_model[model], self.by_step[step]):
                         bucket["calls"] += 1
                         bucket["input"] += usage.get("input_tokens", 0)
                         bucket["output"] += usage.get("output_tokens", 0)
                         bucket["reasoning"] += reasoning
+                        bucket["cached"] += cached
 
     def on_llm_error(self, error, *, run_id, **kwargs):
         with self._lock:
@@ -66,6 +78,8 @@ class UsageTracker(BaseCallbackHandler):
             "total": {
                 "input": sum(m["input"] for m in by_model.values()),
                 "output": sum(m["output"] for m in by_model.values()),
+                # Input tokens Groq served from its prompt cache: half price, and not counted toward rate limits.
+                "cached": sum(m.get("cached", 0) for m in by_model.values()),
             },
             "by_model": by_model,
             "by_step": by_step,
@@ -77,8 +91,8 @@ def record(tracker: UsageTracker, **context) -> dict:
     s = tracker.summary()
     models = ", ".join(f"{m.split('/')[-1]} {v['input']}+{v['output']}" for m, v in s["by_model"].items())
     steps = ", ".join(f"{k} {v['input']}+{v['output']}" for k, v in s["by_step"].items())
-    log.info("Token usage (in+out): total %d+%d | %s | %s",
-             s["total"]["input"], s["total"]["output"], models or "no LLM calls", steps)
+    log.info("Token usage (in+out): total %d+%d (%d input cached) | %s | %s",
+             s["total"]["input"], s["total"]["output"], s["total"]["cached"], models or "no LLM calls", steps)
     try:
         path = Path(settings.database_path).parent / "token_usage.jsonl"
         row = {"at": datetime.now(timezone.utc).isoformat(), **context, **s}

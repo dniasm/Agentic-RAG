@@ -173,5 +173,37 @@ class MemoryPrecheck(unittest.TestCase):
             self.assertTrue(memory._may_contain_memory(message), message)
 
 
+class TokenTrims(unittest.TestCase):
+    def test_checker_gets_only_the_cited_passages(self):
+        docs = [{"source": "a.pdf", "content": f"passage {i}"} for i in range(1, 7)]
+        cited = nodes._cited(docs, "Flask serves it [2], MySQL stores it [5, 6].")
+        self.assertEqual([i for i, _ in cited], [2, 5, 6])
+
+    def test_checker_gets_everything_when_nothing_usable_is_cited(self):
+        docs = [{"source": "a.pdf", "content": "x"}] * 3
+        self.assertEqual(len(nodes._cited(docs, "No citations here.")), 3)
+        self.assertEqual(len(nodes._cited(docs, "Out of range [9].")), 3)
+
+    def test_evaluator_context_keeps_the_original_numbers(self):
+        docs = [{"source": "a.pdf", "page": i, "content": f"passage {i}"} for i in range(1, 5)]
+        state = {"tool": "rag", "answer": "It is X [3].", "standalone_query": "q", "documents": docs,
+                 "sources": [], "notices": []}
+        with mock.patch.object(nodes, "evaluate_answer", return_value={"sufficient": True, "grounded": True,
+                                                                        "score": 5, "missing": ""}) as ev:
+            nodes.evaluate_node(state)
+        context = ev.call_args[0][2]
+        self.assertIn("[3] (source: a.pdf, page 3)", context)
+        self.assertNotIn("passage 1", context)
+
+    def test_gate_history_is_capped(self):
+        from backend.tools import direct_answer
+        long_answer = "word " * 2000
+        history = [{"role": "user", "content": "q"}, {"role": "assistant", "content": long_answer}]
+        with mock.patch.object(direct_answer, "structured") as structured:
+            direct_answer._run_gate("and then?", history, [])
+        prompt = structured.return_value.with_config.return_value.invoke.call_args[0][0]
+        self.assertLess(len(prompt), len(direct_answer.GATE_PROMPT) + 2500)
+
+
 if __name__ == "__main__":
     unittest.main()

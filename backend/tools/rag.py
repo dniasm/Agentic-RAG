@@ -19,12 +19,14 @@ Rules:
 {FORMAT_RULES}""".replace("{NO_ANSWER}", NO_ANSWER).replace("{FORMAT_RULES}", FORMAT_RULES)
 
 
+def format_block(i: int, d: dict) -> str:
+    """One numbered passage, as the answer writer (and the answer checker) see it."""
+    page = f", page {d['page']}" if d.get("page") else ""
+    return f"[{i}] (source: {d['source']}{page})\n{d['content']}"
+
+
 def format_context(docs: list[dict]) -> str:
-    blocks = []
-    for i, d in enumerate(docs, start=1):
-        page = f", page {d['page']}" if d.get("page") else ""
-        blocks.append(f"[{i}] (source: {d['source']}{page})\n{d['content']}")
-    return "\n\n".join(blocks)
+    return "\n\n".join(format_block(i, d) for i, d in enumerate(docs, start=1))
 
 
 def generate(query: str, docs: list[dict], history: list[dict]) -> str | None:

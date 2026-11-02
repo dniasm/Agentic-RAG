@@ -1,6 +1,7 @@
 """LangGraph nodes for the multi-user agentic RAG workflow."""
 
 import logging
+import re
 import time
 import uuid
 from typing import Literal
@@ -785,13 +786,13 @@ _ZONE_TEXT = {
 
 def grade_node(state: AgentState) -> dict:
     candidates = state.get("documents", [])
+    ranked = (
+        rerank.score(state["standalone_query"], candidates)
+        if rerank.available() and candidates
+        else None
+    )
 
-    if rerank.available() and candidates:
-        ranked = rerank.score(
-            state["standalone_query"],
-            candidates,
-        )
-
+    if ranked is not None:
         if not ranked:
             return {
                 "documents": [],
@@ -806,11 +807,13 @@ def grade_node(state: AgentState) -> dict:
             }
 
         best = ranked[0]["relevance"]
-        zone = rerank.zone(best)
+        scorer = ranked[0].get("scorer")
+        zone = rerank.zone(best, scorer)
         chosen = rerank.mmr_select(ranked) if zone != "low" else []
+        where = "with Voyage" if scorer == "voyage" else "locally"
 
         detail = (
-            f"Reranked {len(ranked)} candidates locally: "
+            f"Reranked {len(ranked)} candidates {where}: "
             f"best relevance {best:.2f} -> {_ZONE_TEXT[zone]}"
         )
 
@@ -828,6 +831,7 @@ def grade_node(state: AgentState) -> dict:
                     detail,
                     best_relevance=best,
                     zone=zone,
+                    scorer=scorer,
                     relevances=[
                         h["relevance"] for h in ranked[:8]
                     ],
@@ -842,6 +846,11 @@ def grade_node(state: AgentState) -> dict:
 
         return update
 
+    # No reranker could score (disabled, or Voyage failed with no local backup): the LLM checks the
+    # passages instead. The search fetched extra candidates for the reranker; the LLM gets the top few.
+    if rerank.available():
+        candidates = candidates[: settings.retrieval_k + 2]
+
     relevant, review_steps = grade_documents(
         state["standalone_query"],
         candidates,
@@ -849,6 +858,7 @@ def grade_node(state: AgentState) -> dict:
 
     update = {
         "documents": relevant,
+        "match_zone": "",
         "trace": [
             _step(
                 "grade_documents",
@@ -1047,20 +1057,31 @@ def generate_web_node(state: AgentState) -> dict:
 # 7. Evaluation
 # ============================================================
 
+_CITATION = re.compile(r"\[(\d{1,2}(?:\s*,\s*\d{1,2})*)\]")
+
+
+def _cited(items: list, answer: str) -> list[tuple[int, dict]]:
+    """The evidence items the answer cites, with their [n] numbers. The checker only needs these: a claim can
+    only be supported by the passage it cites, and leaving out the rest saves ~500-800 tokens per check.
+    If the answer cites nothing usable, every item is sent."""
+    numbered = list(enumerate(items, start=1))
+    cited = {int(n) for group in _CITATION.findall(answer or "") for n in group.split(",")}
+    return [(i, item) for i, item in numbered if i in cited] or numbered
+
+
 def evaluate_node(state: AgentState) -> dict:
     tool = state.get("tool")
+    answer_text = state.get("answer", "")
 
     if tool == "rag":
-        context = rag.format_context(
-            state.get("documents", [])
+        context = "\n\n".join(
+            rag.format_block(i, d)
+            for i, d in _cited(state.get("documents", []), answer_text)
         )
     elif tool == "web_search":
         context = "\n\n".join(
             f"[{i}] {r.get('content', '')[:1200]}"
-            for i, r in enumerate(
-                state.get("web_results", []),
-                start=1,
-            )
+            for i, r in _cited(state.get("web_results", []), answer_text)
         )
     else:
         context = None

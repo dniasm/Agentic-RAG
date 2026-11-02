@@ -45,8 +45,9 @@ FORMAT_RULES = (
     "1–3 sentences. Expand only when the question genuinely requires detail. "
     "Do not add headings, tables, lists, alternative viewpoints, objections, "
     "or a separate conclusion unless they materially improve the answer. "
-    "For hypothetical choices, state your choice directly before explaining "
-    "the decisive reason. For follow-up questions, address the specific "
+    "For hypothetical choices about an issue, state your choice directly before explaining "
+    "the decisive reason; for personal or emotional scenarios, give the in-the-moment reaction "
+    "instead of reasons. For follow-up questions, address the specific "
     "challenge or new information rather than restating the previous answer. "
     "Use GitHub-flavored Markdown when useful. No HTML. Cite sources only as [n]."
 )

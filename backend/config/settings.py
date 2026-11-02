@@ -33,7 +33,8 @@ class Settings(BaseSettings):
     open_router_model: str = "nvidia/nemotron-3-ultra-550b-a55b:free"
     open_router_base_url: str = "https://openrouter.ai/api/v1"
     llm_temperature: float = 0.0
-    # Small talk only: a warmer, less repetitive voice. Factual answers keep LLM_TEMPERATURE.
+    # Small talk and open questions (opinions, personal scenarios): a warmer, less repetitive voice.
+    # Factual answers keep LLM_TEMPERATURE.
     chat_temperature: float = 0.8
 
     # --- Embeddings (Gemini) ---
@@ -69,9 +70,25 @@ class Settings(BaseSettings):
     bm25_b: float = 0.75                # document-length normalisation
     bm25_avg_len: float = 120.0         # typical chunk length in tokens (after stop-word removal)
 
-    # --- Stage 2: cross-encoder reranking + MMR (replaces the LLM relevance grader and the cosine cut-off)
+    # --- Stage 2: reranking + MMR (replaces the LLM relevance grader and the cosine cut-off)
     rerank_enabled: bool = True
-    reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"  # runs locally; ~90 MB, downloaded once
+    # "voyage" = hosted reranker (no torch or model in memory: deployable); "local" = the MiniLM cross-encoder.
+    reranker_provider: str = "voyage"
+    # Calibrated 2026-11-02 (benchmark/calibrate_reranker.py, all 74 benchmark questions): rerank-2.5 put the
+    # right passage in its top 5 for 67/67 answerable questions (top-1 88%, MRR 0.930; local MiniLM: top-1 76%,
+    # MRR 0.830). On the first 35 questions it also beat rerank-2.5-lite (top-1 100% vs 97%) at the same cost.
+    voyage_rerank_model: str = "rerank-2.5"
+    voyage_rerank_timeout: float = 15.0  # seconds; a slow call falls back instead of holding up the answer
+    # Keep the local model loaded as a backup for Voyage. Costs ~450 MB of RAM and torch, so it is off by
+    # default; without it, a failed Voyage call falls back to the LLM relevance check.
+    reranker_local_fallback: bool = False
+    # rerank-2.5's score scale: unrelated passages still score ~0.3. Measured best scores (74 questions):
+    # answerable 0.58-0.99; out of scope 0.34-0.51, except one near-miss at 0.81 (K2 vs a passage on Everest's first
+    # ascent). With these values all 67 answerable questions are answered from the documents, 5/7 out-of-scope go
+    # straight to the next source, 1 gets one extra search first. Recalibrate if VOYAGE_RERANK_MODEL changes.
+    voyage_relevance_high: float = 0.55  # best relevance >= this: the documents answer it
+    voyage_relevance_low: float = 0.45   # best relevance < this: the documents don't cover it
+    reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"  # local; ~90 MB, downloaded once
     # Word-pieces read per passage. Benchmarked 2026-10-02: 256 gave the same quality as 512 (chunks are
     # <= 1,000 characters, so the cap rarely truncates) and ~18% faster reranking.
     reranker_max_length: int = 256
@@ -80,9 +97,9 @@ class Settings(BaseSettings):
     mmr_lambda: float = 0.7             # 1.0 = pure relevance, 0.0 = pure diversity
     # Calibrated on the benchmark (2026-10-02): out-of-scope questions scored <= 0.0003, answerable ones
     # >= 0.052, and in every answerable case the correct passage was ranked 1st-4th even at low scores.
-    # These are specific to the MiniLM model's score scale: recalibrate them if RERANKER_MODEL changes.
-    relevance_high: float = 0.05        # best relevance >= this: the documents answer it
-    relevance_low: float = 0.01         # best relevance < this: the documents don't cover it
+    # These are specific to the local MiniLM model's score scale: recalibrate them if RERANKER_MODEL changes.
+    relevance_high: float = 0.05        # local: best relevance >= this: the documents answer it
+    relevance_low: float = 0.01         # local: best relevance < this: the documents don't cover it
     weak_match_retries: int = 1         # extra reworded searches allowed in the "mid" zone
     # Used only when the reranker is unavailable (disabled, or failed to load), together with
     # RAG_SKIP_SCORE below: then the cosine score decides relevance and an LLM grades the passages.
