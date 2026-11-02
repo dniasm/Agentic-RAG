@@ -1,122 +1,24 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Loader2, Menu, Plus, X } from 'lucide-react';
 import Sidebar from './components/Sidebar';
+import Login from './pages/Login';
 import Chat from './pages/Chat';
 import Documents from './pages/Documents';
-import Dashboard from './pages/Dashboard';
+import Overview from './pages/Overview';
 import { apiService, auth, setUnauthorizedHandler } from './services/api';
-import { Lock, Loader2, AlertCircle } from 'lucide-react';
+import { hrefFor, navigate, useRoute } from './lib/route';
+import { forgetConversation } from './state/chatStore';
 
-function LoginScreen({ onAuthenticated, systemOnline }) {
-  const [mode, setMode] = useState('login');
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState(null);
-  const [busy, setBusy] = useState(false);
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError(null);
-    setBusy(true);
-    try {
-      const user = mode === 'login'
-        ? await apiService.login(username.trim(), password)
-        : await apiService.register(username.trim(), password);
-      onAuthenticated(user);
-    } catch (err) {
-      setError(err.message === 'Failed to fetch' ? 'Cannot reach the backend server.' : err.message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="h-screen w-screen bg-slate-950 flex items-center justify-center p-4 text-slate-100">
-      <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-2xl p-8 shadow-2xl space-y-6">
-        <div className="text-center space-y-2">
-          <div className="inline-flex p-3 bg-indigo-600/10 rounded-2xl text-indigo-400 border border-indigo-500/20">
-            <Lock className="w-8 h-8" />
-          </div>
-          <h1 className="text-2xl font-bold text-white">Agentic RAG Access</h1>
-          <p className="text-xs text-slate-400">
-            {mode === 'login' ? 'Enter your credentials to access the system' : 'Create an account to get started'}
-          </p>
-        </div>
-
-        {!systemOnline && (
-          <div className="flex items-center space-x-2 text-xs text-amber-400 bg-amber-950/30 border border-amber-900/50 rounded-lg px-3 py-2">
-            <Loader2 className="w-4 h-4 flex-shrink-0 animate-spin" />
-            <span>Backend is offline. Start it and this page will connect automatically.</span>
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="text-xs text-slate-400 font-medium block mb-1">Username</label>
-            <input
-              type="text"
-              required
-              minLength={3}
-              maxLength={32}
-              autoComplete="username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 rounded-xl px-4 py-2.5 text-sm text-slate-200 outline-none"
-              placeholder="admin"
-            />
-          </div>
-          <div>
-            <label className="text-xs text-slate-400 font-medium block mb-1">Password</label>
-            <input
-              type="password"
-              required
-              minLength={6}
-              autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 rounded-xl px-4 py-2.5 text-sm text-slate-200 outline-none"
-              placeholder="••••••••"
-            />
-          </div>
-
-          {error && (
-            <div className="flex items-center space-x-2 text-xs text-rose-400 bg-rose-950/40 border border-rose-900/50 rounded-lg px-3 py-2">
-              <AlertCircle className="w-4 h-4 flex-shrink-0" />
-              <span>{error}</span>
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={busy}
-            className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white font-medium py-2.5 rounded-xl transition shadow-lg shadow-indigo-600/20 flex items-center justify-center space-x-2"
-          >
-            {busy && <Loader2 className="w-4 h-4 animate-spin" />}
-            <span>{mode === 'login' ? 'Log In' : 'Create Account'}</span>
-          </button>
-        </form>
-
-        <p className="text-center text-xs text-slate-500">
-          {mode === 'login' ? "Don't have an account? " : 'Already have an account? '}
-          <button
-            onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(null); }}
-            className="text-indigo-400 hover:text-indigo-300 font-medium"
-          >
-            {mode === 'login' ? 'Sign up' : 'Log in'}
-          </button>
-        </p>
-      </div>
-    </div>
-  );
-}
+const PAGE_TITLES = { chat: 'Chat', documents: 'Documents', overview: 'Overview' };
 
 export default function App() {
   const [user, setUser] = useState(null);
   const [checkingSession, setCheckingSession] = useState(Boolean(auth.getToken()));
-
-  const [activePage, setActivePage] = useState('chat');
-  const [conversations, setConversations] = useState([]);
-  const [activeConversationId, setActiveConversationId] = useState(null);
   const [systemOnline, setSystemOnline] = useState(false);
+  const [conversations, setConversations] = useState([]);
+  const [documents, setDocuments] = useState(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const route = useRoute();
 
   // Keep checking the backend so the app recovers on its own, whichever server started first.
   useEffect(() => {
@@ -137,8 +39,8 @@ export default function App() {
     return () => { cancelled = true; clearTimeout(timer); };
   }, []);
 
-  // Restore the saved session once the backend is reachable. A backend that is merely down
-  // must not log the user out: only a real 401 clears the token (handled in api.jsx).
+  // Restore the saved session once the backend is reachable. A backend that is merely down must not log
+  // the user out: only a real 401 clears the token (handled in api.jsx).
   useEffect(() => {
     if (!systemOnline) return;
     if (user || !auth.getToken()) {
@@ -154,82 +56,115 @@ export default function App() {
   }, [systemOnline]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const refreshConversations = useCallback(async () => {
-    try {
-      setConversations(await apiService.getConversations());
-    } catch { /* surfaced elsewhere */ }
+    try { setConversations(await apiService.getConversations()); } catch { /* shown on the next refresh */ }
+  }, []);
+
+  const refreshDocuments = useCallback(async () => {
+    try { setDocuments(await apiService.getDocuments()); } catch { /* the Documents page shows its own error */ }
   }, []);
 
   useEffect(() => {
-    if (user) refreshConversations();
-  }, [user, refreshConversations]);
+    if (user) {
+      refreshConversations();
+      refreshDocuments();
+    }
+  }, [user, refreshConversations, refreshDocuments]);
+
+  // The phone menu closes whenever the route changes.
+  useEffect(() => { setMenuOpen(false); }, [route.page, route.conversationId]);
 
   const handleLogout = () => {
     apiService.logout();
     setUser(null);
     setConversations([]);
-    setActiveConversationId(null);
-    setActivePage('chat');
+    setDocuments(null);
+    navigate('chat', null, { replace: true });
   };
 
   const handleDeleteConversation = async (id) => {
     await apiService.deleteConversation(id);
-    if (id === activeConversationId) setActiveConversationId(null);
+    forgetConversation(id);
+    if (route.conversationId === id) navigate('chat', null, { replace: true });
     refreshConversations();
   };
 
   if (checkingSession) {
     return (
-      <div className="h-screen w-screen bg-slate-950 flex flex-col items-center justify-center space-y-3 text-slate-400">
-        <Loader2 className="w-8 h-8 text-indigo-400 animate-spin" />
-        {!systemOnline && (
-          <p className="text-sm">Waiting for the backend server… it will connect automatically once it starts.</p>
-        )}
+      <div className="h-full grid place-items-center text-muted">
+        <div className="flex items-center gap-2 text-body">
+          <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+          {systemOnline ? 'Restoring your session…' : 'Waiting for the server. This page connects by itself once it starts.'}
+        </div>
       </div>
     );
   }
 
-  if (!user) return <LoginScreen onAuthenticated={setUser} systemOnline={systemOnline} />;
+  if (!user) return <Login onAuthenticated={setUser} systemOnline={systemOnline} />;
 
-  const activeTitle = activePage === 'chat'
-    ? conversations.find((c) => c.id === activeConversationId)?.title || 'New Chat'
-    : activePage === 'documents' ? 'Documents' : 'Dashboard';
+  const indexed = documents?.filter((d) => d.status === 'indexed') ?? null;
+  const activeTitle = route.page === 'chat'
+    ? conversations.find((c) => c.id === route.conversationId)?.title || 'New chat'
+    : PAGE_TITLES[route.page];
+
+  const sidebar = (
+    <Sidebar
+      user={user}
+      route={route}
+      conversations={conversations}
+      documentsCount={indexed?.length ?? null}
+      systemOnline={systemOnline}
+      onDeleteConversation={handleDeleteConversation}
+      onLogout={handleLogout}
+      onNavigate={() => setMenuOpen(false)}
+    />
+  );
 
   return (
-    <div className="h-screen w-screen bg-slate-950 text-slate-100 flex overflow-hidden font-sans">
-      <Sidebar
-        user={user}
-        activePage={activePage}
-        setActivePage={setActivePage}
-        conversations={conversations}
-        activeConversationId={activeConversationId}
-        onSelectConversation={(id) => { setActivePage('chat'); setActiveConversationId(id); }}
-        onNewChat={() => { setActivePage('chat'); setActiveConversationId(null); }}
-        onDeleteConversation={handleDeleteConversation}
-        onLogout={handleLogout}
-      />
+    <div className="h-full flex flex-col lg:grid lg:grid-cols-[var(--sidebar-width)_minmax(0,1fr)]">
+      <aside className="hidden lg:block h-full min-h-0 border-r border-line bg-ground">{sidebar}</aside>
 
-      <div className="flex-1 flex flex-col h-full overflow-hidden">
-        <header className="h-14 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between px-6 select-none">
-          <span className="font-semibold text-slate-200 truncate">{activeTitle}</span>
-          <div className="flex items-center space-x-2">
-            <span className={`w-2 h-2 rounded-full ${systemOnline ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
-            <span className="text-xs text-slate-400 font-medium">
-              {systemOnline ? 'System Online' : 'Backend Offline'}
-            </span>
+      {/* Phone and tablet: the sidebar folds into a 48px bar with the screen's name and one action. */}
+      <header className="lg:hidden h-12 flex-none flex items-center gap-2 px-2 border-b border-line bg-ground">
+        <button className="btn-ghost w-10 h-10 px-0" onClick={() => setMenuOpen(true)} aria-label="Open menu">
+          <Menu className="w-5 h-5" strokeWidth={1.6} />
+        </button>
+        <span className="flex-1 truncate text-section font-medium">{activeTitle}</span>
+        <a href={hrefFor('chat')} className="btn-ghost w-10 h-10 px-0" aria-label="New chat">
+          <Plus className="w-5 h-5" strokeWidth={1.6} />
+        </a>
+      </header>
+      {menuOpen && (
+        <div className="lg:hidden fixed inset-0 z-40 bg-ground flex flex-col" role="dialog" aria-modal="true" aria-label="Menu">
+          <div className="h-12 flex-none flex items-center justify-end px-2">
+            <button className="btn-ghost w-10 h-10 px-0" onClick={() => setMenuOpen(false)} aria-label="Close menu">
+              <X className="w-5 h-5" strokeWidth={1.6} />
+            </button>
           </div>
-        </header>
+          <div className="flex-1 min-h-0">{sidebar}</div>
+        </div>
+      )}
 
-        {activePage === 'chat' && (
+      <main className="flex-1 min-h-0 min-w-0 h-full">
+        {route.page === 'chat' && (
           <Chat
-            conversationId={activeConversationId}
-            onConversationCreated={(id) => { setActiveConversationId(id); refreshConversations(); }}
-            onMessageSent={refreshConversations}
-            onGoToDocuments={() => setActivePage('documents')}
+            key={route.conversationId || 'new'}
+            conversationId={route.conversationId}
+            title={activeTitle}
+            documents={indexed}
+            onConversationCreated={(id) => {
+              // Only follow the new chat if the user is still looking at it.
+              if (!window.location.hash || window.location.hash === '#/chat' || window.location.hash === '#/') {
+                navigate('chat', id, { replace: true });
+              }
+              refreshConversations();
+            }}
+            onAnswered={refreshConversations}
+            onDelete={handleDeleteConversation}
           />
         )}
-        {activePage === 'documents' && <Documents />}
-        {activePage === 'dashboard' && <Dashboard />}
-      </div>
+        {route.page === 'documents' && <Documents onChanged={refreshDocuments} />}
+        {route.page === 'overview' && <Overview documents={documents} />}
+      </main>
     </div>
   );
 }

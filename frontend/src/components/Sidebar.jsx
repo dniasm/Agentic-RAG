@@ -1,94 +1,179 @@
-import React from 'react';
-import { MessageSquare, FileText, LayoutDashboard, Plus, LogOut, Cpu, Trash2, User } from 'lucide-react';
+import React, { useState } from 'react';
+import { BarChart3, FileText, LogOut, MessageSquare, Monitor, Moon, Plus, Sun, Trash2 } from 'lucide-react';
+import Mark from './Mark';
+import { groupByRecency } from '../lib/format';
+import { hrefFor } from '../lib/route';
+import { useStreamingKeys } from '../state/chatStore';
+import { useTheme } from '../lib/theme';
 
-export default function Sidebar({
-  user,
-  activePage,
-  setActivePage,
-  conversations,
-  activeConversationId,
-  onSelectConversation,
-  onNewChat,
-  onDeleteConversation,
-  onLogout,
-}) {
-  const navClass = (active) =>
-    `w-full text-left px-3 py-2 rounded-lg text-sm transition flex items-center space-x-2 ${
-      active ? 'bg-slate-800 text-indigo-400 font-medium' : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200'
-    }`;
+const THEME_OPTIONS = [
+  { value: 'system', label: 'System', icon: Monitor },
+  { value: 'light', label: 'Light', icon: Sun },
+  { value: 'dark', label: 'Dark', icon: Moon },
+];
+
+function ThemeSwitch() {
+  const [theme, setTheme] = useTheme();
+  return (
+    <div role="radiogroup" aria-label="Theme" className="flex gap-0.5 p-0.5 rounded-control bg-raised">
+      {THEME_OPTIONS.map(({ value, label, icon: Icon }) => (
+        <button
+          key={value}
+          type="button"
+          role="radio"
+          aria-checked={theme === value}
+          onClick={() => setTheme(value)}
+          className={`flex-1 inline-flex items-center justify-center gap-1.5 h-7 rounded-[5px] text-small transition-colors ${
+            theme === value ? 'bg-surface text-ink font-medium' : 'text-muted hover:text-ink'
+          }`}
+        >
+          <Icon className="w-3.5 h-3.5" strokeWidth={1.6} aria-hidden="true" />
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+const NAV = [
+  { page: 'chat', label: 'Chat', icon: MessageSquare },
+  { page: 'documents', label: 'Documents', icon: FileText },
+  { page: 'overview', label: 'Overview', icon: BarChart3 },
+];
+
+function NavLink({ href, active, icon: Icon, children, onNavigate }) {
+  return (
+    <a
+      href={href}
+      onClick={onNavigate}
+      aria-current={active ? 'page' : undefined}
+      className={`flex items-center gap-2.5 h-8 px-2 rounded-control text-body transition-colors ${
+        active ? 'bg-active text-ink' : 'text-muted hover:text-ink hover:bg-raised'
+      }`}
+    >
+      <Icon className="w-4 h-4 flex-none" strokeWidth={1.6} aria-hidden="true" />
+      <span className="truncate">{children}</span>
+    </a>
+  );
+}
+
+function ChatRow({ conv, active, answering, onDelete, onNavigate }) {
+  const [confirming, setConfirming] = useState(false);
+
+  if (confirming) {
+    return (
+      <div className="flex items-center gap-2 h-8 px-2 rounded-control bg-raised text-body">
+        <span className="truncate flex-1">Delete this chat?</span>
+        <button className="font-medium text-negative hover:underline" onClick={() => onDelete(conv.id)}>Delete</button>
+        <button className="text-muted hover:text-ink" onClick={() => setConfirming(false)}>Cancel</button>
+      </div>
+    );
+  }
 
   return (
-    <aside className="w-64 bg-slate-900 text-slate-200 flex flex-col border-r border-slate-800 p-4 select-none">
-      {/* Brand Header */}
-      <div className="flex items-center space-x-3 px-2 mb-6">
-        <Cpu className="w-7 h-7 text-indigo-400" />
-        <span className="font-bold text-lg text-white tracking-wide">Agentic RAG</span>
-      </div>
-
-      {/* New Chat Button */}
-      <button
-        onClick={onNewChat}
-        className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2 px-4 rounded-xl flex items-center justify-center space-x-2 transition shadow-md hover:shadow-indigo-500/20"
+    <div className="group relative">
+      <a
+        href={hrefFor('chat', conv.id)}
+        onClick={onNavigate}
+        aria-current={active ? 'page' : undefined}
+        title={conv.title}
+        className={`flex items-center h-8 pl-2 pr-8 rounded-control text-body transition-colors ${
+          active ? 'bg-active text-ink' : 'text-[color:var(--text-2)] hover:bg-raised'
+        }`}
       >
-        <Plus className="w-4 h-4" />
-        <span>New Chat</span>
+        <span className="truncate">{conv.title}</span>
+        {answering && <span className="ml-2 flex-none text-small text-muted">answering…</span>}
+      </a>
+      <button
+        onClick={() => setConfirming(true)}
+        aria-label={`Delete chat "${conv.title}"`}
+        className="absolute right-1 top-1 w-6 h-6 grid place-items-center rounded text-muted hover:text-ink hover:bg-active opacity-0 group-hover:opacity-100 focus:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity"
+      >
+        <Trash2 className="w-3.5 h-3.5" strokeWidth={1.6} />
       </button>
+    </div>
+  );
+}
 
-      {/* Conversations */}
-      <div className="mt-6 flex-1 min-h-0 flex flex-col">
-        <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider px-2 mb-2">Chats</h4>
-        <nav className="space-y-1 overflow-y-auto flex-1 pr-1">
-          {conversations.length === 0 && (
-            <p className="px-3 py-2 text-xs text-slate-500">No conversations yet.</p>
-          )}
-          {conversations.map((conv) => (
-            <div key={conv.id} className="group relative">
-              <button
-                onClick={() => onSelectConversation(conv.id)}
-                className={navClass(activePage === 'chat' && activeConversationId === conv.id)}
-                title={conv.title}
-              >
-                <MessageSquare className="w-4 h-4 flex-shrink-0" />
-                <span className="truncate pr-5">{conv.title}</span>
-              </button>
-              <button
-                onClick={() => onDeleteConversation(conv.id)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-slate-500 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition"
-                title="Delete chat"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
+export default function Sidebar({
+  user, route, conversations, documentsCount, systemOnline, onDeleteConversation, onLogout, onNavigate,
+}) {
+  const streaming = useStreamingKeys();
+  const groups = groupByRecency(conversations);
+
+  return (
+    <div className="flex flex-col h-full px-3 pt-4 pb-3 gap-1">
+      <div className="flex items-center gap-2.5 px-2 h-9">
+        <Mark size={22} />
+        <span className="text-section font-medium">Agentic RAG</span>
+      </div>
+      <p className="px-2 text-small text-muted mb-3">
+        {documentsCount == null
+          ? 'Research assistant'
+          : `${documentsCount} document${documentsCount === 1 ? '' : 's'} to answer from`}
+      </p>
+
+      <a href={hrefFor('chat')} onClick={onNavigate} className="btn-secondary w-full mb-3">
+        <Plus className="w-4 h-4" strokeWidth={1.8} aria-hidden="true" />
+        New chat
+      </a>
+
+      <nav aria-label="Main" className="flex flex-col gap-0.5">
+        {NAV.map((item) => (
+          <NavLink
+            key={item.page}
+            href={hrefFor(item.page)}
+            icon={item.icon}
+            active={route.page === item.page && !(item.page === 'chat' && route.conversationId)}
+            onNavigate={onNavigate}
+          >
+            {item.label}
+          </NavLink>
+        ))}
+      </nav>
+
+      <div className="flex-1 min-h-0 overflow-y-auto -mx-1 px-1 mt-6" aria-label="Chats">
+        {conversations.length === 0 && (
+          <p className="px-2 text-small text-muted">Your chats will be listed here.</p>
+        )}
+        {groups.map((group) => (
+          <section key={group.label} className="mb-5">
+            <h2 className="px-2 mb-1.5 text-small text-muted">{group.label}</h2>
+            <div className="flex flex-col gap-0.5">
+              {group.items.map((conv) => (
+                <ChatRow
+                  key={conv.id}
+                  conv={conv}
+                  active={route.page === 'chat' && route.conversationId === conv.id}
+                  answering={streaming.includes(conv.id)}
+                  onDelete={onDeleteConversation}
+                  onNavigate={onNavigate}
+                />
+              ))}
             </div>
-          ))}
-        </nav>
+          </section>
+        ))}
       </div>
 
-      {/* Secondary Pages Navigation */}
-      <div className="pt-4 mt-4 border-t border-slate-800 space-y-1">
-        <button onClick={() => setActivePage('documents')} className={navClass(activePage === 'documents')}>
-          <FileText className="w-4 h-4" />
-          <span>Documents</span>
-        </button>
-        <button onClick={() => setActivePage('dashboard')} className={navClass(activePage === 'dashboard')}>
-          <LayoutDashboard className="w-4 h-4" />
-          <span>Dashboard</span>
-        </button>
-      </div>
+      <div className="pt-3 px-1"><ThemeSwitch /></div>
 
-      {/* User + Logout */}
-      <div className="pt-4 mt-4 border-t border-slate-800 space-y-1">
-        <div className="px-3 py-1 flex items-center space-x-2 text-sm text-slate-300">
-          <User className="w-4 h-4 text-slate-500" />
-          <span className="truncate">{user?.username}</span>
-        </div>
-        <button
-          onClick={onLogout}
-          className="w-full text-left px-3 py-2 rounded-lg text-sm text-rose-400 hover:bg-rose-500/10 transition flex items-center space-x-2"
+      <div className="pt-3 flex items-center gap-2.5 px-2">
+        <span
+          className="w-7 h-7 flex-none rounded-full grid place-items-center text-small font-medium bg-[var(--avatar-bg)] text-[color:var(--avatar-ink)]"
+          aria-hidden="true"
         >
-          <LogOut className="w-4 h-4" />
-          <span>Log Out</span>
+          {(user?.username || '?').slice(0, 1).toUpperCase()}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-body truncate">{user?.username}</p>
+          <p className={`text-small ${systemOnline ? 'text-muted' : 'text-negative'}`}>
+            {systemOnline ? 'Connected' : 'Server offline'}
+          </p>
+        </div>
+        <button onClick={onLogout} className="btn-ghost w-8 h-8 px-0" aria-label="Log out" title="Log out">
+          <LogOut className="w-4 h-4" strokeWidth={1.6} />
         </button>
       </div>
-    </aside>
+    </div>
   );
 }
