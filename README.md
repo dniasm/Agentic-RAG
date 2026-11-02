@@ -15,7 +15,7 @@ checks its own answers before replying.
 | Agent | LangGraph state machine |
 | LLMs (Groq) | `openai/gpt-oss-120b`: every reply (answers and small talk), the knowledge gate, answer evaluation, decision reviews. `openai/gpt-oss-20b`: routing and query rewrites. `qwen/qwen3.8-27b`: memory extraction and conversation summaries (own rate limit, no hidden reasoning) |
 | Embeddings | Gemini `gemini-embedding-001` (768-d) for documents; Voyage `voyage-4-lite` for conversation memory |
-| Reranking | Local cross-encoder `ms-marco-MiniLM-L-6-v2` |
+| Reranking | Voyage `rerank-2.5` (hosted); the local cross-encoder `ms-marco-MiniLM-L-6-v2` is optional (`RERANKER_PROVIDER=local` or `RERANKER_LOCAL_FALLBACK=true`) |
 | Vector DB | Qdrant (embedded on-disk by default, or a server via `QDRANT_URL`) |
 | Web search | Tavily if `TAVILY_API_KEY` is set, then DuckDuckGo, then Wikipedia |
 
@@ -41,8 +41,8 @@ START → router ─┬─ greeting (small talk) ──────────�
 - **Direct answers** pass a knowledge gate first (120B): time-sensitive, uncertain, or file-specific questions are
   refused and move on to the next source.
 - **Retrieve**: hybrid search (dense + BM25, fused with Reciprocal Rank Fusion), filtered to the current user.
-- **Grade**: a local cross-encoder scores the candidates. High → answer, mid → one reworded search, low → next source.
-  MMR picks diverse passages.
+- **Grade**: a reranker (Voyage, hosted) scores the candidates. High → answer, mid → one reworded search, low → next source.
+  MMR picks diverse passages. If the reranker is unavailable, an LLM relevance check takes over.
 - **Generate**: answers only from the selected passages, with `[n]` citations.
 - **Evaluate** (120B): checks the answer is sufficient and grounded. If the check itself can't run, the answer is
   kept and marked unverified.
@@ -50,6 +50,21 @@ START → router ─┬─ greeting (small talk) ──────────�
   are stored as short summaries in a Voyage-embedded Qdrant collection and recalled when relevant.
 - **Tokens**: every model call is counted per model and step; each request is logged to `backend/data/token_usage.jsonl`.
 - Each node emits a trace step. The UI streams these live and shows them under each answer (**Steps**, next to **Sources**).
+
+## Measured improvements
+
+Old vs current, from the benchmarks and the token log (details: [`docs/DOCUMENTATION.md` §21](docs/DOCUMENTATION.md#21-measurements-before-and-after)):
+
+| | Old | Current |
+|---|---|---|
+| Tokens per message (same 9-message test) | 6,645 | 4,344 (−35%); small model −73% |
+| Answer prompt trims (8 test questions) | 16,560 tokens | 12,384 (−25%) |
+| Relevance checker: right passage in top 5 (74 questions) | 92% (local MiniLM) | 100% (Voyage rerank-2.5) |
+| Answerable questions answered from the documents | 65/67 | 67/67 |
+| Reranker memory footprint | ~450 MB + torch | none (hosted) |
+| Opinion/philosophy questions answered directly | 3/18 | 18/18 |
+| Personal scenarios answered as advice plans | 2/2 | 0/10 |
+| Memory benchmark | — | 18/18 cases, 0 false saves |
 
 ## Running it
 
@@ -60,7 +75,7 @@ GROQ_API_KEY=...
 GEMINI_API_KEY=...
 # optional
 TAVILY_API_KEY=...
-VOYAGE_API_KEY=...         # conversation memory
+VOYAGE_API_KEY=...         # reranking and conversation memory
 OPEN_ROUTER_API_KEY=...    # only for the Nemotron experiments
 JWT_SECRET=...            # auto-generated into backend/data/.jwt_secret if omitted
 QDRANT_URL=http://localhost:6333
@@ -132,5 +147,5 @@ and `claude_wiki.docx` are committed. `python benchmark/build_wiki_corpus.py` re
 | GET / DELETE | `/api/conversations`, `/api/conversations/{id}/messages`, `/api/conversations/{id}` | |
 | GET | `/api/stats` | Overview page metrics |
 
-Tuning knobs (chunk size, `RETRIEVAL_K`, `RELEVANCE_HIGH` / `RELEVANCE_LOW`, `MAX_RETRIEVAL_ATTEMPTS`, models, …) live in
+Tuning knobs (chunk size, `RETRIEVAL_K`, `VOYAGE_RELEVANCE_HIGH` / `VOYAGE_RELEVANCE_LOW`, `MAX_RETRIEVAL_ATTEMPTS`, models, …) live in
 `backend/config/settings.py`. Each one can be overridden from `.env`.

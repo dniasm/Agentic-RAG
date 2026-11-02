@@ -24,6 +24,7 @@
 18. [Troubleshooting](#18-troubleshooting)
 19. [Extending the system](#19-extending-the-system)
 20. [Known limitations](#20-known-limitations)
+21. [Measurements: before and after](#21-measurements-before-and-after)
 
 ---
 
@@ -106,7 +107,7 @@ What makes it *agentic* rather than a fixed pipeline:
 | LLMs | Groq (see below) | Strict `json_schema` output for gpt-oss decisions |
 | Document embeddings | Google Gemini `models/gemini-embedding-001`, 768 dims | Question embeddings cached on disk |
 | Keyword search | BM25 sparse vectors in Qdrant | Fused with dense search by Reciprocal Rank Fusion |
-| Reranking | Local cross-encoder `cross-encoder/ms-marco-MiniLM-L-6-v2` | Confidence zones + MMR diversity |
+| Reranking | Voyage `rerank-2.5` (hosted); local cross-encoder `ms-marco-MiniLM-L-6-v2` optional | Confidence zones + MMR diversity; LLM check if no reranker can score |
 | Memory embeddings | Voyage AI `voyage-4-lite`, 1,024 dims | Conversation summaries only |
 | Vector DB | Qdrant — embedded on-disk by default, or a server via `QDRANT_URL` | Cosine distance |
 | Web search | Tavily (if key set) → DuckDuckGo → Wikipedia | Results cached for an hour |
@@ -131,7 +132,8 @@ The small model never grades the large one: evaluation and reviews are done by t
 ### Prerequisites
 
 - Python 3.12+ (developed on 3.14), Node.js 18+
-- A **Groq** API key and a **Gemini** API key. Tavily and Voyage are optional.
+- A **Groq** API key and a **Gemini** API key. A **Voyage** key is needed for reranking (without it, set
+  `RERANKER_PROVIDER=local` or the LLM relevance check is used) and conversation memory. Tavily is optional.
 
 ### 1) Environment file
 
@@ -142,7 +144,7 @@ GROQ_API_KEY=your-groq-key
 GEMINI_API_KEY=your-gemini-key
 # Optional
 TAVILY_API_KEY=your-tavily-key
-VOYAGE_API_KEY=your-voyage-key        # conversation memory
+VOYAGE_API_KEY=your-voyage-key        # reranking + conversation memory
 OPEN_ROUTER_API_KEY=...               # only for scripts/experiments
 JWT_SECRET=some-long-random-string
 QDRANT_URL=http://localhost:6333
@@ -158,7 +160,8 @@ uvicorn app:app --reload          # from the project root or from inside backend
 ```
 
 Check: <http://localhost:8000/api/health>. Interactive API docs: <http://localhost:8000/docs>.
-The cross-encoder loads in the background after startup (about 11 s); until then the agent uses the LLM grader.
+Reranking is hosted (Voyage), so nothing heavy loads at startup. With `RERANKER_PROVIDER=local` or
+`RERANKER_LOCAL_FALLBACK=true`, the local cross-encoder loads in the background (about 11 s, ~450 MB).
 
 ### 3) Frontend
 
@@ -203,7 +206,7 @@ overridden by an environment variable / `.env` entry with the same name (case-in
 |---|---|---|
 | `GROQ_API_KEY` / `GEMINI_API_KEY` | — | **Required.** |
 | `TAVILY_API_KEY` | `""` | Optional. Enables Tavily as the first web provider. |
-| `VOYAGE_API_KEY` | `""` | Conversation memory. Without it, episodes are skipped; facts still work. |
+| `VOYAGE_API_KEY` | `""` | Reranking and conversation memory. Without it, episodes are skipped (facts still work). |
 | `LLM_MODEL` | `openai/gpt-oss-120b` | Replies, knowledge gate, evaluation, reviews. |
 | `FAST_LLM_MODEL` | `openai/gpt-oss-20b` | Routing and rewrites; backup writer. |
 | `MEMORY_LLM_MODEL` | `qwen/qwen3.8-27b` | Fact extraction and exchange summaries. |
@@ -220,9 +223,14 @@ overridden by an environment variable / `.env` entry with the same name (case-in
 | `RETRIEVAL_MODE` | `hybrid` | `hybrid` (dense + BM25 with RRF) or `dense`. |
 | `HYBRID_CANDIDATES` / `RRF_K` | `20` / `60` | Results per list before fusion; RRF constant. |
 | `BM25_K1` / `BM25_B` / `BM25_AVG_LEN` | `1.2` / `0.75` / `120` | BM25 parameters. |
-| `RERANK_ENABLED` / `RERANKER_MODEL` / `RERANKER_MAX_LENGTH` | `True` / MiniLM-L-6-v2 / `256` | Cross-encoder. |
+| `RERANK_ENABLED` | `True` | Use a reranker (otherwise the LLM relevance check). |
+| `RERANKER_PROVIDER` | `voyage` | `voyage` (hosted) or `local` (MiniLM cross-encoder). |
+| `VOYAGE_RERANK_MODEL` / `VOYAGE_RERANK_TIMEOUT` | `rerank-2.5` / `15` | Hosted reranker; a slow call falls back instead of waiting. |
+| `VOYAGE_RELEVANCE_HIGH` / `VOYAGE_RELEVANCE_LOW` | `0.55` / `0.45` | Confidence zones on Voyage's scale (calibrated). |
+| `RERANKER_LOCAL_FALLBACK` | `False` | Keep the local model loaded as a backup for Voyage (~450 MB RAM, torch). |
+| `RERANKER_MODEL` / `RERANKER_MAX_LENGTH` | MiniLM-L-6-v2 / `256` | Local cross-encoder. |
 | `RERANK_CANDIDATES` / `RERANK_TOP_N` / `MMR_LAMBDA` | `20` / `12` / `0.7` | Candidates scored; pool MMR picks from; relevance vs diversity. |
-| `RELEVANCE_HIGH` / `RELEVANCE_LOW` | `0.05` / `0.01` | Confidence zones (MiniLM's score scale; recalibrate if the model changes). |
+| `RELEVANCE_HIGH` / `RELEVANCE_LOW` | `0.05` / `0.01` | Confidence zones for the local model (MiniLM's score scale). |
 | `WEAK_MATCH_RETRIES` | `1` | Extra reworded searches in the middle zone. |
 | `MIN_RELEVANCE_SCORE` / `RAG_SKIP_SCORE` | `0.45` / `0.52` | Used only when the reranker is unavailable. |
 | `MAX_RETRIEVAL_ATTEMPTS` / `MAX_WEB_ATTEMPTS` | `1` / `2` | Search rounds per source. |
@@ -353,11 +361,11 @@ the best candidate seen so far (`finalize`, with a caveat) or `no_results`.
 | `direct` | 120B | Knowledge gate (when `confidence_required`), then the answer. A refusal leaves the answer empty → `fallback`. |
 | `rewrite` | 20B (reviewed if unsure) | Rewords and expands the query, using the reason and previous attempts. |
 | `retrieve` | — | Hybrid search (dense + BM25, RRF) scoped to the user; marks off-topic or failed searches. |
-| `grade` | local cross-encoder | Scores candidates → zone (high / mid / low) → MMR picks diverse passages. Without the cross-encoder: LLM grading. |
+| `grade` | Voyage reranker | Scores candidates → zone (high / mid / low, on that reranker's scale) → MMR picks diverse passages. If no reranker can score: LLM grading of the top 8. |
 | `generate_rag` | 120B | Grounded answer with `[n]` citations. The `NO_ANSWER_IN_DOCUMENTS` code word means "nothing" only when it is (almost) the whole reply; a partial answer is kept. |
 | `web_search` | — | Up to 2 queries, deduplicated by URL. |
 | `generate_web` | 120B | Answer from web results with citations. |
-| `evaluate` | 120B | `sufficient`, `grounded`, `score`, `missing`; keeps the best candidate. If no model can check the answer, it is kept with `verified: false` in its evaluation and a notice. |
+| `evaluate` | 120B | `sufficient`, `grounded`, `score`, `missing`, checked against only the passages the answer cites (all of them if it cites none); keeps the best candidate. If no model can check the answer, it is kept with `verified: false` in its evaluation and a notice. |
 | `fallback` | — | Next source (see 7.2). |
 | `no_results` | — | Honest "couldn't find a reliable answer" message. |
 | `finalize` | — | Returns the answer, the gate-approved direct answer, or the best candidate with a caveat. |
@@ -365,7 +373,8 @@ the best candidate seen so far (`finalize`, with a caveat) or `no_results`.
 ### 7.4 Knowledge gate (`tools/direct_answer.py`)
 
 `KnowledgeGate` fields: `question_kind` (`factual` | `open`), `reason`, `time_sensitive`, `references_user_material`,
-`confidence`. The rule (`_gate_passes`):
+`confidence`. The gate sees the last 6 messages capped at 600 characters each (like the router), so a follow-up
+after long answers stays cheap. The rule (`_gate_passes`):
 
 1. Refuse if `time_sensitive` or `references_user_material`.
 2. Otherwise pass if the question is `open` (opinions, philosophy, ethics, hypotheticals — no source could settle them),
@@ -480,9 +489,29 @@ Deleting a document removes its vectors, the stored file and the DB row.
 4. Keyword hits keep their place even with low cosine (exact terms are the point of BM25); dense-only hits must pass
    `MIN_RELEVANCE_SCORE`. If embedding fails, keyword search alone is used.
 
-Then `rag/rerank.py`: the cross-encoder scores each candidate (0–1); the best score sets the **zone**
-(≥ `RELEVANCE_HIGH` → answer; < `RELEVANCE_LOW` → next source; between → one reworded retry); MMR picks
-`RETRIEVAL_K` diverse passages from the top `RERANK_TOP_N`.
+Then `rag/rerank.py` scores each candidate (0–1) with the configured reranker: Voyage `rerank-2.5` by default; the
+local cross-encoder if `RERANKER_PROVIDER=local`, or as a backup when `RERANKER_LOCAL_FALLBACK=true`. If none can
+score (e.g. Voyage rate-limited, no local model), `score()` returns `None` and the LLM relevance check grades the top
+8 candidates. The best score sets the **zone**, using that reranker's thresholds (≥ high → answer; < low → next
+source; between → one reworded retry); MMR picks `RETRIEVAL_K` diverse passages from the top `RERANK_TOP_N`.
+
+**Reranker calibration** (`benchmark/calibrate_reranker.py`: the same 20 saved candidates per question, so the
+rerankers are compared on identical input).
+
+All 74 benchmark questions (67 answerable, 7 out of scope):
+
+| Reranker | Top-1 | Top-3 | Top-5 | MRR@10 | Routing with its thresholds |
+|---|---|---|---|---|---|
+| local MiniLM (0.05 / 0.01) | 76% | 87% | 92% | 0.830 | 2 answerable questions skipped the documents |
+| Voyage `rerank-2.5` (0.55 / 0.45) | **88%** | **97%** | **100%** | **0.930** | all 67 answered from the documents; 5/7 out-of-scope skipped, 1 retried once, 1 answered |
+
+"Top-1" counts the first relevant passage; for summaries and multi-part questions several passages are relevant and
+MMR passes six to the writer, so top-5 is what decides whether the answer has its evidence. The one out-of-scope
+question both rerankers let through ("Who made the first ascent of K2?") matched a passage about Everest's first
+ascent; the writer's "not in the documents" check and the answer checker are the safety nets there.
+
+On the first 35 questions, `rerank-2.5` also beat `rerank-2.5-lite` (top-1 100% vs 97%) at the same token cost
+(~3,500–3,700 Voyage tokens and ~0.6 s per question).
 
 Measured on the benchmark: MRR 0.774 (dense only) → 0.822 (hybrid) → 0.872 (reranked), with every out-of-scope
 question recognised.
@@ -496,6 +525,9 @@ graph inherits it; calls outside the graph name their step with `usage_step` met
 `episode_summary`). It sums input, output and hidden-reasoning tokens per model and per step.
 
 - Each answer stores its own usage in `messages.meta.usage`.
+- Input tokens served from Groq's prompt cache are recorded as `cached` (half price, and not counted toward Groq's
+  rate limits). Caching is automatic for gpt-oss and only matches the start of a prompt, so every prompt keeps its
+  fixed instructions first; the answer instructions (~1,030 tokens) are the only prompt long enough to be cached.
 - After memory work finishes, `record()` logs one line and appends a record to `backend/data/token_usage.jsonl`
   with the routing context (message, source preference, route reason, path, latency), so expensive or misrouted
   questions can be found.
@@ -732,7 +764,8 @@ asks one question per path.
 |---|---|---|
 | `run_retrieval.py --stage …` | top-k, MRR, out-of-scope detection | MRR 0.774 → 0.822 (hybrid) → 0.872 (reranked); OOS 100% |
 | `run_selection.py --collect / --compare` | Passage-selection methods: coverage, precision, tokens | In progress |
-| `run_e2e.py`, `run_perf.py` | Full answers; startup, memory, speed | Rerank 20 candidates ≈ 0.7 s; +450 MB |
+| `run_e2e.py`, `run_perf.py` | Full answers; startup, memory, speed | Local rerank of 20 candidates ≈ 0.7 s; +450 MB |
+| `calibrate_reranker.py` | Voyage vs local reranker on saved pools; zone thresholds | 74 questions: top-5 100%, MRR 0.930 (local 0.830) |
 | `run_router.py` | 80 routing cases | 73/80 exact, 79/80 acceptable, 0/41 non-document messages sent to RAG |
 | `run_direct_gate.py [--gate-only]` | Opinion/general questions answered from model knowledge | Gate: 3/18 → 18/18; controls 4/4; full path 22/22 |
 | `run_memory.py` | 18 memory conversations | 18/18; 20/20 facts; 0 stale; 0 false saves |
@@ -756,6 +789,7 @@ Experiments that call the APIs live in `scripts/experiments/` (run from the root
 | Answer marked "couldn't be automatically checked" | The checking model was rate-limited; the answer was kept unverified. |
 | Opinion questions going to documents/web | Check the `direct_answer` step under **Steps**: the gate's `question_kind` and reason. `run_direct_gate.py` reproduces it. |
 | Memory not recalled from past chats | `VOYAGE_API_KEY` missing or Voyage unavailable (logged); facts still work. |
+| Steps show "chunks judged relevant" instead of "Reranked … with Voyage" | Voyage failed (usually its rate limit: the free tier without a payment method allows 3 requests / 10,000 tokens per minute) and the LLM check was used. Add a payment method on Voyage, or set `RERANKER_LOCAL_FALLBACK=true`. |
 | Upload returns 422 "No extractable text" | Scanned/image-only PDF. OCR it first. |
 | Web search returns nothing | DuckDuckGo blocking or rate limiting. Add a `TAVILY_API_KEY`. |
 
@@ -783,7 +817,8 @@ every schema in 7.8. Changing `RERANKER_MODEL` requires recalibrating `RELEVANCE
 
 ## 20. Known limitations
 
-- **Local reranker** — the cross-encoder needs ~450 MB of RAM and torch; a hosted reranker is planned for deployment.
+- **Voyage rate limits** — without a payment method on the Voyage account, 3 requests / 10,000 tokens per minute
+  (one rerank ≈ 3,500 tokens), shared with memory embeddings; beyond that, answers use the slower LLM relevance check.
 - **Free-tier limits** — each Groq model allows 8,000 tokens/minute and 200,000/day; Gemini embeddings 1,000/day.
 - **Tokens cannot be revoked** — logout only removes the browser's copy; tokens live in `localStorage`.
 - **Single-process embedded Qdrant** — use a Qdrant server for multiple workers.
@@ -792,3 +827,119 @@ every schema in 7.8. Changing `RERANKER_MODEL` requires recalibrating `RELEVANCE
 - **LLM judges are fallible** — the gate, grading and evaluation reduce, but don't eliminate, wrong routes and
   ungrounded answers.
 - **No rate limiting** on login or chat endpoints.
+
+---
+
+## 21. Measurements: before and after
+
+Every change below was measured before it was kept. "Old" is the version before the change; "new" is the
+current code. Benchmarks are in `benchmark/` (results in `benchmark/results/`); token figures come from
+`backend/data/token_usage.jsonl` and the answer comparisons described in each subsection.
+
+### 21.1 Token use per chat message
+
+The same 9-message test conversation was run on 25 October before and after the token work (model roles, strict
+JSON output, Qwen for memory, the memory pre-check), so those two columns compare identical messages. "Now" is 17 real
+messages on 1–2 November, before the 2 November prompt trims (21.2).
+
+| Per message | Original (25 Oct, 9 messages) | After token work (same 9) | Now (1–2 Nov, 17 real) |
+|---|---|---|---|
+| Average total tokens | 6,645 | 4,344 (**−35%**) | 4,232 |
+| Median | 6,984 | 3,995 | 3,932 |
+| Largest single message | 11,903 | 6,345 | 8,026 * |
+| gpt-oss-20b | 4,486 tokens, 2.9 calls | 1,189 tokens, 1.0 call (**−73%**) | 1,237 tokens, 1.0 call |
+| gpt-oss-120b | 2,159 | 2,492 (now writes small talk too) | 2,528 |
+| Qwen (memory) | — | 664 | 467 |
+| Memory extraction | on 9 of 9 messages, 2,498 tokens each (20B) | on 6 of 9, 995 each (Qwen) | on 2 of 17, 1,070 each |
+| Average response time | 3.1 s | 2.0 s | 3.0 s |
+
+\* The 8,026-token message was a philosophical question that the old knowledge gate sent through model knowledge →
+documents → web (two answers written and checked). After the gate fix (21.5) the same question is answered directly
+in about 2,900 tokens. Groq's 8,000-token limit is per model per minute; the largest single-model use in any of these
+messages was 5,995 tokens (that same message).
+
+### 21.2 Prompt trims (2 November)
+
+Three changes: the answer instructions were rewritten without repetition (**1,601 → 1,026 tokens**, every rule
+kept); the knowledge gate now sees recent messages capped at 600 characters each (it used to get them in full; saved
+answers run up to 10,740 characters); the answer checker gets only the passages an answer cites.
+
+Same 8 questions, same memories, answered with the old and the new instructions (input + output tokens):
+
+| Question | Old | New | Change |
+|---|---|---|---|
+| Personal scenario (shoe rack) | 1,837 + 334 = 2,171 | 1,262 + 495 = 1,757 | −19% |
+| Pushback on that answer | 1,886 + 248 = 2,134 | 1,311 + 179 = 1,490 | −30% |
+| Opinion (lying to spare feelings) | 1,758 + 305 = 2,063 | 1,183 + 329 = 1,512 | −27% |
+| Hypothetical (Titanic lifeboat) | 1,777 + 378 = 2,155 | 1,202 + 455 = 1,657 | −23% |
+| Challenge ("would nothing change your decision?") | 1,825 + 254 = 2,079 | 1,250 + 366 = 1,616 | −22% |
+| Factual (BM25 vs TF-IDF) | 1,757 + 303 = 2,060 | 1,182 + 468 = 1,650 | −20% |
+| About the AI ("do you have feelings?") | 1,753 + 125 = 1,878 | 1,178 + 89 = 1,267 | −33% |
+| Coding (reverse a list) | 1,756 + 264 = 2,020 | 1,181 + 254 = 1,435 | −29% |
+| **Total** | **16,560** | **12,384** | **−25%** (input −32%; output +19%, within run-to-run variation at temperature 0.8) |
+
+The answers were compared side by side: same positions, same completeness, personal scenarios still answered in
+first person. Not in this table: the answer checker now saves about 500–800 tokens per document or web answer, and
+the gate cap removes up to several thousand tokens from follow-ups after long answers.
+
+### 21.3 Prompt caching
+
+Groq caches the start of a prompt automatically on gpt-oss models (half price; cached tokens don't count toward
+rate limits). Only the answer instructions are long enough to be cached (the minimum is about 1,024 tokens).
+Measured on 8 repeated calls: about half hit the cache, each serving 1,024–1,536 of ~1,680 prompt tokens from it.
+Cached tokens are now recorded (`cached` in each answer's usage and in the log); they were not before.
+
+### 21.4 Relevance checker: local cross-encoder → hosted Voyage reranker
+
+Same 20 saved candidates per question for both (`benchmark/calibrate_reranker.py`), all 74 benchmark questions
+(67 answerable, 7 out of scope).
+
+| | Old: local MiniLM | New: Voyage `rerank-2.5` |
+|---|---|---|
+| Right passage ranked 1st | 76% | **88%** |
+| … in the top 3 | 87% | **97%** |
+| … in the top 5 (the writer gets 6) | 92% | **100%** |
+| MRR@10 | 0.830 | **0.930** |
+| Answerable questions answered from the documents | 65 of 67 (**2 wrongly skipped**) | **67 of 67** |
+| Out-of-scope questions sent on | 6 of 7 (1 answered) | 6 of 7 (5 at once, 1 after one extra search; 1 answered) |
+| Gap between scores (lowest answerable / highest out of scope) | 0.000 / 0.966 | 0.584 / 0.812 (0.513 without the K2 near-miss) |
+| Cut-offs (answer / move on) | 0.05 / 0.01 | 0.55 / 0.45 |
+| Memory | +~450 MB (torch + model) | none |
+| Startup | ~11 s background load | nothing to load |
+| Time per question | ~0.7 s (CPU) | ~0.65 s (API) |
+| Cost per question | none | ~3,670 Voyage tokens |
+
+On the first 35 questions, `rerank-2.5` also beat `rerank-2.5-lite` (top-1 100% vs 97%, MRR 1.000 vs 0.976) at the
+same token cost.
+
+### 21.5 Knowledge gate (opinion and philosophical questions)
+
+`benchmark/run_direct_gate.py`, 18 open or general questions that should be answered from model knowledge, plus 4
+that must be refused (current events, the user's own files):
+
+| | Old | New |
+|---|---|---|
+| Gate alone: answered directly | 3 of 18 | **18 of 18** |
+| Gate alone: refused as expected | 4 of 4 | 4 of 4 |
+| Router + gate (full path) | — | 22 of 22 |
+
+### 21.6 Personal "what would you do?" answers
+
+Old: the two answers to the shoe-rack scenario and its pushback (1 November). New: 10 answers to the same
+scenario, its pushbacks and a repeat, after the change.
+
+| | Old | New |
+|---|---|---|
+| Answered as a plan or advice (steps, "Why:", counselling, legal advice) | 2 of 2 | **0 of 10** |
+| Borrowed the user's saved details for the character ("Kathmandu") | 2 of 2 | **0 of 10** |
+| Pushback / repeat gave a substantially different answer | no (same plan reworded) | **yes** |
+| Answer temperature for open questions | 0.0 | 0.8 (factual answers stay at 0.0) |
+
+### 21.7 Memory and routing (1 November and 26 October)
+
+| Benchmark | Result |
+|---|---|
+| `run_memory.py`, 18 conversations | 18/18 cases; 20/20 facts saved; 0 stale values after corrections; 0 false saves; ~21k memory-model tokens |
+| `run_router.py`, 80 messages | 73/80 exact, 79/80 acceptable; 0 of 41 non-document messages sent to document search; ~960 tokens, 0.66 s per decision |
+| Unit tests | 48, no API calls, ~1 s |
+
