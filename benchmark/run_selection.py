@@ -21,14 +21,19 @@ Methods
 Scores (per question; out-of-scope questions are skipped: the relevance zones handle them)
     coverage   share of the question's aspects (required facts) present in the selected text
     precision  share of selected passages that are relevant (from a gold source and containing a gold phrase)
-    F1         harmonic mean of coverage and precision: a complete answer from as little noise as possible.
-               Ties are broken by the larger sum, then by fewer tokens.
+    F1         harmonic mean of coverage and precision
+    F2         like F1 but coverage counts double: methods are RANKED by F2 (a complete answer first, then less
+               noise), ties broken by coverage, then by fewer tokens
     alpha-nDCG novelty-aware ranking quality (a passage only earns credit for aspects not seen before)
     diversity  1 - mean pairwise cosine of the selected passages (diagnostic)
     tokens     context size sent to the large model (o200k tokenizer, the gpt-oss family)
 
     python benchmark/run_selection.py --collect
-    python benchmark/run_selection.py --compare
+    python benchmark/run_selection.py --compare                  # with Voyage scores (what the app uses)
+    python benchmark/run_selection.py --compare --scores local   # with the local MiniLM scores saved in the pools
+
+Method H (confidence-based count): k_hi passages if the best score >= conf, else k_lo (then like D).
+Gates are measured from the reranker's "unrelated" floor (MiniLM 0, Voyage 0.3), so they mean the same on both.
 """
 import argparse
 import hashlib
@@ -48,6 +53,11 @@ from common import BENCH_DIR, _norm, load_questions  # noqa: E402
 
 RESULTS = BENCH_DIR / "results"
 POOL_JSON, POOL_NPZ = RESULTS / "selection_pool.json", RESULTS / "selection_pool.npz"
+CALIBRATION = RESULTS / "rerank_calibration.json"
+SCORE_FLOOR = 0.0  # set by --scores: what an unrelated passage scores (MiniLM ~0, Voyage rerank-2.5 ~0.3)
+FLOORS = {"local": 0.0, "voyage": 0.30}
+# Confidence-based passage count (method H): best score at which the top passages are trusted to suffice.
+CONFIDENT = {"local": (0.9, 0.99), "voyage": (0.8, 0.9)}
 
 
 # ================================================================ phase 1: collect
@@ -196,7 +206,9 @@ def merge_select(pool, vecs, order_fn, k=6, gate=0.1, budget=1500, merge_cap=2, 
     if not pool:
         return []
     best = pool[0]["relevance"]
-    eligible = [i for i, p in enumerate(pool) if p["relevance"] >= gate * best]
+    # gate is a share of the best score measured from the reranker's "unrelated" floor (0 for MiniLM, ~0.3 for
+    # Voyage), so the same gate value means the same thing on both scales.
+    eligible = [i for i, p in enumerate(pool) if p["relevance"] - SCORE_FLOOR >= gate * (best - SCORE_FLOOR)]
     sub = [pool[i] for i in eligible]
     order = [eligible[i] for i in order_fn(sub, vecs[eligible], len(sub), **order_kw)] if sub else []
     order += [i for i in eligible if i not in order]  # methods with a top_n cut-off: append the rest
@@ -248,9 +260,21 @@ def merge_select(pool, vecs, order_fn, k=6, gate=0.1, budget=1500, merge_cap=2, 
     return out
 
 
-def build_methods():
+def confident_select(pool, vecs, k_hi=2, k_lo=4, conf=0.9, gate=0.05, budget=1500):
+    """H: few passages when the best match is very strong, more otherwise (then like D)."""
+    if not pool:
+        return []
+    k = k_hi if pool[0]["relevance"] >= conf else k_lo
+    return merge_select(pool, vecs, order_relevance, k=k, gate=gate, budget=budget)
+
+
+def build_methods(scores: str = "local"):
     """Every (method, params) setting to evaluate."""
     ms = []
+    for conf in CONFIDENT[scores]:
+        for k_hi, k_lo in ((2, 4), (2, 6), (3, 6)):
+            for gate in (0.05, 0.2):
+                ms.append(("H", {"k_hi": k_hi, "k_lo": k_lo, "conf": conf, "gate": gate, "budget": 1500}))
     for k in (2, 3, 4, 6):
         ms.append(("A", {"k": k}))
         for lam in (0.5, 0.7, 0.85):
@@ -271,6 +295,8 @@ def build_methods():
 
 def run_method(name, params, pool, vecs):
     p = dict(params)
+    if name == "H":
+        return confident_select(pool, vecs, **p)
     k = p.pop("k")
     if name == "A":
         return _passages(pool, order_relevance(pool, vecs, k))
@@ -315,6 +341,8 @@ def score(q, passages, pool, vecs, alpha=0.5):
         relevant = [p["source"] in q["sources"] for p in passages]
     precision = sum(relevant) / len(passages) if passages else 0.0
     f1 = 2 * coverage * precision / (coverage + precision) if coverage + precision else 0.0
+    # F2: coverage counts double. Agreed focus: a complete answer first, then less noise.
+    f2 = 5 * coverage * precision / (4 * precision + coverage) if coverage + precision else 0.0
 
     # alpha-nDCG over aspects (ideal computed greedily from the whole pool)
     def a_dcg(texts):
@@ -348,7 +376,7 @@ def score(q, passages, pool, vecs, alpha=0.5):
         diversity = 1 - float(S[~np.eye(len(members), dtype=bool)].mean())
     else:
         diversity = 0.0
-    return {"coverage": coverage, "precision": precision, "f1": f1, "andcg": andcg, "diversity": diversity,
+    return {"coverage": coverage, "precision": precision, "f1": f1, "f2": f2, "andcg": andcg, "diversity": diversity,
             "tokens": sum(tokens(p["text"]) for p in passages), "passages": len(passages),
             "chunks": sum(len(p["members"]) for p in passages)}
 
@@ -359,17 +387,38 @@ def split(qid: str) -> str:
 
 
 def mean_scores(rows):
-    keys = ("coverage", "precision", "f1", "andcg", "diversity", "tokens", "passages", "chunks")
+    keys = ("coverage", "precision", "f1", "f2", "andcg", "diversity", "tokens", "passages", "chunks")
     return {k: round(statistics.mean(r[k] for r in rows), 3) for k in keys} if rows else {}
 
 
 def rank_key(s):
-    return (s["f1"], s["coverage"] + s["precision"], -s["tokens"])
+    return (s["f2"], s["coverage"], -s["tokens"])
 
 
-def compare() -> None:
+def _use_voyage_scores(data: dict, npz) -> dict:
+    """Replace each pool's relevance with Voyage rerank-2.5's (from calibrate_reranker.py) and re-sort the pool
+    and its vectors, so every method sees what the app sees today."""
+    cal = json.loads(CALIBRATION.read_text(encoding="utf-8"))["scores"]["rerank-2.5"]
+    vectors = {}
+    for qid, pool in data.items():
+        key = qid.replace("-", "_")
+        if qid not in cal or len(cal[qid]["scores"]) != len(pool):
+            raise SystemExit(f"no Voyage scores for {qid}: run benchmark/calibrate_reranker.py --models rerank-2.5")
+        for h, sc in zip(pool, cal[qid]["scores"]):
+            h["relevance"] = sc
+        order = sorted(range(len(pool)), key=lambda i: -pool[i]["relevance"])
+        data[qid] = [pool[i] for i in order]
+        vectors[key] = npz[key][order]
+    return vectors
+
+
+def compare(scores: str = "voyage") -> None:
+    global SCORE_FLOOR
+    SCORE_FLOOR = FLOORS[scores]
     data = json.loads(POOL_JSON.read_text(encoding="utf-8"))["pools"]
     npz = np.load(POOL_NPZ)
+    if scores == "voyage":
+        npz = _use_voyage_scores(data, npz)
     qs = [q for q in load_questions() if q["shape"] != "out_of_scope" and q["id"] in data]
     for q in qs:  # balance the split inside every shape so each shape has held-out questions
         q["split"] = split(q["id"])
@@ -382,7 +431,7 @@ def compare() -> None:
         if not any(q["split"] == "train" for q in group):
             group[0]["split"] = "train"
 
-    methods = build_methods()
+    methods = build_methods(scores)
     print(f"{len(qs)} questions x {len(methods)} settings ...")
     per = {}  # (label) -> {qid: scores}
     for name, params in methods:
@@ -443,11 +492,12 @@ def compare() -> None:
             "all_baseline": mean_scores([per[baseline][q["id"]] for q in group]),
             "all_routed": mean_scores([per[shape_choice[shape]][q["id"]] for q in group]),
         }
-    out = RESULTS / "selection_compare.json"
+    result["scores"] = scores
+    out = RESULTS / f"selection_compare_{scores}.json"
     out.write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
 
     def row(name, s):
-        return (f"  {name:<44} F1 {s['f1']:.3f}  cov {s['coverage']:.3f}  prec {s['precision']:.3f}  "
+        return (f"  {name:<44} F2 {s['f2']:.3f}  F1 {s['f1']:.3f}  cov {s['coverage']:.3f}  prec {s['precision']:.3f}  "
                 f"aNDCG {s['andcg']:.3f}  div {s['diversity']:.3f}  tok {s['tokens']:>6.0f}  passages {s['passages']:.1f}")
     print(f"\ntrain {len(train)} / held-out {len(held)} questions")
     print("\nBest setting of each method (chosen on train), scores on TRAIN | HELD-OUT")
@@ -471,11 +521,13 @@ def main():
     ap.add_argument("--collect", action="store_true")
     ap.add_argument("--compare", action="store_true")
     ap.add_argument("--cached-only", action="store_true", help="collect without spending embedding quota")
+    ap.add_argument("--scores", choices=("voyage", "local"), default="voyage",
+                    help="reranker scores to select with (voyage = what the app uses)")
     args = ap.parse_args()
     if args.collect:
         collect(args.cached_only)
     if args.compare:
-        compare()
+        compare(args.scores)
 
 
 if __name__ == "__main__":

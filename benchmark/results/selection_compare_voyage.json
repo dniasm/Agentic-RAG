@@ -1,0 +1,3135 @@
+{
+  "timestamp": "2026-11-02T15:38:14",
+  "questions": {
+    "train": 45,
+    "heldout": 22
+  },
+  "baseline_today": {
+    "label": "B(k=6, lam=0.7, top_n=12)",
+    "train": {
+      "coverage": 0.936,
+      "precision": 0.452,
+      "f1": 0.572,
+      "f2": 0.72,
+      "andcg": 0.905,
+      "diversity": 0.161,
+      "tokens": 1011.2,
+      "passages": 6,
+      "chunks": 6
+    },
+    "heldout": {
+      "coverage": 0.924,
+      "precision": 0.5,
+      "f1": 0.61,
+      "f2": 0.737,
+      "andcg": 0.844,
+      "diversity": 0.147,
+      "tokens": 1087.182,
+      "passages": 6,
+      "chunks": 6
+    }
+  },
+  "best_per_method_train": {
+    "A": {
+      "label": "A(k=2)",
+      "train": {
+        "coverage": 0.849,
+        "precision": 0.756,
+        "f1": 0.772,
+        "f2": 0.808,
+        "andcg": 0.866,
+        "diversity": 0.124,
+        "tokens": 353,
+        "passages": 2,
+        "chunks": 2
+      },
+      "heldout": {
+        "coverage": 0.833,
+        "precision": 0.659,
+        "f1": 0.714,
+        "f2": 0.773,
+        "andcg": 0.784,
+        "diversity": 0.12,
+        "tokens": 366.455,
+        "passages": 2,
+        "chunks": 2
+      }
+    },
+    "B": {
+      "label": "B(k=2, lam=0.85, top_n=8)",
+      "train": {
+        "coverage": 0.849,
+        "precision": 0.756,
+        "f1": 0.772,
+        "f2": 0.808,
+        "andcg": 0.866,
+        "diversity": 0.125,
+        "tokens": 352.844,
+        "passages": 2,
+        "chunks": 2
+      },
+      "heldout": {
+        "coverage": 0.879,
+        "precision": 0.705,
+        "f1": 0.759,
+        "f2": 0.818,
+        "andcg": 0.823,
+        "diversity": 0.129,
+        "tokens": 366.318,
+        "passages": 2,
+        "chunks": 2
+      }
+    },
+    "C": {
+      "label": "C(k=2, lam=0.85, top_n=8)",
+      "train": {
+        "coverage": 0.849,
+        "precision": 0.756,
+        "f1": 0.772,
+        "f2": 0.808,
+        "andcg": 0.866,
+        "diversity": 0.124,
+        "tokens": 353,
+        "passages": 2,
+        "chunks": 2
+      },
+      "heldout": {
+        "coverage": 0.833,
+        "precision": 0.659,
+        "f1": 0.714,
+        "f2": 0.773,
+        "andcg": 0.784,
+        "diversity": 0.128,
+        "tokens": 360.727,
+        "passages": 2,
+        "chunks": 2
+      }
+    },
+    "D": {
+      "label": "D(k=2, gate=0.2, budget=800, expand=False)",
+      "train": {
+        "coverage": 0.865,
+        "precision": 0.744,
+        "f1": 0.772,
+        "f2": 0.817,
+        "andcg": 0.817,
+        "diversity": 0.14,
+        "tokens": 577.489,
+        "passages": 1.978,
+        "chunks": 3.533
+      },
+      "heldout": {
+        "coverage": 0.894,
+        "precision": 0.682,
+        "f1": 0.748,
+        "f2": 0.82,
+        "andcg": 0.729,
+        "diversity": 0.153,
+        "tokens": 576.818,
+        "passages": 2,
+        "chunks": 3.455
+      }
+    },
+    "E": {
+      "label": "E(k=2, gate=0.2, budget=800, expand=False, lam=0.7)",
+      "train": {
+        "coverage": 0.873,
+        "precision": 0.711,
+        "f1": 0.76,
+        "f2": 0.815,
+        "andcg": 0.796,
+        "diversity": 0.162,
+        "tokens": 559.044,
+        "passages": 1.978,
+        "chunks": 3.489
+      },
+      "heldout": {
+        "coverage": 0.848,
+        "precision": 0.659,
+        "f1": 0.718,
+        "f2": 0.782,
+        "andcg": 0.709,
+        "diversity": 0.152,
+        "tokens": 552.318,
+        "passages": 1.955,
+        "chunks": 3.364
+      }
+    },
+    "F": {
+      "label": "F(k=2, theta=8.0)",
+      "train": {
+        "coverage": 0.849,
+        "precision": 0.756,
+        "f1": 0.772,
+        "f2": 0.808,
+        "andcg": 0.866,
+        "diversity": 0.125,
+        "tokens": 352.844,
+        "passages": 2,
+        "chunks": 2
+      },
+      "heldout": {
+        "coverage": 0.879,
+        "precision": 0.682,
+        "f1": 0.744,
+        "f2": 0.811,
+        "andcg": 0.812,
+        "diversity": 0.128,
+        "tokens": 361.318,
+        "passages": 2,
+        "chunks": 2
+      }
+    },
+    "G": {
+      "label": "G(k=2, gate=0.2, budget=800, expand=False, theta=4.0)",
+      "train": {
+        "coverage": 0.865,
+        "precision": 0.711,
+        "f1": 0.754,
+        "f2": 0.808,
+        "andcg": 0.8,
+        "diversity": 0.151,
+        "tokens": 563.333,
+        "passages": 1.978,
+        "chunks": 3.533
+      },
+      "heldout": {
+        "coverage": 0.894,
+        "precision": 0.705,
+        "f1": 0.764,
+        "f2": 0.828,
+        "andcg": 0.74,
+        "diversity": 0.148,
+        "tokens": 556.864,
+        "passages": 1.955,
+        "chunks": 3.409
+      }
+    },
+    "H": {
+      "label": "H(k_hi=2, k_lo=4, conf=0.8, gate=0.2, budget=1500)",
+      "train": {
+        "coverage": 0.913,
+        "precision": 0.706,
+        "f1": 0.769,
+        "f2": 0.837,
+        "andcg": 0.838,
+        "diversity": 0.147,
+        "tokens": 674.756,
+        "passages": 2.378,
+        "chunks": 4.178
+      },
+      "heldout": {
+        "coverage": 0.894,
+        "precision": 0.636,
+        "f1": 0.709,
+        "f2": 0.794,
+        "andcg": 0.73,
+        "diversity": 0.151,
+        "tokens": 672.364,
+        "passages": 2.455,
+        "chunks": 4.091
+      }
+    }
+  },
+  "best_single": {
+    "label": "H(k_hi=2, k_lo=4, conf=0.8, gate=0.2, budget=1500)",
+    "train": {
+      "coverage": 0.913,
+      "precision": 0.706,
+      "f1": 0.769,
+      "f2": 0.837,
+      "andcg": 0.838,
+      "diversity": 0.147,
+      "tokens": 674.756,
+      "passages": 2.378,
+      "chunks": 4.178
+    },
+    "heldout": {
+      "coverage": 0.894,
+      "precision": 0.636,
+      "f1": 0.709,
+      "f2": 0.794,
+      "andcg": 0.73,
+      "diversity": 0.151,
+      "tokens": 672.364,
+      "passages": 2.455,
+      "chunks": 4.091
+    }
+  },
+  "per_shape_choice": {
+    "fact": "C(k=2, lam=0.5, top_n=12)",
+    "summary": "E(k=2, gate=0.0, budget=800, expand=False, lam=0.7)",
+    "definition": "C(k=2, lam=0.7, top_n=12)",
+    "comparison": "H(k_hi=2, k_lo=4, conf=0.8, gate=0.05, budget=1500)",
+    "multi_aspect": "E(k=4, gate=0.0, budget=1500, expand=False, lam=0.7)",
+    "open_ended": "D(k=2, gate=0.0, budget=800, expand=False)"
+  },
+  "per_shape_routed": {
+    "train": {
+      "coverage": 0.933,
+      "precision": 0.756,
+      "f1": 0.81,
+      "f2": 0.871,
+      "andcg": 0.858,
+      "diversity": 0.164,
+      "tokens": 537.644,
+      "passages": 2.311,
+      "chunks": 3.222
+    },
+    "heldout": {
+      "coverage": 0.894,
+      "precision": 0.636,
+      "f1": 0.722,
+      "f2": 0.808,
+      "andcg": 0.788,
+      "diversity": 0.155,
+      "tokens": 456.318,
+      "passages": 2.182,
+      "chunks": 2.545
+    }
+  },
+  "per_shape_detail": {
+    "comparison": {
+      "n_train": 4,
+      "n_heldout": 2,
+      "choice": "H(k_hi=2, k_lo=4, conf=0.8, gate=0.05, budget=1500)",
+      "heldout_routed": {
+        "coverage": 1.0,
+        "precision": 0.75,
+        "f1": 0.833,
+        "f2": 0.917,
+        "andcg": 0.88,
+        "diversity": 0.101,
+        "tokens": 564.5,
+        "passages": 2,
+        "chunks": 2.5
+      },
+      "heldout_single": {
+        "coverage": 1.0,
+        "precision": 0.75,
+        "f1": 0.833,
+        "f2": 0.917,
+        "andcg": 0.88,
+        "diversity": 0.101,
+        "tokens": 564.5,
+        "passages": 2,
+        "chunks": 2.5
+      },
+      "heldout_baseline": {
+        "coverage": 1.0,
+        "precision": 0.667,
+        "f1": 0.788,
+        "f2": 0.897,
+        "andcg": 0.961,
+        "diversity": 0.144,
+        "tokens": 1471,
+        "passages": 6,
+        "chunks": 6
+      },
+      "all_baseline": {
+        "coverage": 1.0,
+        "precision": 0.556,
+        "f1": 0.692,
+        "f2": 0.836,
+        "andcg": 0.867,
+        "diversity": 0.145,
+        "tokens": 1128.667,
+        "passages": 6,
+        "chunks": 6
+      },
+      "all_routed": {
+        "coverage": 1.0,
+        "precision": 0.75,
+        "f1": 0.833,
+        "f2": 0.917,
+        "andcg": 0.784,
+        "diversity": 0.139,
+        "tokens": 823.833,
+        "passages": 2.667,
+        "chunks": 4.667
+      }
+    },
+    "definition": {
+      "n_train": 8,
+      "n_heldout": 8,
+      "choice": "C(k=2, lam=0.7, top_n=12)",
+      "heldout_routed": {
+        "coverage": 0.875,
+        "precision": 0.688,
+        "f1": 0.75,
+        "f2": 0.812,
+        "andcg": 0.845,
+        "diversity": 0.161,
+        "tokens": 362.5,
+        "passages": 2,
+        "chunks": 2
+      },
+      "heldout_single": {
+        "coverage": 1.0,
+        "precision": 0.562,
+        "f1": 0.683,
+        "f2": 0.823,
+        "andcg": 0.819,
+        "diversity": 0.153,
+        "tokens": 809.5,
+        "passages": 3,
+        "chunks": 5.125
+      },
+      "heldout_baseline": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.607,
+        "f2": 0.75,
+        "andcg": 0.915,
+        "diversity": 0.157,
+        "tokens": 987,
+        "passages": 6,
+        "chunks": 6
+      },
+      "all_baseline": {
+        "coverage": 1.0,
+        "precision": 0.531,
+        "f1": 0.638,
+        "f2": 0.774,
+        "andcg": 0.95,
+        "diversity": 0.168,
+        "tokens": 962.312,
+        "passages": 6,
+        "chunks": 6
+      },
+      "all_routed": {
+        "coverage": 0.938,
+        "precision": 0.781,
+        "f1": 0.833,
+        "f2": 0.885,
+        "andcg": 0.923,
+        "diversity": 0.161,
+        "tokens": 351.562,
+        "passages": 2,
+        "chunks": 2
+      }
+    },
+    "fact": {
+      "n_train": 18,
+      "n_heldout": 7,
+      "choice": "C(k=2, lam=0.5, top_n=12)",
+      "heldout_routed": {
+        "coverage": 1.0,
+        "precision": 0.643,
+        "f1": 0.762,
+        "f2": 0.881,
+        "andcg": 0.897,
+        "diversity": 0.157,
+        "tokens": 311.857,
+        "passages": 2,
+        "chunks": 2
+      },
+      "heldout_single": {
+        "coverage": 1.0,
+        "precision": 0.857,
+        "f1": 0.905,
+        "f2": 0.952,
+        "andcg": 0.809,
+        "diversity": 0.157,
+        "tokens": 608.714,
+        "passages": 2,
+        "chunks": 3.857
+      },
+      "heldout_baseline": {
+        "coverage": 1.0,
+        "precision": 0.548,
+        "f1": 0.663,
+        "f2": 0.794,
+        "andcg": 0.981,
+        "diversity": 0.142,
+        "tokens": 1053.857,
+        "passages": 6,
+        "chunks": 6
+      },
+      "all_baseline": {
+        "coverage": 1.0,
+        "precision": 0.42,
+        "f1": 0.558,
+        "f2": 0.731,
+        "andcg": 0.966,
+        "diversity": 0.152,
+        "tokens": 1053.68,
+        "passages": 6,
+        "chunks": 6
+      },
+      "all_routed": {
+        "coverage": 1.0,
+        "precision": 0.7,
+        "f1": 0.8,
+        "f2": 0.9,
+        "andcg": 0.917,
+        "diversity": 0.17,
+        "tokens": 345.48,
+        "passages": 2,
+        "chunks": 2
+      }
+    },
+    "multi_aspect": {
+      "n_train": 5,
+      "n_heldout": 2,
+      "choice": "E(k=4, gate=0.0, budget=1500, expand=False, lam=0.7)",
+      "heldout_routed": {
+        "coverage": 0.667,
+        "precision": 0.5,
+        "f1": 0.571,
+        "f2": 0.625,
+        "andcg": 0.363,
+        "diversity": 0.143,
+        "tokens": 1212.5,
+        "passages": 4,
+        "chunks": 6
+      },
+      "heldout_single": {
+        "coverage": 0.167,
+        "precision": 0.25,
+        "f1": 0.2,
+        "f2": 0.179,
+        "andcg": 0.117,
+        "diversity": 0.135,
+        "tokens": 582.5,
+        "passages": 2,
+        "chunks": 3
+      },
+      "heldout_baseline": {
+        "coverage": 0.5,
+        "precision": 0.25,
+        "f1": 0.333,
+        "f2": 0.417,
+        "andcg": 0.268,
+        "diversity": 0.128,
+        "tokens": 1305,
+        "passages": 6,
+        "chunks": 6
+      },
+      "all_baseline": {
+        "coverage": 0.733,
+        "precision": 0.429,
+        "f1": 0.519,
+        "f2": 0.618,
+        "andcg": 0.634,
+        "diversity": 0.148,
+        "tokens": 1126.286,
+        "passages": 6,
+        "chunks": 6
+      },
+      "all_routed": {
+        "coverage": 0.81,
+        "precision": 0.571,
+        "f1": 0.66,
+        "f2": 0.738,
+        "andcg": 0.637,
+        "diversity": 0.153,
+        "tokens": 1132,
+        "passages": 4,
+        "chunks": 6.714
+      }
+    },
+    "open_ended": {
+      "n_train": 5,
+      "n_heldout": 1,
+      "choice": "D(k=2, gate=0.0, budget=800, expand=False)",
+      "heldout_routed": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.667,
+        "f2": 0.833,
+        "andcg": 0.913,
+        "diversity": 0.146,
+        "tokens": 469,
+        "passages": 2,
+        "chunks": 3
+      },
+      "heldout_single": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.667,
+        "f2": 0.833,
+        "andcg": 0.937,
+        "diversity": 0.129,
+        "tokens": 828,
+        "passages": 4,
+        "chunks": 5
+      },
+      "heldout_baseline": {
+        "coverage": 1.0,
+        "precision": 0.667,
+        "f1": 0.8,
+        "f2": 0.909,
+        "andcg": 0.917,
+        "diversity": 0.125,
+        "tokens": 899,
+        "passages": 6,
+        "chunks": 6
+      },
+      "all_baseline": {
+        "coverage": 0.722,
+        "precision": 0.333,
+        "f1": 0.435,
+        "f2": 0.552,
+        "andcg": 0.757,
+        "diversity": 0.16,
+        "tokens": 996.833,
+        "passages": 6,
+        "chunks": 6
+      },
+      "all_routed": {
+        "coverage": 0.722,
+        "precision": 0.667,
+        "f1": 0.65,
+        "f2": 0.68,
+        "andcg": 0.679,
+        "diversity": 0.152,
+        "tokens": 556.5,
+        "passages": 2,
+        "chunks": 3.333
+      }
+    },
+    "summary": {
+      "n_train": 5,
+      "n_heldout": 2,
+      "choice": "E(k=2, gate=0.0, budget=800, expand=False, lam=0.7)",
+      "heldout_routed": {
+        "coverage": 0.667,
+        "precision": 0.5,
+        "f1": 0.533,
+        "f2": 0.595,
+        "andcg": 0.451,
+        "diversity": 0.198,
+        "tokens": 466.5,
+        "passages": 2,
+        "chunks": 3
+      },
+      "heldout_single": {
+        "coverage": 0.667,
+        "precision": 0.5,
+        "f1": 0.533,
+        "f2": 0.595,
+        "andcg": 0.451,
+        "diversity": 0.198,
+        "tokens": 466.5,
+        "passages": 2,
+        "chunks": 3
+      },
+      "heldout_baseline": {
+        "coverage": 0.667,
+        "precision": 0.333,
+        "f1": 0.444,
+        "f2": 0.556,
+        "andcg": 0.51,
+        "diversity": 0.159,
+        "tokens": 1097,
+        "passages": 6,
+        "chunks": 6
+      },
+      "all_baseline": {
+        "coverage": 0.857,
+        "precision": 0.571,
+        "f1": 0.662,
+        "f2": 0.756,
+        "andcg": 0.827,
+        "diversity": 0.159,
+        "tokens": 1006.571,
+        "passages": 6,
+        "chunks": 6
+      },
+      "all_routed": {
+        "coverage": 0.81,
+        "precision": 0.786,
+        "f1": 0.781,
+        "f2": 0.793,
+        "andcg": 0.719,
+        "diversity": 0.167,
+        "tokens": 537.857,
+        "passages": 2,
+        "chunks": 3.429
+      }
+    }
+  },
+  "per_question": {
+    "ccs-supervisor": {
+      "shape": "fact",
+      "split": "train",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 1.0,
+        "diversity": 0.09240853786468506,
+        "tokens": 324,
+        "passages": 2,
+        "chunks": 2
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 1.0,
+        "diversity": 0.06666851043701172,
+        "tokens": 519,
+        "passages": 2,
+        "chunks": 3
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 0.8333333333333334,
+        "f1": 0.9090909090909091,
+        "f2": 0.9615384615384615,
+        "andcg": 1.0,
+        "diversity": 0.09495377540588379,
+        "tokens": 1069,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "ccs-categories": {
+      "shape": "fact",
+      "split": "heldout",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 1.0,
+        "diversity": 0.15492939949035645,
+        "tokens": 198,
+        "passages": 2,
+        "chunks": 2
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 0.9132224589335864,
+        "diversity": 0.11982309818267822,
+        "tokens": 479,
+        "passages": 2,
+        "chunks": 3
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 1.0,
+        "diversity": 0.12482279539108276,
+        "tokens": 949,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "ccs-stack": {
+      "shape": "fact",
+      "split": "train",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 0.8406064155285841,
+        "diversity": 0.15423548221588135,
+        "tokens": 378,
+        "passages": 2,
+        "chunks": 2
+      },
+      "single": {
+        "coverage": 0.5,
+        "precision": 0.5,
+        "f1": 0.5,
+        "f2": 0.5,
+        "andcg": 0.43187871689428314,
+        "diversity": 0.11834919452667236,
+        "tokens": 376,
+        "passages": 2,
+        "chunks": 2
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 0.3333333333333333,
+        "f1": 0.5,
+        "f2": 0.7142857142857143,
+        "andcg": 0.6824889579173911,
+        "diversity": 0.13939744234085083,
+        "tokens": 1046,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "ccs-members": {
+      "shape": "fact",
+      "split": "train",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 0.7601875334318685,
+        "diversity": 0.3808339834213257,
+        "tokens": 299,
+        "passages": 2,
+        "chunks": 2
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 0.6939408941037598,
+        "diversity": 0.11708861589431763,
+        "tokens": 802,
+        "passages": 3,
+        "chunks": 5
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 0.8961067340773906,
+        "diversity": 0.29701656103134155,
+        "tokens": 848,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "ccs-9897": {
+      "shape": "fact",
+      "split": "train",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 1.0,
+        "diversity": 0.17351782321929932,
+        "tokens": 361,
+        "passages": 2,
+        "chunks": 2
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 1.0,
+        "diversity": 0.12180984020233154,
+        "tokens": 638,
+        "passages": 2,
+        "chunks": 3
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 0.16666666666666666,
+        "f1": 0.2857142857142857,
+        "f2": 0.5,
+        "andcg": 1.0,
+        "diversity": 0.1550782322883606,
+        "tokens": 1053,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "ccs-method": {
+      "shape": "summary",
+      "split": "train",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 0.9502344167898356,
+        "diversity": 0.17219960689544678,
+        "tokens": 574,
+        "passages": 2,
+        "chunks": 4
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 0.9502344167898356,
+        "diversity": 0.17219960689544678,
+        "tokens": 574,
+        "passages": 2,
+        "chunks": 4
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 0.3333333333333333,
+        "f1": 0.5,
+        "f2": 0.7142857142857143,
+        "andcg": 0.9502344167898356,
+        "diversity": 0.19954293966293335,
+        "tokens": 1053,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "ccs-weakness": {
+      "shape": "fact",
+      "split": "train",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 0.7601875334318685,
+        "diversity": 0.12392842769622803,
+        "tokens": 338,
+        "passages": 2,
+        "chunks": 2
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 0.25,
+        "f1": 0.4,
+        "f2": 0.625,
+        "andcg": 1.0,
+        "diversity": 0.12452965974807739,
+        "tokens": 853,
+        "passages": 4,
+        "chunks": 6
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 0.3333333333333333,
+        "f1": 0.5,
+        "f2": 0.7142857142857143,
+        "andcg": 1.0,
+        "diversity": 0.11462026834487915,
+        "tokens": 925,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "ccs-preprocess": {
+      "shape": "fact",
+      "split": "heldout",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 0.7601875334318685,
+        "diversity": 0.20988613367080688,
+        "tokens": 313,
+        "passages": 2,
+        "chunks": 2
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 0.5895269222031302,
+        "diversity": 0.16287767887115479,
+        "tokens": 545,
+        "passages": 2,
+        "chunks": 4
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 0.6666666666666666,
+        "f1": 0.8,
+        "f2": 0.9090909090909091,
+        "andcg": 0.996334088948823,
+        "diversity": 0.13246792554855347,
+        "tokens": 853,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "ccs-tdidf": {
+      "shape": "definition",
+      "split": "train",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 1.0,
+        "diversity": 0.08531045913696289,
+        "tokens": 375,
+        "passages": 2,
+        "chunks": 2
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 0.9639733723493977,
+        "diversity": 0.11146092414855957,
+        "tokens": 798,
+        "passages": 2,
+        "chunks": 4
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 0.952375388744623,
+        "diversity": 0.12230563163757324,
+        "tokens": 1078,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "nlp-smoothing": {
+      "shape": "fact",
+      "split": "heldout",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 0.7601875334318685,
+        "diversity": 0.11099720001220703,
+        "tokens": 460,
+        "passages": 2,
+        "chunks": 2
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 0.9639733723493977,
+        "diversity": 0.09307980537414551,
+        "tokens": 770,
+        "passages": 2,
+        "chunks": 4
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 0.9085656443609951,
+        "diversity": 0.10145699977874756,
+        "tokens": 1287,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "nlp-perplexity": {
+      "shape": "definition",
+      "split": "heldout",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 1.0,
+        "diversity": 0.08921265602111816,
+        "tokens": 381,
+        "passages": 2,
+        "chunks": 2
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 0.8803221334434187,
+        "diversity": 0.1149587631225586,
+        "tokens": 729,
+        "passages": 2,
+        "chunks": 4
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 0.952375388744623,
+        "diversity": 0.15377509593963623,
+        "tokens": 1115,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "nlp-treebank": {
+      "shape": "fact",
+      "split": "train",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 1.0,
+        "diversity": 0.12791991233825684,
+        "tokens": 522,
+        "passages": 2,
+        "chunks": 2
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 1.0,
+        "diversity": 0.2206515073776245,
+        "tokens": 841,
+        "passages": 2,
+        "chunks": 4
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 0.3333333333333333,
+        "f1": 0.5,
+        "f2": 0.7142857142857143,
+        "andcg": 1.0,
+        "diversity": 0.2056019902229309,
+        "tokens": 1480,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "nlp-bigram": {
+      "shape": "definition",
+      "split": "train",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 1.0,
+        "diversity": 0.19200623035430908,
+        "tokens": 474,
+        "passages": 2,
+        "chunks": 2
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 0.9085656443609951,
+        "diversity": 0.22924113273620605,
+        "tokens": 657,
+        "passages": 2,
+        "chunks": 4
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 1.0,
+        "diversity": 0.1292465329170227,
+        "tokens": 1278,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "nlp-lemma-uk": {
+      "shape": "definition",
+      "split": "train",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 1.0,
+        "diversity": 0.22426939010620117,
+        "tokens": 413,
+        "passages": 2,
+        "chunks": 2
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 1.0,
+        "diversity": 0.14411044120788574,
+        "tokens": 713,
+        "passages": 2,
+        "chunks": 3
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 0.8333333333333334,
+        "f1": 0.9090909090909091,
+        "f2": 0.9615384615384615,
+        "andcg": 0.9765589441503421,
+        "diversity": 0.19511955976486206,
+        "tokens": 1032,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "rg-presenter": {
+      "shape": "fact",
+      "split": "train",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 0.7601875334318685,
+        "diversity": 0.19219648838043213,
+        "tokens": 234,
+        "passages": 2,
+        "chunks": 2
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 0.8803221334434187,
+        "diversity": 0.17846614122390747,
+        "tokens": 406,
+        "passages": 2,
+        "chunks": 4
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 0.6666666666666666,
+        "f1": 0.8,
+        "f2": 0.9090909090909091,
+        "andcg": 0.9095389074257559,
+        "diversity": 0.14074212312698364,
+        "tokens": 755,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "rg-vectorize": {
+      "shape": "fact",
+      "split": "train",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 0.7601875334318685,
+        "diversity": 0.18334883451461792,
+        "tokens": 372,
+        "passages": 2,
+        "chunks": 2
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 0.9238850086262381,
+        "diversity": 0.10368233919143677,
+        "tokens": 620,
+        "passages": 2,
+        "chunks": 4
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 0.3333333333333333,
+        "f1": 0.5,
+        "f2": 0.7142857142857143,
+        "andcg": 0.9072278740982787,
+        "diversity": 0.16421294212341309,
+        "tokens": 1122,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "rg-stem-vs-lemma": {
+      "shape": "comparison",
+      "split": "heldout",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 1.0,
+        "diversity": 0.1027708649635315,
+        "tokens": 562,
+        "passages": 2,
+        "chunks": 3
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 1.0,
+        "diversity": 0.1027708649635315,
+        "tokens": 562,
+        "passages": 2,
+        "chunks": 3
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 0.8333333333333334,
+        "f1": 0.9090909090909091,
+        "f2": 0.9615384615384615,
+        "andcg": 0.9878891978105476,
+        "diversity": 0.15593504905700684,
+        "tokens": 1227,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "wiki-bm25-who": {
+      "shape": "fact",
+      "split": "train",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 1.0,
+        "diversity": 0.3146796226501465,
+        "tokens": 249,
+        "passages": 2,
+        "chunks": 2
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 1.0,
+        "diversity": 0.3146796226501465,
+        "tokens": 345,
+        "passages": 2,
+        "chunks": 3
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 0.16666666666666666,
+        "f1": 0.2857142857142857,
+        "f2": 0.5,
+        "andcg": 1.0,
+        "diversity": 0.21041733026504517,
+        "tokens": 974,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "wiki-bm-stands": {
+      "shape": "fact",
+      "split": "train",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 1.0,
+        "diversity": 0.42059624195098877,
+        "tokens": 500,
+        "passages": 2,
+        "chunks": 2
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 1.0,
+        "diversity": 0.14427626132965088,
+        "tokens": 542,
+        "passages": 2,
+        "chunks": 4
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 0.16666666666666666,
+        "f1": 0.2857142857142857,
+        "f2": 0.5,
+        "andcg": 1.0,
+        "diversity": 0.14900022745132446,
+        "tokens": 934,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "wiki-bm25-b": {
+      "shape": "fact",
+      "split": "train",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 1.0,
+        "diversity": 0.17916584014892578,
+        "tokens": 365,
+        "passages": 2,
+        "chunks": 2
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 0.6309297535714575,
+        "diversity": 0.11948120594024658,
+        "tokens": 578,
+        "passages": 2,
+        "chunks": 4
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 0.16666666666666666,
+        "f1": 0.2857142857142857,
+        "f2": 0.5,
+        "andcg": 1.0,
+        "diversity": 0.15979450941085815,
+        "tokens": 904,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "wiki-tdidf": {
+      "shape": "definition",
+      "split": "heldout",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 1.0,
+        "diversity": 0.11123967170715332,
+        "tokens": 358,
+        "passages": 2,
+        "chunks": 2
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 0.9417208372243268,
+        "diversity": 0.12110024690628052,
+        "tokens": 1001,
+        "passages": 4,
+        "chunks": 6
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 0.9303905835641211,
+        "diversity": 0.11671727895736694,
+        "tokens": 1108,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "wiki-tfidf-ok": {
+      "shape": "definition",
+      "split": "heldout",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 1.0,
+        "diversity": 0.20479083061218262,
+        "tokens": 386,
+        "passages": 2,
+        "chunks": 2
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 1.0,
+        "diversity": 0.20158100128173828,
+        "tokens": 572,
+        "passages": 2,
+        "chunks": 4
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 1.0,
+        "diversity": 0.19316422939300537,
+        "tokens": 1140,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "wiki-invindex": {
+      "shape": "definition",
+      "split": "train",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 1.0,
+        "diversity": 0.1210334300994873,
+        "tokens": 336,
+        "passages": 2,
+        "chunks": 2
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 1.0,
+        "diversity": 0.14799010753631592,
+        "tokens": 445,
+        "passages": 2,
+        "chunks": 4
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 0.8333333333333334,
+        "f1": 0.9090909090909091,
+        "f2": 0.9615384615384615,
+        "andcg": 1.0,
+        "diversity": 0.1830187439918518,
+        "tokens": 667,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "wiki-mrr": {
+      "shape": "definition",
+      "split": "train",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 1.0,
+        "diversity": 0.06449544429779053,
+        "tokens": 362,
+        "passages": 2,
+        "chunks": 2
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 1.0,
+        "diversity": 0.19425153732299805,
+        "tokens": 537,
+        "passages": 2,
+        "chunks": 3
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 0.3333333333333333,
+        "f1": 0.5,
+        "f2": 0.7142857142857143,
+        "andcg": 1.0,
+        "diversity": 0.28270024061203003,
+        "tokens": 836,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "wiki-nb-indep": {
+      "shape": "fact",
+      "split": "heldout",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 0.7601875334318685,
+        "diversity": 0.1895005702972412,
+        "tokens": 311,
+        "passages": 2,
+        "chunks": 2
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 0.5663309549935807,
+        "diversity": 0.1748288869857788,
+        "tokens": 436,
+        "passages": 2,
+        "chunks": 4
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 0.6666666666666666,
+        "f1": 0.8,
+        "f2": 0.9090909090909091,
+        "andcg": 0.9594999127705031,
+        "diversity": 0.1399017572402954,
+        "tokens": 1106,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "wiki-w2v-who": {
+      "shape": "fact",
+      "split": "train",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 1.0,
+        "diversity": 0.11566734313964844,
+        "tokens": 342,
+        "passages": 2,
+        "chunks": 2
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 1.0,
+        "diversity": 0.1584208607673645,
+        "tokens": 664,
+        "passages": 2,
+        "chunks": 4
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 0.16666666666666666,
+        "f1": 0.2857142857142857,
+        "f2": 0.5,
+        "andcg": 1.0,
+        "diversity": 0.18384647369384766,
+        "tokens": 820,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "wiki-cosine": {
+      "shape": "definition",
+      "split": "train",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 1.0,
+        "diversity": 0.08683723211288452,
+        "tokens": 263,
+        "passages": 2,
+        "chunks": 2
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 1.0,
+        "diversity": 0.08683723211288452,
+        "tokens": 601,
+        "passages": 2,
+        "chunks": 4
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 0.6666666666666666,
+        "f1": 0.8,
+        "f2": 0.9090909090909091,
+        "andcg": 0.9523373397714371,
+        "diversity": 0.11311894655227661,
+        "tokens": 1103,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "wiki-ner": {
+      "shape": "definition",
+      "split": "heldout",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 1.0,
+        "diversity": 0.20902955532073975,
+        "tokens": 385,
+        "passages": 2,
+        "chunks": 2
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 1.0,
+        "diversity": 0.20902955532073975,
+        "tokens": 385,
+        "passages": 2,
+        "chunks": 2
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 1.0,
+        "diversity": 0.1692931056022644,
+        "tokens": 892,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "wiki-porter": {
+      "shape": "definition",
+      "split": "heldout",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 0.7601875334318685,
+        "diversity": 0.2250826358795166,
+        "tokens": 381,
+        "passages": 2,
+        "chunks": 2
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 0.971074152977862,
+        "diversity": 0.19897931814193726,
+        "tokens": 1098,
+        "passages": 4,
+        "chunks": 7
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 0.9349156813970417,
+        "diversity": 0.19437533617019653,
+        "tokens": 819,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "sum-ccs": {
+      "shape": "summary",
+      "split": "train",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 1.0,
+        "diversity": 0.13095855712890625,
+        "tokens": 485,
+        "passages": 2,
+        "chunks": 4
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 1.0,
+        "diversity": 0.13095855712890625,
+        "tokens": 485,
+        "passages": 2,
+        "chunks": 4
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 1.0,
+        "diversity": 0.12213325500488281,
+        "tokens": 857,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "sum-bm25": {
+      "shape": "summary",
+      "split": "train",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 1.0,
+        "diversity": 0.17096614837646484,
+        "tokens": 767,
+        "passages": 2,
+        "chunks": 4
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 1.0,
+        "diversity": 0.17096614837646484,
+        "tokens": 767,
+        "passages": 2,
+        "chunks": 4
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 1.0,
+        "diversity": 0.15249091386795044,
+        "tokens": 944,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "gdpr-breach-72h": {
+      "shape": "fact",
+      "split": "train",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 1.0,
+        "diversity": 0.05045437812805176,
+        "tokens": 364,
+        "passages": 2,
+        "chunks": 2
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 0.9425215160732471,
+        "diversity": 0.05045437812805176,
+        "tokens": 670,
+        "passages": 2,
+        "chunks": 4
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 1.0,
+        "diversity": 0.07949453592300415,
+        "tokens": 1015,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "gdpr-child-age": {
+      "shape": "fact",
+      "split": "heldout",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 1.0,
+        "diversity": 0.07095611095428467,
+        "tokens": 269,
+        "passages": 2,
+        "chunks": 2
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 1.0,
+        "diversity": 0.11262565851211548,
+        "tokens": 554,
+        "passages": 2,
+        "chunks": 4
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 0.16666666666666666,
+        "f1": 0.2857142857142857,
+        "f2": 0.5,
+        "andcg": 1.0,
+        "diversity": 0.10971653461456299,
+        "tokens": 981,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "gdpr-apply-date": {
+      "shape": "fact",
+      "split": "train",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 0.7601875334318685,
+        "diversity": 0.1775829792022705,
+        "tokens": 271,
+        "passages": 2,
+        "chunks": 2
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 0.7601875334318685,
+        "diversity": 0.09063839912414551,
+        "tokens": 499,
+        "passages": 2,
+        "chunks": 3
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 0.3333333333333333,
+        "f1": 0.5,
+        "f2": 0.7142857142857143,
+        "andcg": 0.8955796649110442,
+        "diversity": 0.13807862997055054,
+        "tokens": 884,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "wb-president": {
+      "shape": "fact",
+      "split": "train",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 1.0,
+        "diversity": 0.12492865324020386,
+        "tokens": 412,
+        "passages": 2,
+        "chunks": 2
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 0.9132224589335864,
+        "diversity": 0.12492865324020386,
+        "tokens": 598,
+        "passages": 2,
+        "chunks": 3
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 0.9879685643426974,
+        "diversity": 0.14621585607528687,
+        "tokens": 1249,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "wb-scorecard": {
+      "shape": "fact",
+      "split": "train",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 1.0,
+        "diversity": 0.11937069892883301,
+        "tokens": 409,
+        "passages": 2,
+        "chunks": 2
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 1.0,
+        "diversity": 0.14713287353515625,
+        "tokens": 751,
+        "passages": 2,
+        "chunks": 4
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 0.3333333333333333,
+        "f1": 0.5,
+        "f2": 0.7142857142857143,
+        "andcg": 1.0,
+        "diversity": 0.13371902704238892,
+        "tokens": 1226,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "wb-digital": {
+      "shape": "fact",
+      "split": "train",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 1.0,
+        "diversity": 0.1043928861618042,
+        "tokens": 410,
+        "passages": 2,
+        "chunks": 2
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 1.0,
+        "diversity": 0.09229230880737305,
+        "tokens": 567,
+        "passages": 2,
+        "chunks": 3
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 1.0,
+        "diversity": 0.14720338582992554,
+        "tokens": 1535,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "who-first-case": {
+      "shape": "fact",
+      "split": "train",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 1.0,
+        "diversity": 0.10285305976867676,
+        "tokens": 304,
+        "passages": 2,
+        "chunks": 2
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 1.0,
+        "diversity": 0.1153213381767273,
+        "tokens": 472,
+        "passages": 2,
+        "chunks": 3
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 0.3333333333333333,
+        "f1": 0.5,
+        "f2": 0.7142857142857143,
+        "andcg": 1.0,
+        "diversity": 0.15567344427108765,
+        "tokens": 1126,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "who-local-govts": {
+      "shape": "fact",
+      "split": "heldout",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 1.0,
+        "diversity": 0.09611368179321289,
+        "tokens": 420,
+        "passages": 2,
+        "chunks": 2
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 1.0,
+        "diversity": 0.13980233669281006,
+        "tokens": 743,
+        "passages": 2,
+        "chunks": 4
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 0.6666666666666666,
+        "f1": 0.8,
+        "f2": 0.9090909090909091,
+        "andcg": 1.0,
+        "diversity": 0.16436505317687988,
+        "tokens": 1179,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "doc-everest-height": {
+      "shape": "fact",
+      "split": "heldout",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 1.0,
+        "diversity": 0.26722246408462524,
+        "tokens": 212,
+        "passages": 2,
+        "chunks": 2
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 0.6309297535714575,
+        "diversity": 0.2924932837486267,
+        "tokens": 734,
+        "passages": 2,
+        "chunks": 4
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 0.16666666666666666,
+        "f1": 0.2857142857142857,
+        "f2": 0.5,
+        "andcg": 1.0,
+        "diversity": 0.22420638799667358,
+        "tokens": 1022,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "gdpr-pseudonymisation": {
+      "shape": "definition",
+      "split": "heldout",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 1.0,
+        "diversity": 0.15328490734100342,
+        "tokens": 339,
+        "passages": 2,
+        "chunks": 2
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 0.6309297535714575,
+        "diversity": 0.08916866779327393,
+        "tokens": 639,
+        "passages": 2,
+        "chunks": 4
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 0.16666666666666666,
+        "f1": 0.2857142857142857,
+        "f2": 0.5,
+        "andcg": 1.0,
+        "diversity": 0.12916511297225952,
+        "tokens": 1030,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "gdpr-personal-data": {
+      "shape": "definition",
+      "split": "heldout",
+      "routed": {
+        "coverage": 0.0,
+        "precision": 0.0,
+        "f1": 0.0,
+        "f2": 0.0,
+        "andcg": 0.0,
+        "diversity": 0.12844789028167725,
+        "tokens": 341,
+        "passages": 2,
+        "chunks": 2
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 0.25,
+        "f1": 0.4,
+        "f2": 0.625,
+        "andcg": 0.5,
+        "diversity": 0.11103028059005737,
+        "tokens": 1166,
+        "passages": 4,
+        "chunks": 7
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 0.16666666666666666,
+        "f1": 0.2857142857142857,
+        "f2": 0.5,
+        "andcg": 0.5,
+        "diversity": 0.12733471393585205,
+        "tokens": 1033,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "doc-event-horizon": {
+      "shape": "definition",
+      "split": "train",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 1.0,
+        "diversity": 0.14249694347381592,
+        "tokens": 310,
+        "passages": 2,
+        "chunks": 2
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 1.0,
+        "diversity": 0.14249694347381592,
+        "tokens": 606,
+        "passages": 2,
+        "chunks": 4
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 0.16666666666666666,
+        "f1": 0.2857142857142857,
+        "f2": 0.5,
+        "andcg": 1.0,
+        "diversity": 0.1612491011619568,
+        "tokens": 874,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "doc-stagflation": {
+      "shape": "definition",
+      "split": "heldout",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 1.0,
+        "diversity": 0.16681897640228271,
+        "tokens": 329,
+        "passages": 2,
+        "chunks": 2
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 0.25,
+        "f1": 0.4,
+        "f2": 0.625,
+        "andcg": 0.6309297535714575,
+        "diversity": 0.17737406492233276,
+        "tokens": 886,
+        "passages": 4,
+        "chunks": 7
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 0.16666666666666666,
+        "f1": 0.2857142857142857,
+        "f2": 0.5,
+        "andcg": 1.0,
+        "diversity": 0.16875165700912476,
+        "tokens": 759,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "doc-hawking": {
+      "shape": "definition",
+      "split": "train",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 1.0,
+        "diversity": 0.37064796686172485,
+        "tokens": 192,
+        "passages": 2,
+        "chunks": 2
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 0.25,
+        "f1": 0.4,
+        "f2": 0.625,
+        "andcg": 0.6309297535714575,
+        "diversity": 0.2109980583190918,
+        "tokens": 676,
+        "passages": 4,
+        "chunks": 6
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 0.16666666666666666,
+        "f1": 0.2857142857142857,
+        "f2": 0.5,
+        "andcg": 1.0,
+        "diversity": 0.24606060981750488,
+        "tokens": 633,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "sum-who": {
+      "shape": "summary",
+      "split": "train",
+      "routed": {
+        "coverage": 0.3333333333333333,
+        "precision": 0.5,
+        "f1": 0.4,
+        "f2": 0.3571428571428571,
+        "andcg": 0.6131471927654584,
+        "diversity": 0.057407259941101074,
+        "tokens": 424,
+        "passages": 2,
+        "chunks": 2
+      },
+      "single": {
+        "coverage": 0.3333333333333333,
+        "precision": 0.5,
+        "f1": 0.4,
+        "f2": 0.3571428571428571,
+        "andcg": 0.6131471927654584,
+        "diversity": 0.03119194507598877,
+        "tokens": 429,
+        "passages": 2,
+        "chunks": 2
+      },
+      "baseline": {
+        "coverage": 0.6666666666666666,
+        "precision": 0.3333333333333333,
+        "f1": 0.4444444444444444,
+        "f2": 0.5555555555555555,
+        "andcg": 0.8503449055347546,
+        "diversity": 0.11981672048568726,
+        "tokens": 1066,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "sum-wb": {
+      "shape": "summary",
+      "split": "heldout",
+      "routed": {
+        "coverage": 0.3333333333333333,
+        "precision": 0.5,
+        "f1": 0.4,
+        "f2": 0.3571428571428571,
+        "andcg": 0.38685280723454163,
+        "diversity": 0.10841435194015503,
+        "tokens": 435,
+        "passages": 2,
+        "chunks": 2
+      },
+      "single": {
+        "coverage": 0.3333333333333333,
+        "precision": 0.5,
+        "f1": 0.4,
+        "f2": 0.3571428571428571,
+        "andcg": 0.38685280723454163,
+        "diversity": 0.10841435194015503,
+        "tokens": 435,
+        "passages": 2,
+        "chunks": 2
+      },
+      "baseline": {
+        "coverage": 0.3333333333333333,
+        "precision": 0.16666666666666666,
+        "f1": 0.2222222222222222,
+        "f2": 0.27777777777777773,
+        "andcg": 0.3354350434265105,
+        "diversity": 0.10720658302307129,
+        "tokens": 1310,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "sum-photosynthesis": {
+      "shape": "summary",
+      "split": "heldout",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 0.5149598305157187,
+        "diversity": 0.28763067722320557,
+        "tokens": 498,
+        "passages": 2,
+        "chunks": 4
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 0.5149598305157187,
+        "diversity": 0.28763067722320557,
+        "tokens": 498,
+        "passages": 2,
+        "chunks": 4
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 0.6851353959545994,
+        "diversity": 0.21082663536071777,
+        "tokens": 884,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "sum-printing": {
+      "shape": "summary",
+      "split": "train",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 0.5652577147019323,
+        "diversity": 0.23819851875305176,
+        "tokens": 582,
+        "passages": 2,
+        "chunks": 4
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 0.5652577147019323,
+        "diversity": 0.23819851875305176,
+        "tokens": 582,
+        "passages": 2,
+        "chunks": 4
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 0.6666666666666666,
+        "f1": 0.8,
+        "f2": 0.9090909090909091,
+        "andcg": 0.9663712387972486,
+        "diversity": 0.19908148050308228,
+        "tokens": 932,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "cmp-gdpr-fines": {
+      "shape": "comparison",
+      "split": "train",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 0.6357952241912781,
+        "diversity": 0.12780100107192993,
+        "tokens": 1412,
+        "passages": 4,
+        "chunks": 8
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 0.6357952241912781,
+        "diversity": 0.12780100107192993,
+        "tokens": 1412,
+        "passages": 4,
+        "chunks": 8
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 0.9119629671334931,
+        "diversity": 0.11756271123886108,
+        "tokens": 1074,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "cmp-ibrd-ida": {
+      "shape": "comparison",
+      "split": "heldout",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 0.7601875334318685,
+        "diversity": 0.09927558898925781,
+        "tokens": 567,
+        "passages": 2,
+        "chunks": 2
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 0.7601875334318685,
+        "diversity": 0.09927558898925781,
+        "tokens": 567,
+        "passages": 2,
+        "chunks": 2
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 0.934667072635985,
+        "diversity": 0.1319340467453003,
+        "tokens": 1715,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "cmp-inflation-deflation": {
+      "shape": "comparison",
+      "split": "train",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 0.9567574534371579,
+        "diversity": 0.1721857190132141,
+        "tokens": 507,
+        "passages": 2,
+        "chunks": 4
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 0.9567574534371579,
+        "diversity": 0.1721857190132141,
+        "tokens": 507,
+        "passages": 2,
+        "chunks": 4
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 0.3333333333333333,
+        "f1": 0.5,
+        "f2": 0.7142857142857143,
+        "andcg": 1.0,
+        "diversity": 0.15739023685455322,
+        "tokens": 868,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "cmp-bm25-tfidf": {
+      "shape": "comparison",
+      "split": "train",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 0.3503731639928523,
+        "diversity": 0.19532805681228638,
+        "tokens": 1171,
+        "passages": 4,
+        "chunks": 7
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 0.3503731639928523,
+        "diversity": 0.19532805681228638,
+        "tokens": 1171,
+        "passages": 4,
+        "chunks": 7
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 0.3333333333333333,
+        "f1": 0.5,
+        "f2": 0.7142857142857143,
+        "andcg": 0.3788447776174141,
+        "diversity": 0.18357396125793457,
+        "tokens": 1009,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "cmp-precision-recall": {
+      "shape": "comparison",
+      "split": "train",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 1.0,
+        "diversity": 0.13728070259094238,
+        "tokens": 724,
+        "passages": 2,
+        "chunks": 4
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 1.0,
+        "diversity": 0.13728070259094238,
+        "tokens": 724,
+        "passages": 2,
+        "chunks": 4
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 0.8333333333333334,
+        "f1": 0.9090909090909091,
+        "f2": 0.9615384615384615,
+        "andcg": 0.9878891978105476,
+        "diversity": 0.12551456689834595,
+        "tokens": 879,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "ma-gdpr-principles": {
+      "shape": "multi_aspect",
+      "split": "train",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 0.75,
+        "f1": 0.8571428571428571,
+        "f2": 0.9375,
+        "andcg": 0.8105106641117201,
+        "diversity": 0.11282378435134888,
+        "tokens": 1099,
+        "passages": 4,
+        "chunks": 7
+      },
+      "single": {
+        "coverage": 0.6,
+        "precision": 0.5,
+        "f1": 0.5454545454545454,
+        "f2": 0.5769230769230769,
+        "andcg": 0.5687068204157872,
+        "diversity": 0.1199687123298645,
+        "tokens": 670,
+        "passages": 2,
+        "chunks": 4
+      },
+      "baseline": {
+        "coverage": 0.8,
+        "precision": 0.6666666666666666,
+        "f1": 0.7272727272727272,
+        "f2": 0.7692307692307692,
+        "andcg": 0.591035592409844,
+        "diversity": 0.1111288070678711,
+        "tokens": 1015,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "ma-gdpr-duties": {
+      "shape": "multi_aspect",
+      "split": "train",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 0.9464931935445323,
+        "diversity": 0.12190777063369751,
+        "tokens": 1061,
+        "passages": 4,
+        "chunks": 6
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 0.9267147224269258,
+        "diversity": 0.12190788984298706,
+        "tokens": 1061,
+        "passages": 4,
+        "chunks": 6
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 0.8333333333333334,
+        "f1": 0.9090909090909091,
+        "f2": 0.9615384615384615,
+        "andcg": 0.8912441251477737,
+        "diversity": 0.11751377582550049,
+        "tokens": 1153,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "ma-wb": {
+      "shape": "multi_aspect",
+      "split": "heldout",
+      "routed": {
+        "coverage": 0.6666666666666666,
+        "precision": 0.5,
+        "f1": 0.5714285714285715,
+        "f2": 0.625,
+        "andcg": 0.33464414453560165,
+        "diversity": 0.12950873374938965,
+        "tokens": 1235,
+        "passages": 4,
+        "chunks": 5
+      },
+      "single": {
+        "coverage": 0.0,
+        "precision": 0.0,
+        "f1": 0.0,
+        "f2": 0.0,
+        "andcg": 0.0,
+        "diversity": 0.10944104194641113,
+        "tokens": 639,
+        "passages": 2,
+        "chunks": 3
+      },
+      "baseline": {
+        "coverage": 0.6666666666666666,
+        "precision": 0.3333333333333333,
+        "f1": 0.4444444444444444,
+        "f2": 0.5555555555555555,
+        "andcg": 0.33464414453560165,
+        "diversity": 0.12200558185577393,
+        "tokens": 1506,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "ma-who": {
+      "shape": "multi_aspect",
+      "split": "heldout",
+      "routed": {
+        "coverage": 0.6666666666666666,
+        "precision": 0.5,
+        "f1": 0.5714285714285715,
+        "f2": 0.625,
+        "andcg": 0.39106560501896365,
+        "diversity": 0.1559470295906067,
+        "tokens": 1190,
+        "passages": 4,
+        "chunks": 7
+      },
+      "single": {
+        "coverage": 0.3333333333333333,
+        "precision": 0.5,
+        "f1": 0.4,
+        "f2": 0.3571428571428571,
+        "andcg": 0.23463936301137822,
+        "diversity": 0.1610194444656372,
+        "tokens": 526,
+        "passages": 2,
+        "chunks": 3
+      },
+      "baseline": {
+        "coverage": 0.3333333333333333,
+        "precision": 0.16666666666666666,
+        "f1": 0.2222222222222222,
+        "f2": 0.27777777777777773,
+        "andcg": 0.20210734650054757,
+        "diversity": 0.13304829597473145,
+        "tokens": 1104,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "ma-everest": {
+      "shape": "multi_aspect",
+      "split": "train",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 0.9238850086262381,
+        "diversity": 0.2201271653175354,
+        "tokens": 1109,
+        "passages": 4,
+        "chunks": 8
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 0.9502344167898356,
+        "diversity": 0.17988646030426025,
+        "tokens": 524,
+        "passages": 2,
+        "chunks": 4
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 0.3333333333333333,
+        "f1": 0.5,
+        "f2": 0.7142857142857143,
+        "andcg": 0.9502344167898356,
+        "diversity": 0.22689783573150635,
+        "tokens": 1025,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "ma-ccs": {
+      "shape": "multi_aspect",
+      "split": "train",
+      "routed": {
+        "coverage": 0.3333333333333333,
+        "precision": 0.25,
+        "f1": 0.28571428571428575,
+        "f2": 0.3125,
+        "andcg": 0.38031100187470157,
+        "diversity": 0.17744475603103638,
+        "tokens": 1186,
+        "passages": 4,
+        "chunks": 7
+      },
+      "single": {
+        "coverage": 0.3333333333333333,
+        "precision": 0.25,
+        "f1": 0.28571428571428575,
+        "f2": 0.3125,
+        "andcg": 0.38031100187470157,
+        "diversity": 0.1645030975341797,
+        "tokens": 1146,
+        "passages": 4,
+        "chunks": 7
+      },
+      "baseline": {
+        "coverage": 0.3333333333333333,
+        "precision": 0.3333333333333333,
+        "f1": 0.3333333333333333,
+        "f2": 0.3333333333333333,
+        "andcg": 0.4683480347412084,
+        "diversity": 0.17342400550842285,
+        "tokens": 1067,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "ma-bm25": {
+      "shape": "multi_aspect",
+      "split": "train",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 0.66967181649423,
+        "diversity": 0.1527913212776184,
+        "tokens": 1044,
+        "passages": 4,
+        "chunks": 7
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 0.9502344167898356,
+        "diversity": 0.16973000764846802,
+        "tokens": 1273,
+        "passages": 4,
+        "chunks": 8
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 0.3333333333333333,
+        "f1": 0.5,
+        "f2": 0.7142857142857143,
+        "andcg": 1.0,
+        "diversity": 0.15416938066482544,
+        "tokens": 1014,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "open-gdpr-sme": {
+      "shape": "open_ended",
+      "split": "heldout",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 0.9132224589335864,
+        "diversity": 0.14577877521514893,
+        "tokens": 469,
+        "passages": 2,
+        "chunks": 3
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 0.9372109792971702,
+        "diversity": 0.12937098741531372,
+        "tokens": 828,
+        "passages": 4,
+        "chunks": 5
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 0.6666666666666666,
+        "f1": 0.8,
+        "f2": 0.9090909090909091,
+        "andcg": 0.9167014804248219,
+        "diversity": 0.12549972534179688,
+        "tokens": 899,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "open-printing": {
+      "shape": "open_ended",
+      "split": "train",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 0.6309297535714575,
+        "diversity": 0.24210041761398315,
+        "tokens": 614,
+        "passages": 2,
+        "chunks": 4
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 0.5,
+        "f1": 0.6666666666666666,
+        "f2": 0.8333333333333334,
+        "andcg": 0.6309297535714575,
+        "diversity": 0.24210041761398315,
+        "tokens": 614,
+        "passages": 2,
+        "chunks": 4
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 0.16666666666666666,
+        "f1": 0.2857142857142857,
+        "f2": 0.5,
+        "andcg": 1.0,
+        "diversity": 0.19662600755691528,
+        "tokens": 911,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "open-wb-climate": {
+      "shape": "open_ended",
+      "split": "train",
+      "routed": {
+        "coverage": 0.3333333333333333,
+        "precision": 0.5,
+        "f1": 0.4,
+        "f2": 0.3571428571428571,
+        "andcg": 0.2960819109658652,
+        "diversity": 0.08177542686462402,
+        "tokens": 603,
+        "passages": 2,
+        "chunks": 3
+      },
+      "single": {
+        "coverage": 0.3333333333333333,
+        "precision": 0.5,
+        "f1": 0.4,
+        "f2": 0.3571428571428571,
+        "andcg": 0.2960819109658652,
+        "diversity": 0.08177542686462402,
+        "tokens": 603,
+        "passages": 2,
+        "chunks": 3
+      },
+      "baseline": {
+        "coverage": 0.3333333333333333,
+        "precision": 0.16666666666666666,
+        "f1": 0.2222222222222222,
+        "f2": 0.27777777777777773,
+        "andcg": 0.42620876477116804,
+        "diversity": 0.12774091958999634,
+        "tokens": 1224,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "open-who-lessons": {
+      "shape": "open_ended",
+      "split": "train",
+      "routed": {
+        "coverage": 0.5,
+        "precision": 0.5,
+        "f1": 0.5,
+        "f2": 0.5,
+        "andcg": 0.38685280723454163,
+        "diversity": 0.12879717350006104,
+        "tokens": 359,
+        "passages": 2,
+        "chunks": 2
+      },
+      "single": {
+        "coverage": 0.5,
+        "precision": 0.5,
+        "f1": 0.5,
+        "f2": 0.5,
+        "andcg": 0.38685280723454163,
+        "diversity": 0.12879717350006104,
+        "tokens": 359,
+        "passages": 2,
+        "chunks": 2
+      },
+      "baseline": {
+        "coverage": 0.5,
+        "precision": 0.3333333333333333,
+        "f1": 0.4,
+        "f2": 0.45454545454545453,
+        "andcg": 0.4255599435104062,
+        "diversity": 0.14501076936721802,
+        "tokens": 1195,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "open-inflation": {
+      "shape": "open_ended",
+      "split": "train",
+      "routed": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 0.9071348777160253,
+        "diversity": 0.20190095901489258,
+        "tokens": 496,
+        "passages": 2,
+        "chunks": 4
+      },
+      "single": {
+        "coverage": 1.0,
+        "precision": 1.0,
+        "f1": 1.0,
+        "f2": 1.0,
+        "andcg": 0.9071348777160253,
+        "diversity": 0.20190095901489258,
+        "tokens": 496,
+        "passages": 2,
+        "chunks": 4
+      },
+      "baseline": {
+        "coverage": 1.0,
+        "precision": 0.3333333333333333,
+        "f1": 0.5,
+        "f2": 0.7142857142857143,
+        "andcg": 0.9071348777160253,
+        "diversity": 0.23024386167526245,
+        "tokens": 783,
+        "passages": 6,
+        "chunks": 6
+      }
+    },
+    "open-text-repr": {
+      "shape": "open_ended",
+      "split": "train",
+      "routed": {
+        "coverage": 0.5,
+        "precision": 1.0,
+        "f1": 0.6666666666666666,
+        "f2": 0.5555555555555556,
+        "andcg": 0.9425215160732471,
+        "diversity": 0.11146092414855957,
+        "tokens": 798,
+        "passages": 2,
+        "chunks": 4
+      },
+      "single": {
+        "coverage": 0.5,
+        "precision": 0.5,
+        "f1": 0.5,
+        "f2": 0.5,
+        "andcg": 0.9425215160732471,
+        "diversity": 0.15049225091934204,
+        "tokens": 1193,
+        "passages": 4,
+        "chunks": 7
+      },
+      "baseline": {
+        "coverage": 0.5,
+        "precision": 0.3333333333333333,
+        "f1": 0.4,
+        "f2": 0.45454545454545453,
+        "andcg": 0.867775410664136,
+        "diversity": 0.13330358266830444,
+        "tokens": 969,
+        "passages": 6,
+        "chunks": 6
+      }
+    }
+  },
+  "scores": "voyage"
+}

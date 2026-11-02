@@ -943,3 +943,22 @@ scenario, its pushbacks and a repeat, after the change.
 | `run_router.py`, 80 messages | 73/80 exact, 79/80 acceptable; 0 of 41 non-document messages sent to document search; ~960 tokens, 0.66 s per decision |
 | Unit tests | 48, no API calls, ~1 s |
 
+### 21.8 Passage selection (which retrieved passages the writer gets)
+
+`benchmark/run_selection.py --compare`: 67 answerable questions, 9 selection methods and 232 settings, chosen on 45
+training questions and scored on 22 held-out ones. Methods are ranked by F2 (coverage of the required facts counts
+double, then precision). "Today" is the app's selection: MMR, 6 passages.
+
+| Held-out (22 questions) | Coverage | Precision | Tokens to the writer |
+|---|---|---|---|
+| Today's selection, old local reranker scores | 0.879 | 0.364 | 1,051 |
+| **Today's selection, Voyage scores (current)** | **0.924** | **0.500** | 1,087 |
+| Best cheaper method (2–4 passages by confidence), Voyage | 0.894 | 0.636 | 672 (−38%) |
+| Different method per question type, Voyage | 0.894 | 0.636 | 456 (−58%) |
+
+Switching to Voyage already improved the selection (coverage +4.5 points, precision +14 points). Cheaper selections
+cut the writer's input by 40–58% but lose facts: on all 67 questions, the best one covers less than today on 4
+(`ccs-stack`, `sum-who`, `ma-gdpr-principles`, `ma-wb`, the last losing everything). No cheaper setting kept today's
+coverage. Decision: keep 6 passages with MMR; coverage comes first. (Choosing a method per question type would also
+need the router to classify the question's shape, which it doesn't.)
+
