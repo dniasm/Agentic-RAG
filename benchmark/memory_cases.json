@@ -1,0 +1,23 @@
+{
+  "_about": "Memory benchmark. Each case is a fresh user; `turns` are the user's messages in order. After the last turn, every `present` term must appear (as a whole word) in some saved value, no `absent` term may appear, and `empty` cases must save nothing. Run: python benchmark/run_memory.py",
+  "cases": [
+    {"id": "basic-identity", "turns": ["Hi, I'm Asmin and I live in Pokhara."], "present": ["Asmin", "Pokhara"]},
+    {"id": "relocation", "turns": ["Hi, I'm Asmin and I live in Pokhara.", "I moved to Kathmandu last month."], "present": ["Asmin", "Kathmandu"], "absent": ["Pokhara"]},
+    {"id": "hobbies-append", "turns": ["I love trekking.", "I also play futsal on weekends."], "present": ["trekking", "futsal"]},
+    {"id": "liked-vs-favourite", "turns": ["I also like coffee, but milk tea is my favourite drink."], "present": ["coffee", "milk tea"]},
+    {"id": "many-facts", "turns": ["I'm a computer science student at Tribhuvan University and I speak Nepali and English."], "present": ["Tribhuvan", "Nepali", "English", "student"]},
+    {"id": "forget-one", "turns": ["I like pizza and momo.", "Please forget that I like pizza."], "present": ["momo"], "absent": ["pizza"]},
+    {"id": "forget-all", "turns": ["My hobbies are chess and painting.", "Forget all my hobbies."], "absent": ["chess", "painting"]},
+    {"id": "collection-correction", "turns": ["I play futsal.", "I don't play futsal anymore, I play cricket now."], "present": ["cricket"], "absent": ["futsal"]},
+    {"id": "name-change", "turns": ["Call me Ash.", "Actually, call me Asmin instead."], "present": ["Asmin"], "absent": ["Ash"]},
+    {"id": "response-style", "turns": ["From now on, keep your answers short."], "present": ["short"]},
+    {"id": "assistant-name", "turns": ["I'll call you Nova."], "present": ["Nova"]},
+    {"id": "vegetarian", "turns": ["Remember that I'm vegetarian."], "present": ["vegetarian"]},
+    {"id": "dislike", "turns": ["I hate spicy food."], "present": ["spicy"]},
+    {"id": "no-facts-question", "turns": ["What is BM25?"], "empty": true},
+    {"id": "no-facts-thanks", "turns": ["Thanks, that was really helpful!"], "empty": true},
+    {"id": "no-facts-own-question", "turns": ["What's my favourite colour?"], "empty": true},
+    {"id": "no-facts-hypothetical", "turns": ["If I were a doctor, which field would I be best suited for?"], "empty": true},
+    {"id": "facts-then-question", "turns": ["I work as a data analyst.", "How do I calculate a moving average in pandas?"], "present": ["data analyst"]}
+  ]
+}

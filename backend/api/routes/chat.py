@@ -2,6 +2,9 @@ import json
 import logging
 import re
 import time
+import queue
+import threading
+from concurrent.futures import ThreadPoolExecutor
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -23,14 +26,19 @@ from backend.models.schemas import (
     ConversationOut,
     MessageOut,
 )
-from backend.tools.memory import extract_and_save_memories
+from backend.tools.memory import extract_and_save_memories, summarize_exchange
 
 log = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Chat"])
 
 EPISODE_LIMIT = 3          # past-conversation memories added to each request
-EPISODE_MAX_CHARS = 800    # characters kept from each
+EPISODE_MAX_CHARS = 800    # characters kept from each (summaries are shorter; older episodes may not be)
+
+# Memory work (fact extraction, episode summary) runs after the reply is sent, one job at a time, so it
+# adds no wait for the user and two quick messages can't update the same memory keys at once.
+_memory_worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix="memory")
+_STREAM_END = object()  # marks the end of an answer's event stream
 
 
 # ----------------------------------------------------------------
@@ -140,19 +148,7 @@ def _persist(
         meta=meta,
     )
 
-    # Preserve the answer even if key-value memory extraction fails.
-    try:
-        extract_and_save_memories(
-            user_id=user_id,
-            message=user_message,
-            history=history,
-            callbacks=[tracker],
-        )
-    except Exception:
-        log.exception("Key-value memory extraction failed")
-
-    record_usage(
-        tracker,
+    usage_context = dict(
         conversation_id=conv["id"],
         tool=state.get("tool"),
         intent=state.get("intent"),
@@ -166,33 +162,8 @@ def _persist(
         memories=memory_count,
         latency_ms=latency_ms,
     )
-
-    # Save the exchange as a semantic memory episode.
-    answer = state.get("answer", "").strip()
-    tool = state.get("tool", "direct")
-    episode_query = state.get("standalone_query", user_message).strip()
-
-    if (
-        answer
-        and len(episode_query) >= 20
-        and tool not in ("greeting", "no_results")
-        and state.get("intent") != "error"
-    ):
-        try:
-            episode_text = (
-                f"User asked: {episode_query[:1500]}\n"
-                f"Assistant answered: {answer[:2500]}"
-            )
-
-            save_memory(
-                user_id,
-                episode_text,
-                kind="episodic",
-                conversation_id=conv["id"],
-            )
-
-        except Exception:
-            log.exception("Semantic memory persistence failed")
+    _memory_worker.submit(_remember, user_id, conv["id"], user_message, history, dict(state), tracker,
+                          usage_context)
 
     return {
         "conversation_id": conv["id"],
@@ -201,6 +172,33 @@ def _persist(
         "tool": state.get("tool", "direct"),
         **meta,
     }
+
+
+def _remember(user_id: str, conv_id: str, user_message: str, history: list[dict], state: dict,
+              tracker: UsageTracker, usage_context: dict) -> None:
+    """Background: update the user's facts, save the exchange as an episode, then log the request's tokens
+    (including the memory model's). Failures are logged; the answer has already been saved and sent."""
+    try:
+        extract_and_save_memories(user_id=user_id, message=user_message, history=history, callbacks=[tracker])
+    except Exception:
+        log.exception("Key-value memory extraction failed")
+
+    answer = (state.get("answer") or "").strip()
+    question = (state.get("standalone_query") or user_message).strip()
+    if (
+        answer
+        and len(question) >= 20
+        and state.get("tool") not in ("greeting", "no_results")
+        and state.get("intent") != "error"
+    ):
+        try:
+            summary = summarize_exchange(question, answer, callbacks=[tracker])
+            episode = summary or f"User asked: {question[:500]}\nAssistant answered: {answer[:800]}"
+            save_memory(user_id, episode, kind="episodic", conversation_id=conv_id)
+        except Exception:
+            log.exception("Semantic memory persistence failed")
+
+    record_usage(tracker, **usage_context)
 
 
 def _error_state(e: Exception) -> dict:
@@ -309,17 +307,13 @@ def chat_stream(req: ChatRequest, user: dict = Depends(get_current_user)):
     def sse(event: str, data: dict) -> str:
         return f"event: {event}\ndata: {json.dumps(data, default=str)}\n\n"
 
-    def events():
-        yield sse(
-            "meta",
-            {
-                "conversation_id": conv["id"],
-                "title": conv["title"],
-            },
-        )
+    # The agent runs in its own thread and always finishes and saves its answer. The response only relays its
+    # events, so a client that disconnects (a page reload, a closed tab) loses the live view, not the answer:
+    # it is in the conversation when the chat is opened again.
+    events_q: queue.Queue = queue.Queue()
 
+    def produce():
         final = None
-
         try:
             for kind, payload in stream_agent(
                 req.message,
@@ -332,11 +326,11 @@ def chat_stream(req: ChatRequest, user: dict = Depends(get_current_user)):
                 if kind == "final":
                     final = payload
                 else:
-                    yield sse(kind, payload)
+                    events_q.put((kind, payload))
 
         except Exception as e:
             final = _error_state(e)
-            yield sse("step", final["trace"][0])
+            events_q.put(("step", final["trace"][0]))
 
         if final is None:
             final = {
@@ -353,19 +347,39 @@ def chat_stream(req: ChatRequest, user: dict = Depends(get_current_user)):
                 }],
             }
 
+        try:
+            events_q.put((
+                "final",
+                _persist(
+                    conv,
+                    final,
+                    started,
+                    user["id"],
+                    req.message,
+                    history,
+                    tracker,
+                    len(memories),
+                ),
+            ))
+        finally:
+            events_q.put(_STREAM_END)
+
+    threading.Thread(target=produce, name=f"chat-{conv['id'][:8]}", daemon=True).start()
+
+    def events():
         yield sse(
-            "final",
-            _persist(
-                conv,
-                final,
-                started,
-                user["id"],
-                req.message,
-                history,
-                tracker,
-                len(memories),
-            ),
+            "meta",
+            {
+                "conversation_id": conv["id"],
+                "title": conv["title"],
+            },
         )
+        while True:
+            item = events_q.get()
+            if item is _STREAM_END:
+                return
+            kind, payload = item
+            yield sse(kind, payload)
 
     return StreamingResponse(
         events(),

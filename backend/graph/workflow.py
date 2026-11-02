@@ -1,10 +1,12 @@
 """Agentic RAG workflow graph.
 
-Source selection respects the user's intent (order defined in nodes._source_order):
+The router picks the first source; when it fails, fallback_node takes the next untried source in the
+order nodes._source_order defines for the user's preference:
 - documents: RAG -> model knowledge -> web
 - model knowledge: model knowledge -> RAG -> web
 - web: web -> RAG -> model knowledge
-- auto: RAG -> model knowledge -> web
+- auto: starts with model knowledge (router_node), then RAG -> web. The knowledge gate refuses
+  questions about the user's own material, so those still reach the documents.
 RAG is skipped when the user has no documents.
 
 Every search retry is bounded. Failed sources are not retried after fallback,

@@ -140,6 +140,28 @@ class WebQueries(unittest.TestCase):
         self.assertFalse(web_search._TODAY_TERMS.search("news about the Nepal election"))
 
 
+class KnowledgeGateRules(unittest.TestCase):
+    def _gate(self, kind, confidence, time_sensitive=False, user_material=False):
+        from backend.tools.direct_answer import KnowledgeGate
+        return KnowledgeGate(question_kind=kind, reason="", time_sensitive=time_sensitive,
+                             references_user_material=user_material, confidence=confidence)
+
+    def test_open_questions_are_answered_at_any_confidence(self):
+        from backend.tools.direct_answer import _gate_passes
+        for confidence in ("high", "medium", "low"):
+            self.assertTrue(_gate_passes(self._gate("open", confidence)), confidence)
+
+    def test_factual_questions_need_high_confidence(self):
+        from backend.tools.direct_answer import _gate_passes
+        self.assertTrue(_gate_passes(self._gate("factual", "high")))
+        self.assertFalse(_gate_passes(self._gate("factual", "medium")))
+
+    def test_current_information_and_user_files_always_go_elsewhere(self):
+        from backend.tools.direct_answer import _gate_passes
+        self.assertFalse(_gate_passes(self._gate("open", "high", time_sensitive=True)))
+        self.assertFalse(_gate_passes(self._gate("open", "high", user_material=True)))
+
+
 class MemoryPrecheck(unittest.TestCase):
     def test_skips_messages_with_nothing_personal(self):
         for message in ("thanks, that's helpful!", "what is BM25?", "explain the GIL"):
@@ -147,7 +169,7 @@ class MemoryPrecheck(unittest.TestCase):
 
     def test_runs_on_personal_statements(self):
         for message in ("milk tea is my favourite", "I play futsal", "remember that I'm vegetarian",
-                        "call me Ash"):
+                        "call me Ash", "From now on, keep your answers short.", "Keep your replies brief"):
             self.assertTrue(memory._may_contain_memory(message), message)
 
 

@@ -14,3 +14,9 @@ backend/documents/*/
 # frontend
 frontend/node_modules/
 frontend/dist/
+
+# stray empty database files (the app uses backend/data/app.db)
+/database.db
+
+# design inspection screenshots and scripts (tasteskill working folder)
+.taste-skill/

@@ -1,0 +1,244 @@
+{
+  "timestamp": "2026-11-01T21:35:15",
+  "model": "qwen/qwen3.8-27b",
+  "summary": {
+    "cases_passed": "18/18",
+    "facts_saved": "20/20",
+    "stale_values_left": 0,
+    "false_saves": 0,
+    "memory_model_tokens": 20998
+  },
+  "rows": [
+    {
+      "id": "basic-identity",
+      "passed": true,
+      "memories": {
+        "location": [
+          "Pokhara"
+        ],
+        "preferred_name": [
+          "Asmin"
+        ]
+      },
+      "missing": [],
+      "unwanted": [],
+      "false_save": false,
+      "tokens": 927
+    },
+    {
+      "id": "relocation",
+      "passed": true,
+      "memories": {
+        "location": [
+          "Kathmandu"
+        ],
+        "preferred_name": [
+          "Asmin"
+        ]
+      },
+      "missing": [],
+      "unwanted": [],
+      "false_save": false,
+      "tokens": 1876
+    },
+    {
+      "id": "hobbies-append",
+      "passed": true,
+      "memories": {
+        "hobbies": [
+          "trekking",
+          "futsal"
+        ]
+      },
+      "missing": [],
+      "unwanted": [],
+      "false_save": false,
+      "tokens": 1810
+    },
+    {
+      "id": "liked-vs-favourite",
+      "passed": true,
+      "memories": {
+        "favorite_drink": [
+          "milk tea"
+        ],
+        "liked_drinks": [
+          "coffee"
+        ]
+      },
+      "missing": [],
+      "unwanted": [],
+      "false_save": false,
+      "tokens": 928
+    },
+    {
+      "id": "many-facts",
+      "passed": true,
+      "memories": {
+        "languages": [
+          "Nepali",
+          "English"
+        ],
+        "university": [
+          "Tribhuvan University"
+        ],
+        "occupation": [
+          "computer science student"
+        ]
+      },
+      "missing": [],
+      "unwanted": [],
+      "false_save": false,
+      "tokens": 973
+    },
+    {
+      "id": "forget-one",
+      "passed": true,
+      "memories": {
+        "liked_foods": [
+          "momo"
+        ]
+      },
+      "missing": [],
+      "unwanted": [],
+      "false_save": false,
+      "tokens": 1837
+    },
+    {
+      "id": "forget-all",
+      "passed": true,
+      "memories": {},
+      "missing": [],
+      "unwanted": [],
+      "false_save": false,
+      "tokens": 1830
+    },
+    {
+      "id": "collection-correction",
+      "passed": true,
+      "memories": {
+        "hobbies": [
+          "cricket"
+        ]
+      },
+      "missing": [],
+      "unwanted": [],
+      "false_save": false,
+      "tokens": 1835
+    },
+    {
+      "id": "name-change",
+      "passed": true,
+      "memories": {
+        "preferred_name": [
+          "Asmin"
+        ]
+      },
+      "missing": [],
+      "unwanted": [],
+      "false_save": false,
+      "tokens": 1825
+    },
+    {
+      "id": "response-style",
+      "passed": true,
+      "memories": {
+        "response_style": [
+          "short answers"
+        ]
+      },
+      "missing": [],
+      "unwanted": [],
+      "false_save": false,
+      "tokens": 902
+    },
+    {
+      "id": "assistant-name",
+      "passed": true,
+      "memories": {
+        "assistant_name": [
+          "Nova"
+        ]
+      },
+      "missing": [],
+      "unwanted": [],
+      "false_save": false,
+      "tokens": 898
+    },
+    {
+      "id": "vegetarian",
+      "passed": true,
+      "memories": {
+        "diet": [
+          "vegetarian"
+        ]
+      },
+      "missing": [],
+      "unwanted": [],
+      "false_save": false,
+      "tokens": 898
+    },
+    {
+      "id": "dislike",
+      "passed": true,
+      "memories": {
+        "disliked_foods": [
+          "spicy food"
+        ]
+      },
+      "missing": [],
+      "unwanted": [],
+      "false_save": false,
+      "tokens": 901
+    },
+    {
+      "id": "no-facts-question",
+      "passed": true,
+      "memories": {},
+      "missing": [],
+      "unwanted": [],
+      "false_save": false,
+      "tokens": 0
+    },
+    {
+      "id": "no-facts-thanks",
+      "passed": true,
+      "memories": {},
+      "missing": [],
+      "unwanted": [],
+      "false_save": false,
+      "tokens": 0
+    },
+    {
+      "id": "no-facts-own-question",
+      "passed": true,
+      "memories": {},
+      "missing": [],
+      "unwanted": [],
+      "false_save": false,
+      "tokens": 878
+    },
+    {
+      "id": "no-facts-hypothetical",
+      "passed": true,
+      "memories": {},
+      "missing": [],
+      "unwanted": [],
+      "false_save": false,
+      "tokens": 887
+    },
+    {
+      "id": "facts-then-question",
+      "passed": true,
+      "memories": {
+        "occupation": [
+          "data analyst"
+        ]
+      },
+      "missing": [],
+      "unwanted": [],
+      "false_save": false,
+      "tokens": 1793
+    }
+  ]
+}

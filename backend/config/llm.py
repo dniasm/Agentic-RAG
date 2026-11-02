@@ -16,11 +16,11 @@ log = logging.getLogger(__name__)
 
 
 @lru_cache
-def get_llm() -> ChatGroq:
-    """Stronger model used to write user-facing answers."""
+def get_llm(temperature: float | None = None) -> ChatGroq:
+    """Stronger model used to write user-facing answers (LLM_TEMPERATURE unless given)."""
     return ChatGroq(
         model=settings.llm_model,
-        temperature=settings.llm_temperature,
+        temperature=settings.llm_temperature if temperature is None else temperature,
         api_key=settings.groq_api_key,
         max_retries=2,
     )
@@ -74,12 +74,12 @@ def get_judge_llm() -> ChatGroq:
 
 
 @lru_cache
-def get_backup_writer() -> ChatGroq:
+def get_backup_writer(temperature: float | None = None) -> ChatGroq:
     """The small model, set up for writing answers, used when the large model's quota is exhausted.
     Each Groq model has its own rate limits, so the small model usually still has capacity."""
     return ChatGroq(
         model=settings.fast_llm_model,
-        temperature=settings.llm_temperature,
+        temperature=settings.llm_temperature if temperature is None else temperature,
         api_key=settings.groq_api_key,
         max_retries=2,
     )
@@ -90,15 +90,15 @@ def get_backup_writer() -> ChatGroq:
 _backup_used: ContextVar[bool] = ContextVar("backup_used", default=False)
 
 
-def invoke_answer(messages) -> str:
+def invoke_answer(messages, temperature: float | None = None) -> str:
     """Write a user-facing answer with the large model, falling back to the small model if the
     large model's rate limit (per-minute or daily) is exhausted."""
     try:
-        return get_llm().invoke(messages).content
+        return get_llm(temperature).invoke(messages).content
     except groq.RateLimitError as e:
         log.warning("Large model rate-limited, writing this answer with the small model: %s", str(e)[:200])
         _backup_used.set(True)
-        return get_backup_writer().invoke(messages).content
+        return get_backup_writer(temperature).invoke(messages).content
 
 
 def consume_backup_flag() -> bool:

@@ -33,6 +33,8 @@ class Settings(BaseSettings):
     open_router_model: str = "nvidia/nemotron-3-ultra-550b-a55b:free"
     open_router_base_url: str = "https://openrouter.ai/api/v1"
     llm_temperature: float = 0.0
+    # Small talk only: a warmer, less repetitive voice. Factual answers keep LLM_TEMPERATURE.
+    chat_temperature: float = 0.8
 
     # --- Embeddings (Gemini) ---
     embedding_model: str = "models/gemini-embedding-001"
@@ -78,9 +80,12 @@ class Settings(BaseSettings):
     mmr_lambda: float = 0.7             # 1.0 = pure relevance, 0.0 = pure diversity
     # Calibrated on the benchmark (2026-10-02): out-of-scope questions scored <= 0.0003, answerable ones
     # >= 0.052, and in every answerable case the correct passage was ranked 1st-4th even at low scores.
+    # These are specific to the MiniLM model's score scale: recalibrate them if RERANKER_MODEL changes.
     relevance_high: float = 0.05        # best relevance >= this: the documents answer it
     relevance_low: float = 0.01         # best relevance < this: the documents don't cover it
     weak_match_retries: int = 1         # extra reworded searches allowed in the "mid" zone
+    # Used only when the reranker is unavailable (disabled, or failed to load), together with
+    # RAG_SKIP_SCORE below: then the cosine score decides relevance and an LLM grades the passages.
     min_relevance_score: float = 0.45   # cosine floor before LLM grading
     # Documents are searched ONCE per question. In testing, re-searching with reworded queries never found
     # anything the first search missed (embeddings already match meaning, so unrelated content stays
@@ -88,6 +93,7 @@ class Settings(BaseSettings):
     max_retrieval_attempts: int = 1
     max_web_attempts: int = 2           # web search rounds before falling back to model knowledge
 
+    # Reranker unavailable only (see MIN_RELEVANCE_SCORE).
     # If the best document match scores below this, the documents don't cover the question:
     # skip grading/retries and go straight to the next source. Measured on sample data:
     # answerable questions scored 0.58-0.76, unrelated ones 0.47-0.59.

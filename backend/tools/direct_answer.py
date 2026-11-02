@@ -6,12 +6,18 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
 from backend.config.llm import invoke_answer, structured
+from backend.config.settings import settings
 from backend.tools import FORMAT_RULES, clean_answer, history_to_messages, today
 
 log = logging.getLogger(__name__)
 
 
 class KnowledgeGate(BaseModel):
+    question_kind: Literal["factual", "open"] = Field(
+        description="factual: has a correct answer that a source could confirm or refute (facts, numbers, "
+                    "definitions, how things work). open: has no single correct answer: opinions, philosophy, "
+                    "ethics, values, preferences, hypotheticals, 'what do you think' or 'what would you do'."
+    )
     reason: str = Field(
         description="One short sentence: what kind of knowledge this question needs and whether "
                     "you reliably have it."
@@ -25,13 +31,20 @@ class KnowledgeGate(BaseModel):
                     "('my report', 'the pdf', 'chapter 3 of the file')."
     )
     confidence: Literal["high", "medium", "low"] = Field(
-        description="high only if you are sure the answer is correct and well established. "
+        description="For a factual question: high only if you are sure the answer is correct and well "
+                    "established. For an open question: whether you can give a well-reasoned answer. "
                     "When unsure between two levels, choose the lower one."
     )
 
 
 GATE_PROMPT = """You decide whether a question can be answered reliably from your own training
 knowledge alone. You do NOT answer the question. Today is {today}.
+
+First decide what kind of question it is:
+- open: no single correct answer exists. Opinions, philosophy, ethics, values, meaning, preferences,
+  hypotheticals, "what do you think", "what would you do". These are answered by reasoning, not looked up:
+  documents and web searches cannot settle them, so they belong here.
+- factual: a correct answer exists and a source could confirm or refute it.
 
 Fine to answer from training knowledge:
 - math and calculations, definitions, well-established concepts, code, how-tos,
@@ -55,11 +68,13 @@ Question: {query}"""
 
 
 def _gate_passes(gate: KnowledgeGate) -> bool:
-    return (
-        gate.confidence == "high"
-        and not gate.time_sensitive
-        and not gate.references_user_material
-    )
+    """Open questions (no single correct answer) are answered by reasoning, so they pass unless they need
+    current information or the user's files. Only factual questions must clear the high-confidence bar:
+    measured on 2026-11-01, the old rule refused 15 of 16 opinion questions it was sent, which then went to
+    the documents and the web."""
+    if gate.time_sensitive or gate.references_user_material:
+        return False
+    return gate.question_kind == "open" or gate.confidence == "high"
 
 
 def _run_gate(
@@ -239,7 +254,8 @@ def converse(
 ) -> str:
     """Small talk, written by the same model and persona as every other answer."""
     note = SMALL_TALK.format(username=username, doc_count=doc_count)
-    return clean_answer(invoke_answer(_messages(query, history, memories or [], note)))
+    return clean_answer(invoke_answer(_messages(query, history, memories or [], note),
+                                      temperature=settings.chat_temperature))
 
 
 def _messages(

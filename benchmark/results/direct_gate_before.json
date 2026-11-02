@@ -1,0 +1,273 @@
+{
+  "timestamp": "2026-11-01T22:19:26",
+  "summary": {
+    "answered_as_expected": "18/18",
+    "refused_as_expected": "4/4",
+    "gate_calls": 4,
+    "tokens": 23796
+  },
+  "rows": [
+    {
+      "id": "op-freewill",
+      "message": "is free will an illusion?",
+      "expect": "answer",
+      "outcome": "answer",
+      "ok": true,
+      "intent": "direct",
+      "confidence_required": false,
+      "gate": null,
+      "tokens": 950
+    },
+    {
+      "id": "op-pineapple",
+      "message": "what do you reckon about pineapple on pizza",
+      "expect": "answer",
+      "outcome": "answer",
+      "ok": true,
+      "intent": "greeting",
+      "confidence_required": false,
+      "gate": null,
+      "tokens": 958
+    },
+    {
+      "id": "op-ai-jobs",
+      "message": "do you think AI will replace programmers?",
+      "expect": "answer",
+      "outcome": "answer",
+      "ok": true,
+      "intent": "direct",
+      "confidence_required": false,
+      "gate": null,
+      "tokens": 945
+    },
+    {
+      "id": "op-meaning",
+      "message": "what's the meaning of life tbh",
+      "expect": "answer",
+      "outcome": "answer",
+      "ok": true,
+      "intent": "direct",
+      "confidence_required": false,
+      "gate": null,
+      "tokens": 918
+    },
+    {
+      "id": "op-fly",
+      "message": "would you rather be able to fly or be invisible?",
+      "expect": "answer",
+      "outcome": "answer",
+      "ok": true,
+      "intent": "greeting",
+      "confidence_required": false,
+      "gate": null,
+      "tokens": 959
+    },
+    {
+      "id": "op-meat",
+      "message": "is it ethical to eat meat?",
+      "expect": "answer",
+      "outcome": "answer",
+      "ok": true,
+      "intent": "direct",
+      "confidence_required": false,
+      "gate": null,
+      "tokens": 959
+    },
+    {
+      "id": "op-island",
+      "message": "if you were stranded on an island what 3 things would you bring",
+      "expect": "answer",
+      "outcome": "answer",
+      "ok": true,
+      "intent": "greeting",
+      "confidence_required": false,
+      "gate": null,
+      "tokens": 921
+    },
+    {
+      "id": "op-remote",
+      "message": "what's your take on remote work vs going to the office",
+      "expect": "answer",
+      "outcome": "answer",
+      "ok": true,
+      "intent": "direct",
+      "confidence_required": false,
+      "gate": null,
+      "tokens": 962
+    },
+    {
+      "id": "op-money",
+      "message": "can money actually buy happiness?",
+      "expect": "answer",
+      "outcome": "answer",
+      "ok": true,
+      "intent": "direct",
+      "confidence_required": false,
+      "gate": null,
+      "tokens": 955
+    },
+    {
+      "id": "op-math",
+      "message": "Is math invented or discovered?",
+      "expect": "answer",
+      "outcome": "answer",
+      "ok": true,
+      "intent": "direct",
+      "confidence_required": false,
+      "gate": null,
+      "tokens": 952
+    },
+    {
+      "id": "op-ventilator",
+      "message": "imagine you're a doctor with one ventilator and two patients, who gets it?",
+      "expect": "answer",
+      "outcome": "answer",
+      "ok": true,
+      "intent": "direct",
+      "confidence_required": false,
+      "gate": null,
+      "tokens": 985
+    },
+    {
+      "id": "op-todo",
+      "message": "be honest, is building yet another todo app a dumb portfolio idea?",
+      "expect": "answer",
+      "outcome": "answer",
+      "ok": true,
+      "intent": "direct",
+      "confidence_required": false,
+      "gate": null,
+      "tokens": 961
+    },
+    {
+      "id": "ph-human",
+      "message": "what do you think makes humans human?",
+      "expect": "answer",
+      "outcome": "answer",
+      "ok": true,
+      "intent": "direct",
+      "confidence_required": false,
+      "gate": null,
+      "tokens": 1043
+    },
+    {
+      "id": "ph-consciousness",
+      "message": "Why do you think consciousness exists at all?",
+      "expect": "answer",
+      "outcome": "answer",
+      "ok": true,
+      "intent": "direct",
+      "confidence_required": false,
+      "gate": null,
+      "tokens": 985
+    },
+    {
+      "id": "ph-good-life",
+      "message": "What makes a life a good life?",
+      "expect": "answer",
+      "outcome": "answer",
+      "ok": true,
+      "intent": "direct",
+      "confidence_required": false,
+      "gate": null,
+      "tokens": 930
+    },
+    {
+      "id": "ph-ai-feel",
+      "message": "Can an AI ever truly understand anything, in your view?",
+      "expect": "answer",
+      "outcome": "answer",
+      "ok": true,
+      "intent": "direct",
+      "confidence_required": false,
+      "gate": null,
+      "tokens": 1031
+    },
+    {
+      "id": "fact-austen",
+      "message": "Who wrote Pride and Prejudice?",
+      "expect": "answer",
+      "outcome": "answer",
+      "ok": true,
+      "intent": "direct",
+      "confidence_required": true,
+      "gate": {
+        "reason": "The question asks for a well-established literary fact.",
+        "time_sensitive": false,
+        "references_user_material": false,
+        "confidence": "high"
+      },
+      "tokens": 1588
+    },
+    {
+      "id": "fact-hooks",
+      "message": "How do React hooks work?",
+      "expect": "answer",
+      "outcome": "answer",
+      "ok": true,
+      "intent": "direct",
+      "confidence_required": true,
+      "gate": {
+        "reason": "The question asks for an explanation of a well-documented programming concept (React hooks).",
+        "time_sensitive": false,
+        "references_user_material": false,
+        "confidence": "high"
+      },
+      "tokens": 1584
+    },
+    {
+      "id": "ctl-invented",
+      "message": "Summarize the 2019 paper 'Sparse Graph Tricks for Tiny Transformers'",
+      "expect": "refuse",
+      "outcome": "refuse",
+      "ok": true,
+      "intent": "direct",
+      "confidence_required": true,
+      "gate": {
+        "reason": "The request asks for a summary of a specific 2019 research paper that is not widely known; I may not have accurate details from training.",
+        "time_sensitive": false,
+        "references_user_material": false,
+        "confidence": "low"
+      },
+      "tokens": 1660
+    },
+    {
+      "id": "ctl-population",
+      "message": "What is the exact population of Bhaktapur?",
+      "expect": "refuse",
+      "outcome": "refuse",
+      "ok": true,
+      "intent": "direct",
+      "confidence_required": true,
+      "gate": {
+        "reason": "Requires specific, possibly recent demographic data (population figure) which may have changed and is not certain from training.",
+        "time_sensitive": true,
+        "references_user_material": false,
+        "confidence": "low"
+      },
+      "tokens": 1635
+    },
+    {
+      "id": "ctl-recent",
+      "message": "Who won the most recent Nepal general election?",
+      "expect": "refuse",
+      "outcome": "refuse",
+      "ok": true,
+      "intent": "web_search",
+      "confidence_required": true,
+      "gate": null,
+      "tokens": 969
+    },
+    {
+      "id": "ctl-myfile",
+      "message": "What does chapter 3 of my report conclude?",
+      "expect": "refuse",
+      "outcome": "refuse",
+      "ok": true,
+      "intent": "rag",
+      "confidence_required": true,
+      "gate": null,
+      "tokens": 946
+    }
+  ]
+}
