@@ -1,6 +1,7 @@
 # Agentic RAG
 
-> 📘 Full technical documentation: [`docs/DOCUMENTATION.md`](docs/DOCUMENTATION.md)
+> 📘 Full technical documentation: [`docs/DOCUMENTATION.md`](docs/DOCUMENTATION.md) (architecture, agent workflow, memory, API, configuration).
+> `docs/CODE_REFERENCE.md` and `docs/GRAPH_EXPLAINED.md` explain the first version line by line.
 
 A full-stack agentic RAG app. Users log in, upload documents into a per-user vector store, and chat
 with an agent that decides for each message whether to **chat**, **answer from their documents (RAG)**,
@@ -12,34 +13,43 @@ checks its own answers before replying.
 | Frontend | React 18 + Vite + Tailwind, `react-markdown` |
 | API | FastAPI, SSE streaming, JWT auth (bcrypt), SQLite |
 | Agent | LangGraph state machine |
-| LLMs | Groq: `openai/gpt-oss-120b` (answers), `openai/gpt-oss-20b` (router / grader / rewriter / evaluator) |
-| Embeddings | Gemini `gemini-embedding-001` (768-d) |
+| LLMs (Groq) | `openai/gpt-oss-120b`: every reply (answers and small talk), the knowledge gate, answer evaluation, decision reviews. `openai/gpt-oss-20b`: routing and query rewrites. `qwen/qwen3.8-27b`: memory extraction and conversation summaries (own rate limit, no hidden reasoning) |
+| Embeddings | Gemini `gemini-embedding-001` (768-d) for documents; Voyage `voyage-4-lite` for conversation memory |
+| Reranking | Local cross-encoder `ms-marco-MiniLM-L-6-v2` |
 | Vector DB | Qdrant (embedded on-disk by default, or a server via `QDRANT_URL`) |
-| Web search | Tavily if `TAVILY_API_KEY` is set, else DuckDuckGo + page fetching |
+| Web search | Tavily if `TAVILY_API_KEY` is set, then DuckDuckGo, then Wikipedia |
 
 ## Agent workflow
 
 ```
-START → router ─┬─ greeting ─────────────────────────────────────────────► END
-                ├─ direct ──► evaluate ──(insufficient / beyond cutoff)──► web_search
-                ├─ rag ──(vague?)──► rewrite ──► retrieve ──► grade ──► generate ──► evaluate ──► finalize ► END
-                │                      ▲                        │           │           │
-                │                      └──── no relevant chunks ┘           │           │
-                │                      └──── docs don't answer ─────────────┘           │
-                │                      └──── answer insufficient ───────────────────────┘
-                │                   (after MAX_RETRIEVAL_ATTEMPTS → "No matches found")
-                └─ web_search ──► generate_web ──► evaluate ──(insufficient)──► rewrite ──► web_search …
+START → router ─┬─ greeting (small talk) ──────────────────────────────────────────────► END
+                ├─ direct ──(knowledge gate refuses)──────────────► fallback
+                │     └──(gate passes)───────────────────────────► finalize ► END
+                ├─ rag ──(vague?)► rewrite ► retrieve ► grade ──(high)► generate_rag ► evaluate ► finalize ► END
+                │                     ▲                    │(mid: one reworded retry)       │(insufficient)
+                │                     └────────────────────┘                                ▼
+                │                              (low / failed) ──────────────────────────► fallback
+                └─ web_search ► generate_web ► evaluate ──(insufficient)► rewrite ► web_search …
+   fallback ──► next untried source for the user's preference ──► … ──(all tried)► best answer or "no results"
 ```
 
-- **Router** classifies intent, flags vague queries, and rewrites follow-ups into standalone questions using chat history.
-- **Rewrite / expand**: fixes vague queries *before* retrieval; on retries it uses evaluator feedback, broadens with
-  step-back queries, and splits the question into sub-queries. It never repeats a query it already tried.
-- **Retrieve**: multi-query dense search in Qdrant, filtered to the current user, merged and deduplicated.
-- **Grade**: an LLM judge drops irrelevant chunks. If nothing relevant is left, the agent rewrites and retries.
-- **Generate**: answers only from the graded chunks, with `[n]` citations. It signals when the chunks don't contain the answer.
-- **Evaluate**: an LLM-as-judge checks that the answer is sufficient and grounded. If not, the agent rewrites and retries
-  within budget, then returns the best-scoring candidate it produced.
-- Each node emits a trace step. The UI streams these live and shows them under each answer ("Agent steps").
+- **Router** (20B) classifies small talk vs. information request, picks the preferred source (documents, web,
+  model knowledge, or auto), flags vague queries, and rewrites follow-ups into standalone questions.
+  The 120B reviews the decision only when the 20B isn't confident.
+- **Source order** follows the preference: documents → RAG, model knowledge, web; web → web, RAG, model knowledge;
+  auto starts with model knowledge, and the knowledge gate sends questions about the user's own files to RAG.
+- **Direct answers** pass a knowledge gate first (120B): time-sensitive, uncertain, or file-specific questions are
+  refused and move on to the next source.
+- **Retrieve**: hybrid search (dense + BM25, fused with Reciprocal Rank Fusion), filtered to the current user.
+- **Grade**: a local cross-encoder scores the candidates. High → answer, mid → one reworded search, low → next source.
+  MMR picks diverse passages.
+- **Generate**: answers only from the selected passages, with `[n]` citations.
+- **Evaluate** (120B): checks the answer is sufficient and grounded. If the check itself can't run, the answer is
+  kept and marked unverified.
+- **Memory**: facts about the user (name, preferences, …) are stored as key-value rows in SQLite; past exchanges
+  are stored as short summaries in a Voyage-embedded Qdrant collection and recalled when relevant.
+- **Tokens**: every model call is counted per model and step; each request is logged to `backend/data/token_usage.jsonl`.
+- Each node emits a trace step. The UI streams these live and shows them under each answer (**Steps**, next to **Sources**).
 
 ## Running it
 
@@ -50,6 +60,8 @@ GROQ_API_KEY=...
 GEMINI_API_KEY=...
 # optional
 TAVILY_API_KEY=...
+VOYAGE_API_KEY=...         # conversation memory
+OPEN_ROUTER_API_KEY=...    # only for the Nemotron experiments
 JWT_SECRET=...            # auto-generated into backend/data/.jwt_secret if omitted
 QDRANT_URL=http://localhost:6333
 ```
@@ -70,17 +82,28 @@ npm install
 npm run dev          # http://localhost:5173
 ```
 
+Design preview (no backend or login needed): with `npm run dev` running, open
+`http://localhost:5173/preview.html#/chat/c1` (also `#/chat`, `#/documents`, `#/overview`; add `?state=empty`
+for a new account or `?state=offline` for the login screen with the server down). It renders the real app with
+sample data from `frontend/src/dev/fixtures.js` and is not part of the production build.
+
 Create an account on the login screen, upload files on **Documents**, then chat.
 
 Smoke test (backend must be running): `python test_rag_pipeline.py [path/to/file.pdf]`
+
+Unit tests (no API calls): `python -m unittest discover backend/tests -p "test_*.py"` (routing, memory, streaming)
+
+Model experiments (they call the APIs) live in `scripts/experiments/`; run them from the project root,
+e.g. `python -m scripts.experiments.test_gate`.
 
 > The embedded Qdrant store allows only one process at a time. `--reload` is fine, but don't run
 > several workers against the same `backend/vector_db/qdrant_data`. Set `QDRANT_URL` to use a Qdrant server instead.
 
 ## Benchmark
 
-Scripts in `benchmark/` measure retrieval, passage selection, end-to-end answers and performance
-(see each script's docstring). Run them with the backend **stopped**.
+Scripts in `benchmark/` measure retrieval, passage selection, end-to-end answers and performance, plus routing
+(`run_router.py`), the knowledge gate (`run_direct_gate.py`) and memory (`run_memory.py`); see each script's docstring.
+Run the retrieval ones with the backend **stopped**; the routing, gate and memory ones don't use Qdrant.
 
 PDFs are git-ignored (third-party documents), so the benchmark's PDF inputs are not in the repo.
 Place these files in the project root before running it:
@@ -107,7 +130,7 @@ and `claude_wiki.docx` are committed. `python benchmark/build_wiki_corpus.py` re
 | POST | `/api/chat` | full JSON response (answer, tool, sources, trace, evaluation) |
 | POST | `/api/chat/stream` | SSE stream: `meta` → `step`… → `final` |
 | GET / DELETE | `/api/conversations`, `/api/conversations/{id}/messages`, `/api/conversations/{id}` | |
-| GET | `/api/stats` | dashboard metrics |
+| GET | `/api/stats` | Overview page metrics |
 
-Tuning knobs (chunk size, `RETRIEVAL_K`, `MIN_RELEVANCE_SCORE`, `MAX_RETRIEVAL_ATTEMPTS`, models, …) live in
+Tuning knobs (chunk size, `RETRIEVAL_K`, `RELEVANCE_HIGH` / `RELEVANCE_LOW`, `MAX_RETRIEVAL_ATTEMPTS`, models, …) live in
 `backend/config/settings.py`. Each one can be overridden from `.env`.

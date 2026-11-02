@@ -1,103 +1,128 @@
 # Agentic RAG — Project Documentation
 
-> Full technical documentation. For a quick start, see [`README.md`](../README.md).
+> Full technical documentation, updated 2 November 2026. For a quick start, see [`README.md`](../README.md).
 
 ## Table of contents
 
 1. [Overview](#1-overview)
 2. [Architecture](#2-architecture)
-3. [Tech stack](#3-tech-stack)
+3. [Tech stack and model roles](#3-tech-stack-and-model-roles)
 4. [Getting started](#4-getting-started)
 5. [Configuration reference](#5-configuration-reference)
 6. [Project structure](#6-project-structure)
 7. [The agent workflow](#7-the-agent-workflow)
-8. [Ingestion pipeline](#8-ingestion-pipeline)
-9. [Retrieval](#9-retrieval)
-10. [Backend module reference](#10-backend-module-reference)
-11. [Authentication & security](#11-authentication--security)
-12. [Data model](#12-data-model)
-13. [HTTP API reference](#13-http-api-reference)
-14. [Frontend](#14-frontend)
-15. [Testing](#15-testing)
-16. [Troubleshooting](#16-troubleshooting)
-17. [Extending the system](#17-extending-the-system)
-18. [Known limitations](#18-known-limitations)
+8. [Memory](#8-memory)
+9. [Ingestion pipeline](#9-ingestion-pipeline)
+10. [Retrieval](#10-retrieval)
+11. [Token accounting](#11-token-accounting)
+12. [Backend module reference](#12-backend-module-reference)
+13. [Authentication & security](#13-authentication--security)
+14. [Data model](#14-data-model)
+15. [HTTP API reference](#15-http-api-reference)
+16. [Frontend](#16-frontend)
+17. [Testing and benchmarks](#17-testing-and-benchmarks)
+18. [Troubleshooting](#18-troubleshooting)
+19. [Extending the system](#19-extending-the-system)
+20. [Known limitations](#20-known-limitations)
 
 ---
 
 ## 1. Overview
 
 Agentic RAG is a full-stack question-answering application. A user signs in, uploads documents into a
-private vector store, and chats with an **agent** that decides, per message, how to answer:
+private vector store, and chats with an **agent** that decides, per message, where the answer should come from:
 
-| Intent | What happens |
+| Source | What happens |
 |---|---|
-| **greeting** | Small talk — a short friendly reply. |
-| **rag** | Answer strictly from the user's uploaded documents, with citations. |
-| **web_search** | Search the internet for current / post-cutoff information and answer with links. |
-| **direct** | Answer from the model's own knowledge (escalates to web search if it can't). |
+| **Small talk** | A short, friendly reply in the same voice as every other answer. |
+| **Model knowledge** | Answered from the model's own training, after a *knowledge gate* confirms it can answer reliably. |
+| **Documents (RAG)** | Answered strictly from the user's uploaded documents, with `[n]` citations. |
+| **Web search** | Current or online information, answered with links. |
 
 What makes it *agentic* rather than a fixed pipeline:
 
-- **Query rewriting before search** — vague or context-dependent questions are rewritten and expanded
-  into several search queries before retrieval.
-- **Self-correction loops** — retrieved chunks are graded for relevance, and generated answers are
-  evaluated for sufficiency and groundedness. Failures trigger another rewrite → search cycle with
-  a different strategy, up to a retry budget.
-- **Honest failure** — if nothing relevant is found after all retries, the user is told
-  *"No matches found"* instead of receiving a hallucinated answer.
-- **Transparency** — every decision is recorded as a trace step and streamed live to the UI.
+- **Source choice follows the user.** The intake step records which source the user wants (or `auto`), and that
+  preference sets the order in which sources are tried. One fallback step moves to the next source when one falls
+  short, and a notice tells the user why.
+- **Knowledge gate.** Before answering from its own knowledge, the large model checks whether it can: open questions
+  (opinions, philosophy, hypotheticals) pass; factual ones need high confidence; anything time-sensitive or about the
+  user's own files goes to another source.
+- **Query rewriting** — vague or context-dependent questions are rewritten before searching.
+- **Self-checks** — a local cross-encoder judges whether retrieved passages really answer the question, and the large
+  model checks finished answers for sufficiency and groundedness.
+- **Honest failure** — when no source has a reliable answer, the user is told so; an answer that couldn't be
+  checked is kept but marked as unverified.
+- **Memory** — facts about the user and short summaries of past exchanges are remembered across conversations.
+- **Transparency** — every step is recorded as a trace entry and streamed live to the UI.
 
 ---
 
 ## 2. Architecture
 
 ```
-┌──────────────────────── Browser (React, Vite :5173) ─────────────────────────┐
-│  Login ─ Chat (SSE stream) ─ Documents (upload) ─ Dashboard (stats)          │
-└───────────────┬──────────────────────────────────────────────────────────────┘
+┌──────────────────────── Browser (React, Vite :5173) ──────────────────────────┐
+│  Login ─ Chat (SSE stream) ─ Documents ─ Overview        hash routes, themes  │
+└───────────────┬───────────────────────────────────────────────────────────────┘
                 │  /api/*  (Vite dev proxy → 127.0.0.1:8000, Bearer JWT)
-┌───────────────▼──────────────────── FastAPI (:8000) ─────────────────────────┐
-│  routes/auth ─ routes/chat ─ routes/documents ─ routes/health                │
-│        │               │                    │                                │
-│  security.py     graph/workflow.py     rag/ingestion.py                      │
-│  (bcrypt, JWT)   (LangGraph agent)     (load → chunk → embed)                │
-│        │               │   │   │                │                            │
-│        ▼               │   │   └── tools/web_search ──► Tavily / DuckDuckGo  │
-│   SQLite (app.db)      │   └────── rag/retrieval ──┐                         │
-│   users, documents,    │                           ▼                         │
-│   conversations,       │                  Qdrant (per-user filter)           │
-│   messages             │                           ▲                         │
-│                        ├── Groq LLMs (gpt-oss-120b / 20b)                    │
-│                        └── Gemini embeddings (gemini-embedding-001, 768-d) ──┘
-└──────────────────────────────────────────────────────────────────────────────┘
+┌───────────────▼──────────────────── FastAPI (:8000) ──────────────────────────┐
+│  routes/auth ─ routes/chat ─ routes/documents ─ routes/health                 │
+│        │            │   └── memory worker (background) ── tools/memory        │
+│  security.py   graph/workflow.py (LangGraph agent)      rag/ingestion.py      │
+│        │            │   │   │                                │                │
+│        ▼            │   │   └── tools/web_search ──► Tavily / DuckDuckGo / Wikipedia
+│  SQLite (app.db)    │   └────── rag/retrieval + rerank ──┐                    │
+│  users, user_facts, │                                    ▼                    │
+│  documents,         │                    Qdrant: documents (dense + BM25)     │
+│  conversations,     │                            user_memories (Voyage)       │
+│  messages           ├── Groq: gpt-oss-120b, gpt-oss-20b, qwen3.8-27b          │
+│                     ├── Gemini embeddings (documents) · Voyage (memory)       │
+│                     └── local cross-encoder (MiniLM)                          │
+└───────────────────────────────────────────────────────────────────────────────┘
 ```
 
 **Request lifecycle (chat):**
 
 1. The frontend POSTs the message to `/api/chat/stream` with the user's JWT.
-2. `get_current_user` validates the token; `_prepare` loads/creates the conversation, the last
-   6 messages (short-term memory) and the user's indexed document names, and saves the user message.
-3. `stream_agent` runs the LangGraph workflow. Each finished node's trace step is sent as an SSE `step` event.
-4. The final state is persisted as an assistant message (with sources, trace, evaluation, latency in `meta`)
-   and sent as the SSE `final` event.
+2. `get_current_user` validates the token. `_prepare` loads or creates the conversation, the last 6 messages, the
+   user's remembered facts, up to 3 relevant past-conversation summaries and the user's indexed document names, and
+   saves the user message.
+3. The agent runs in its own thread (`stream_agent`), with a `UsageTracker` counting tokens. Its events (`status`,
+   `step`, `draft`) are relayed to the browser as Server-Sent Events.
+4. The final state is saved as an assistant message (sources, notices, trace, evaluation, latency, token usage) and
+   sent as the `final` event. Because the agent runs in its own thread, the answer is saved even if the browser
+   disconnects.
+5. In the background, one job at a time, the memory model updates the user's facts and summarises the exchange; then
+   the request's token use is logged.
 
 ---
 
-## 3. Tech stack
+## 3. Tech stack and model roles
 
 | Layer | Technology | Notes |
 |---|---|---|
-| Frontend | React 18, Vite 5, Tailwind 3, lucide-react, react-markdown + remark-gfm | Single-page app, no router library |
+| Frontend | React 18, Vite 5, Tailwind 3, lucide-react, react-markdown + remark-gfm | Hash routes, light/dark/system theme, Geist font |
 | API | FastAPI, Uvicorn, Starlette `StreamingResponse` (SSE) | Sync routes run in a threadpool |
-| Agent | LangGraph `StateGraph` | Conditional edges implement the loops |
-| LLMs | Groq — `openai/gpt-oss-120b` (answers), `openai/gpt-oss-20b` (router, grader, rewriter, evaluator) | Structured output via Groq `json_schema` mode |
-| Embeddings | Google Gemini `models/gemini-embedding-001`, 768 dimensions | `RETRIEVAL_DOCUMENT` / `RETRIEVAL_QUERY` task types |
+| Agent | LangGraph `StateGraph` | Conditional edges implement the loops and fallback |
+| LLMs | Groq (see below) | Strict `json_schema` output for gpt-oss decisions |
+| Document embeddings | Google Gemini `models/gemini-embedding-001`, 768 dims | Question embeddings cached on disk |
+| Keyword search | BM25 sparse vectors in Qdrant | Fused with dense search by Reciprocal Rank Fusion |
+| Reranking | Local cross-encoder `cross-encoder/ms-marco-MiniLM-L-6-v2` | Confidence zones + MMR diversity |
+| Memory embeddings | Voyage AI `voyage-4-lite`, 1,024 dims | Conversation summaries only |
 | Vector DB | Qdrant — embedded on-disk by default, or a server via `QDRANT_URL` | Cosine distance |
-| Web search | Tavily (if key set) → DuckDuckGo HTML + page fetching (fallback) | `httpx` + `lxml` |
-| Persistence | SQLite (stdlib `sqlite3`) | Users, documents, conversations, messages |
+| Web search | Tavily (if key set) → DuckDuckGo → Wikipedia | Results cached for an hour |
+| Persistence | SQLite (stdlib `sqlite3`) | Users, facts, documents, conversations, messages |
 | Auth | bcrypt password hashing, hand-rolled HS256 JWT (stdlib `hmac`) | No extra JWT dependency |
 | Parsing | pypdf, python-docx, LangChain `RecursiveCharacterTextSplitter` | PDF, DOCX, TXT, MD |
+
+**Model roles** (all on Groq; each model has its own rate limits):
+
+| Model | Used for |
+|---|---|
+| `openai/gpt-oss-120b` | Every user-facing reply (answers and small talk), the knowledge gate, answer evaluation, reviews of uncertain decisions |
+| `openai/gpt-oss-20b` | Intake routing and query rewrites; also writes answers if the 120B's quota runs out (with a notice) |
+| `qwen/qwen3.8-27b` | Memory: fact extraction and exchange summaries (no hidden reasoning, so a call costs a few dozen output tokens) |
+
+The small model never grades the large one: evaluation and reviews are done by the 120B.
 
 ---
 
@@ -106,7 +131,7 @@ What makes it *agentic* rather than a fixed pipeline:
 ### Prerequisites
 
 - Python 3.12+ (developed on 3.14), Node.js 18+
-- A **Groq** API key and a **Gemini** API key. Tavily is optional.
+- A **Groq** API key and a **Gemini** API key. Tavily and Voyage are optional.
 
 ### 1) Environment file
 
@@ -117,6 +142,8 @@ GROQ_API_KEY=your-groq-key
 GEMINI_API_KEY=your-gemini-key
 # Optional
 TAVILY_API_KEY=your-tavily-key
+VOYAGE_API_KEY=your-voyage-key        # conversation memory
+OPEN_ROUTER_API_KEY=...               # only for scripts/experiments
 JWT_SECRET=some-long-random-string
 QDRANT_URL=http://localhost:6333
 ```
@@ -127,13 +154,11 @@ QDRANT_URL=http://localhost:6333
 python -m venv .venv
 .venv\Scripts\activate            # Windows  (source .venv/bin/activate on macOS/Linux)
 pip install -r requirements.txt
-
-# Either works:
-uvicorn app:app --reload       # same command from the project root or from inside backend/
+uvicorn app:app --reload          # from the project root or from inside backend/
 ```
 
-Check: <http://localhost:8000/api/health> → `{"status": "healthy", ...}`.
-Interactive API docs: <http://localhost:8000/docs>.
+Check: <http://localhost:8000/api/health>. Interactive API docs: <http://localhost:8000/docs>.
+The cross-encoder loads in the background after startup (about 11 s); until then the agent uses the LLM grader.
 
 ### 3) Frontend
 
@@ -143,19 +168,26 @@ npm install
 npm run dev        # http://localhost:5173
 ```
 
+**Design preview** (no backend or login): with `npm run dev` running, open
+`http://localhost:5173/preview.html#/chat/c1` (also `#/chat`, `#/documents`, `#/overview`; add `?state=empty`,
+`?state=offline` or `?theme=dark`). It renders the real app with sample data from `src/dev/fixtures.js`.
+
 ### 4) Use it
 
-1. Open the app and **Sign up** (username 3–32 chars `A-Z a-z 0-9 _ . -`, password ≥ 6 chars).
+1. Open the app and **create an account** (username 3–32 chars `A-Z a-z 0-9 _ . -`, password ≥ 6 chars).
 2. Go to **Documents** and upload a PDF/DOCX/TXT/MD file.
-3. Go to **New Chat** and ask questions. Expand **Agent steps** under an answer to see the agent's path.
+3. Start a **New chat** and ask questions. Under each answer, **Sources** and **Steps** show where it came from and
+   the path the agent took. The theme switch (System / Light / Dark) is at the bottom of the sidebar.
 
 Runtime data is created automatically:
 
 | Path | Contents |
 |---|---|
 | `backend/data/app.db` | SQLite database |
+| `backend/data/embedding_cache.db` | Cached question embeddings |
+| `backend/data/token_usage.jsonl` | One line per request: tokens per model and step, route, path |
 | `backend/data/.jwt_secret` | Auto-generated JWT secret (if `JWT_SECRET` unset) |
-| `backend/vector_db/qdrant_data/` | Embedded Qdrant storage |
+| `backend/vector_db/qdrant_data/` | Embedded Qdrant storage (documents and memory collections) |
 | `backend/documents/<user_id>/` | Uploaded original files |
 
 To reset everything: stop the backend and delete those paths.
@@ -164,38 +196,46 @@ To reset everything: stop the backend and delete those paths.
 
 ## 5. Configuration reference
 
-All settings live in `backend/config/settings.py` (`Settings`, a pydantic-settings class). Every field
-can be overridden by an environment variable / `.env` entry with the same name (case-insensitive).
+All settings live in `backend/config/settings.py` (`Settings`, a pydantic-settings class). Every field can be
+overridden by an environment variable / `.env` entry with the same name (case-insensitive).
 
 | Setting | Default | Purpose |
 |---|---|---|
-| `GROQ_API_KEY` | — | **Required.** Groq LLM access. |
-| `GEMINI_API_KEY` | — | **Required.** Gemini embeddings. |
-| `TAVILY_API_KEY` | `""` | Optional. Enables Tavily; otherwise DuckDuckGo. |
-| `LLM_MODEL` | `openai/gpt-oss-120b` | Model that writes user-facing answers. |
-| `FAST_LLM_MODEL` | `openai/gpt-oss-20b` | Model for routing, grading, rewriting, evaluation. |
-| `LLM_TEMPERATURE` | `0.2` | Temperature of the answer model (fast model is fixed at 0). |
-| `EMBEDDING_MODEL` | `models/gemini-embedding-001` | Embedding model. |
-| `EMBEDDING_DIM` | `768` | Vector size. Changing it requires a new collection. |
-| `QDRANT_URL` / `QDRANT_API_KEY` | `""` | Use a Qdrant server instead of the embedded store. |
-| `QDRANT_PATH` | `backend/vector_db/qdrant_data` | Embedded store location. |
-| `COLLECTION_NAME` | `agentic_rag_docs` | Qdrant collection. |
-| `UPLOAD_DIR` | `backend/documents` | Where original files are stored. |
-| `CHUNK_SIZE` / `CHUNK_OVERLAP` | `1000` / `200` | Characters per chunk and overlap between chunks. |
-| `MAX_UPLOAD_MB` | `20` | Upload size limit. |
-| `RETRIEVAL_K` | `6` | Nearest neighbours fetched per query. |
-| `MIN_RELEVANCE_SCORE` | `0.45` | Cosine-similarity floor applied before LLM grading. |
-| `MAX_RETRIEVAL_ATTEMPTS` | `3` | RAG retrieval rounds (initial + rewrites). |
-| `MAX_WEB_ATTEMPTS` | `2` | Web search rounds. |
-| `WEB_RESULTS` | `5` | Results per web search. |
-| `HISTORY_TURNS` | `6` | Past messages passed to the agent as memory. |
+| `GROQ_API_KEY` / `GEMINI_API_KEY` | — | **Required.** |
+| `TAVILY_API_KEY` | `""` | Optional. Enables Tavily as the first web provider. |
+| `VOYAGE_API_KEY` | `""` | Conversation memory. Without it, episodes are skipped; facts still work. |
+| `LLM_MODEL` | `openai/gpt-oss-120b` | Replies, knowledge gate, evaluation, reviews. |
+| `FAST_LLM_MODEL` | `openai/gpt-oss-20b` | Routing and rewrites; backup writer. |
+| `MEMORY_LLM_MODEL` | `qwen/qwen3.8-27b` | Fact extraction and exchange summaries. |
+| `LLM_TEMPERATURE` | `0.0` | Answer writing. |
+| `CHAT_TEMPERATURE` | `0.8` | Small talk only. |
+| `FAST_LLM_REASONING_EFFORT` / `JUDGE_REASONING_EFFORT` | `low` / `low` | Hidden reasoning for decisions / reviews and grading. |
+| `EMBEDDING_MODEL` / `EMBEDDING_DIM` | `models/gemini-embedding-001` / `768` | Document embeddings. Changing the size requires a new collection. |
+| `VOYAGE_MEMORY_MODEL` / `VOYAGE_MEMORY_DIMENSIONS` / `VOYAGE_MEMORY_COLLECTION` | `voyage-4-lite` / `1024` / `user_memories` | Memory embeddings. |
+| `QDRANT_URL` / `QDRANT_API_KEY` / `QDRANT_PATH` | `""` / `""` / `backend/vector_db/qdrant_data` | Server or embedded store. |
+| `COLLECTION_NAME` | `agentic_rag_docs_v2` | Hybrid (dense + BM25) document collection. |
+| `UPLOAD_DIR` / `MAX_UPLOAD_MB` | `backend/documents` / `20` | Uploads. |
+| `CHUNK_SIZE` / `CHUNK_OVERLAP` | `1000` / `200` | Characters per chunk and overlap. |
+| `RETRIEVAL_K` | `6` | Passages finally used for an answer. |
+| `RETRIEVAL_MODE` | `hybrid` | `hybrid` (dense + BM25 with RRF) or `dense`. |
+| `HYBRID_CANDIDATES` / `RRF_K` | `20` / `60` | Results per list before fusion; RRF constant. |
+| `BM25_K1` / `BM25_B` / `BM25_AVG_LEN` | `1.2` / `0.75` / `120` | BM25 parameters. |
+| `RERANK_ENABLED` / `RERANKER_MODEL` / `RERANKER_MAX_LENGTH` | `True` / MiniLM-L-6-v2 / `256` | Cross-encoder. |
+| `RERANK_CANDIDATES` / `RERANK_TOP_N` / `MMR_LAMBDA` | `20` / `12` / `0.7` | Candidates scored; pool MMR picks from; relevance vs diversity. |
+| `RELEVANCE_HIGH` / `RELEVANCE_LOW` | `0.05` / `0.01` | Confidence zones (MiniLM's score scale; recalibrate if the model changes). |
+| `WEAK_MATCH_RETRIES` | `1` | Extra reworded searches in the middle zone. |
+| `MIN_RELEVANCE_SCORE` / `RAG_SKIP_SCORE` | `0.45` / `0.52` | Used only when the reranker is unavailable. |
+| `MAX_RETRIEVAL_ATTEMPTS` / `MAX_WEB_ATTEMPTS` | `1` / `2` | Search rounds per source. |
+| `VERIFY_DECISIONS` / `MAX_REVIEW_ROUNDS` / `REVIEW_ONLY_UNCERTAIN` | `True` / `2` / `True` | 120B reviews the 20B's uncertain decisions. |
+| `WEB_RESULTS` / `TAVILY_SEARCH_DEPTH` / `WEB_CACHE_TTL_SECONDS` | `5` / `basic` / `3600` | Web search. |
+| `HISTORY_TURNS` | `6` | Past messages passed to the agent. |
 | `DATABASE_PATH` | `backend/data/app.db` | SQLite file. |
-| `JWT_SECRET` | `""` | Token signing key; auto-generated and persisted if empty. |
-| `JWT_EXPIRE_MINUTES` | `1440` | Token lifetime (24 h). |
-| `CORS_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | Allowed origins (any localhost port is also allowed by regex). |
+| `JWT_SECRET` / `JWT_EXPIRE_MINUTES` | `""` / `1440` | Token signing key (auto-generated if empty); lifetime. |
+| `CORS_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | Allowed origins (any localhost port is also allowed). |
+| `BOT_CONTACT` | `https://github.com/` | Contact in the User-Agent (required by Wikipedia's API). |
 
-Frontend: `VITE_API_URL` (optional) overrides the API base URL; by default the app calls `/api`
-and the Vite dev server proxies it to `http://127.0.0.1:8000`.
+Frontend: `VITE_API_URL` (optional) overrides the API base URL; by default the app calls `/api` and the Vite dev
+server proxies it to `http://127.0.0.1:8000`.
 
 ---
 
@@ -203,54 +243,64 @@ and the Vite dev server proxies it to `http://127.0.0.1:8000`.
 
 ```
 day7/
-├── .env                      # secrets (not committed)
-├── README.md                 # quick start
-├── docs/DOCUMENTATION.md     # this file
-├── requirements.txt          # Python dependencies
-├── test_rag_pipeline.py      # end-to-end smoke test
+├── .env                        # secrets (not committed)
+├── README.md                   # quick start
+├── docs/                       # this file, CODE_REFERENCE.md, GRAPH_EXPLAINED.md
+├── requirements.txt
+├── app.py                      # re-exports backend/app.py (uvicorn app:app from the root)
+├── test_rag_pipeline.py        # end-to-end smoke test
+├── scripts/experiments/        # one-off model experiments (call the APIs)
 ├── backend/
-│   ├── app.py                # FastAPI app, lifespan, CORS, router mounting
+│   ├── app.py                  # FastAPI app, lifespan, CORS, router mounting
 │   ├── config/
-│   │   ├── settings.py       # all configuration
-│   │   └── llm.py            # Groq client factories + structured-output helper
+│   │   ├── settings.py         # all configuration
+│   │   ├── llm.py              # model clients per role, quota fallback, structured output
+│   │   └── usage.py            # token accounting per model and step
 │   ├── api/
-│   │   ├── security.py       # bcrypt + JWT
-│   │   ├── dependencies.py   # get_current_user (auth guard)
-│   │   └── routes/
-│   │       ├── auth.py       # register / login / me
-│   │       ├── chat.py       # chat, streaming chat, conversations, stats
-│   │       ├── documents.py  # list / upload / delete documents
-│   │       └── health.py     # health check
+│   │   ├── security.py, dependencies.py
+│   │   └── routes/             # auth.py, chat.py, documents.py, health.py
 │   ├── models/
-│   │   ├── database.py       # SQLite schema + data-access functions
-│   │   └── schemas.py        # pydantic request/response models
+│   │   ├── database.py         # SQLite schema + data access (incl. user_facts)
+│   │   └── schemas.py          # pydantic request/response models
 │   ├── rag/
-│   │   ├── ingestion.py      # load → clean → chunk → embed → upsert
-│   │   ├── vectorstore.py    # Qdrant client, embeddings, per-user filters
-│   │   └── retrieval.py      # multi-query retrieval + merge
+│   │   ├── ingestion.py        # load → clean → chunk → embed (dense + BM25) → upsert
+│   │   ├── vectorstore.py      # Qdrant client, embeddings, per-user filters
+│   │   ├── sparse.py           # BM25 sparse vectors
+│   │   ├── embedding_cache.py  # on-disk cache of question embeddings
+│   │   ├── retrieval.py        # hybrid multi-query retrieval + RRF
+│   │   └── rerank.py           # cross-encoder, confidence zones, MMR
 │   ├── tools/
-│   │   ├── __init__.py       # shared helpers (history, date, citation cleanup)
-│   │   ├── greeting.py       # small-talk responder
-│   │   ├── direct_answer.py  # parametric-knowledge answerer
-│   │   ├── rag.py            # grounded answer generation
-│   │   └── web_search.py     # search backends + web answer generation
+│   │   ├── __init__.py         # shared helpers (history, date, citation cleanup)
+│   │   ├── greeting.py         # small talk (delegates to direct_answer.converse)
+│   │   ├── direct_answer.py    # knowledge gate + model-knowledge answers + small talk
+│   │   ├── rag.py              # grounded answer generation
+│   │   ├── web_search.py       # search providers + web answer generation
+│   │   └── memory.py           # fact extraction/merge rules + exchange summaries
+│   ├── memory/
+│   │   ├── embeddings.py       # Voyage client
+│   │   └── store.py            # conversation memory in Qdrant
 │   ├── evaluation/
-│   │   └── evaluator.py      # chunk grading + answer evaluation (LLM-as-judge)
+│   │   ├── evaluator.py        # LLM passage grading (fallback) + answer evaluation
+│   │   └── reviewer.py         # small model proposes, large model reviews
 │   ├── graph/
-│   │   ├── state.py          # AgentState
-│   │   ├── nodes.py          # every graph node
-│   │   └── workflow.py       # edges, routing functions, run/stream helpers
-│   ├── data/                 # runtime: app.db, .jwt_secret
-│   ├── documents/            # runtime: uploaded files per user
-│   └── vector_db/            # runtime: qdrant_data/
-└── frontend/
-    ├── index.html, vite.config.js, tailwind.config.js, postcss.config.js, package.json
-    └── src/
-        ├── main.jsx, App.jsx, index.css
-        ├── services/api.jsx          # HTTP + SSE client, token storage
-        ├── pages/Chat.jsx, Documents.jsx, Dashboard.jsx
-        └── components/Sidebar.jsx, ChatWindow.jsx, InputBox.jsx,
-                       Message.jsx, SourceCard.jsx, ToolBadge.jsx
+│   │   ├── state.py            # AgentState
+│   │   ├── nodes.py            # every graph node + source order + notices
+│   │   └── workflow.py         # edges, routing functions, run/stream helpers
+│   ├── scripts/migrate_hybrid.py
+│   ├── tests/                  # unit tests (no API calls) + reasoning cases
+│   ├── data/ documents/ vector_db/   # runtime
+├── frontend/
+│   ├── index.html, preview.html, vite.config.js, tailwind.config.js, postcss.config.js, package.json
+│   ├── public/mark.svg
+│   └── src/
+│       ├── main.jsx, App.jsx, index.css
+│       ├── services/api.jsx            # HTTP + SSE client, token storage
+│       ├── state/chatStore.js          # conversations + in-flight answers, outside the pages
+│       ├── lib/route.js, format.js, theme.js
+│       ├── pages/Login.jsx, Chat.jsx, Documents.jsx, Overview.jsx
+│       ├── components/Sidebar.jsx, Message.jsx, InputBox.jsx, Mark.jsx
+│       └── dev/fixtures.js, preview.jsx  # design preview only
+└── benchmark/                  # retrieval, selection, e2e, perf, router, gate and memory benchmarks
 ```
 
 ---
@@ -263,212 +313,260 @@ The agent is a LangGraph `StateGraph` defined in `backend/graph/workflow.py`. No
 ### 7.1 Graph
 
 ```
-START → router ─┬─ greeting ───────────────────────────────────────────────► END
-                │
-                ├─ direct ──(NEEDS_WEB_SEARCH)──────────────────────────► web_search
-                │     └──► evaluate ──(insufficient)──── escalate ──────► web_search
-                │
-                ├─ rag, no documents ─────────────────────────────────► no_results ► END
-                ├─ rag/web, vague ──► rewrite
-                │
-                ├─ rag ──► retrieve ──► grade ──(0 relevant)──► rewrite / no_results
-                │             ▲           │
-                │             │       generate_rag ──(NO_ANSWER_IN_DOCUMENTS)──► rewrite / no_results
-                │             │           │
-                │          rewrite ◄── evaluate ──(insufficient, budget left)
-                │                         │
-                │                     finalize ──► END
-                │
-                └─ web ──► web_search ──(0 results)──► rewrite / no_results
-                              │
-                         generate_web ──► evaluate ──(insufficient)──► rewrite ──► web_search
+START → router ─┬─ small talk ──────────────────────────────────────────────► greeting ► END
+                ├─ model knowledge / auto ─► direct ─(gate passes)─► finalize ► END
+                │                               └─(gate refuses)─► fallback
+                ├─ documents ─► [rewrite if vague] ─► retrieve ─► grade (cross-encoder zone)
+                │        high ─► generate_rag ─► evaluate ─► finalize ► END
+                │        mid  ─► rewrite ─► retrieve (once more)
+                │        low  ─► fallback
+                └─ web ─► web_search ─► generate_web ─► evaluate ─(short)─► rewrite ─► web_search
+  fallback ──► next untried source for the user's preference ──► … ──(all tried)► best answer (finalize) or no_results
 ```
 
-### 7.2 Nodes
+### 7.2 Source order
 
-| Node | Model | Purpose | Key state written |
-|---|---|---|---|
-| `router` | fast | Classifies intent, judges query clarity, produces a standalone query using chat history and the user's document names. Falls back to `rag` (if docs) / `direct` on error. | `intent`, `query_is_clear`, `standalone_query`, `search_queries`, `attempts=0` |
-| `greeting` | fast | Friendly 1–3 sentence reply. | `answer`, `tool=greeting` |
-| `direct` | main | Answers from model knowledge; emits `NEEDS_WEB_SEARCH` when information is recent/unknown. | `answer`, `tool=direct` or `intent=web_search` |
-| `rewrite` | fast | Rewrites and expands the query. Receives the reason, evaluator feedback and all previously tried queries. Attempt 1 clarifies; later attempts broaden (step-back) and decompose. RAG gets up to 4 queries; web gets 2. | `search_queries`, `rewritten_queries` (+=) |
-| `retrieve` | — | Multi-query vector search scoped to the user. | `documents`, `attempts` (+1) |
-| `grade` | fast | LLM relevance grading of candidate chunks; drops irrelevant ones. | `documents`, `rewrite_reason` |
-| `generate_rag` | main | Grounded answer with `[n]` citations, or the `NO_ANSWER_IN_DOCUMENTS` signal. | `answer`, `sources`, `tool=rag` |
-| `web_search` | — | Searches up to 2 queries, dedupes by URL. | `web_results`, `attempts` (+1) |
-| `generate_web` | main | Answer from web results with citations. | `answer`, `sources`, `tool=web_search` |
-| `evaluate` | fast | Judges `sufficient`, `grounded`, `score` (1–5), `missing`. Tracks the best-scoring candidate. Escalates weak direct answers to web search. | `evaluation`, `best`, `rewrite_reason` |
-| `no_results` | — | Explains that nothing relevant was found (no docs / no matches / no web results). | `answer`, `tool=no_results` |
-| `finalize` | — | Returns the answer; if retries were exhausted and it is still weak, returns the best candidate with a caveat note. | `answer`, `sources`, `evaluation` |
+The router decides the user's **source preference**; `nodes._source_order` turns it into an order:
 
-### 7.3 Routing functions (`workflow.py`)
+| Preference | Order | Router's first source |
+|---|---|---|
+| `auto` | model knowledge → documents → web | `direct` |
+| `documents` | documents → model knowledge → web | `rag` (or `direct` with a notice if no documents) |
+| `model_knowledge` | model knowledge → documents → web | `direct` |
+| `web` | web → documents → model knowledge | `web_search` |
+
+Documents are skipped when the user has none. `auto` starts with model knowledge on purpose: starting with the
+documents whenever any were uploaded sent casual and philosophical questions into RAG. Questions about the user's
+own material still get there, because the knowledge gate refuses them and the fallback tries the documents next.
+
+`fallback_node` is the single place that moves between sources: it records the tried source, clears that source's
+state (documents, attempts, …), and adds a fixed notice such as *"Information matching your question wasn't found in
+your documents, so this answer comes from the model's own knowledge."* When every source has been tried, it returns
+the best candidate seen so far (`finalize`, with a caveat) or `no_results`.
+
+### 7.3 Nodes
+
+| Node | Model | Purpose |
+|---|---|---|
+| `router` | 20B (120B reviews if unsure) | `Route`: small talk vs information request, source preference, clarity, standalone query, confidence, and `confidence_required` (whether a direct answer must pass the knowledge gate). |
+| `greeting` | 120B, temperature 0.8 | Small talk via `direct_answer.converse`, same persona as every answer. |
+| `direct` | 120B | Knowledge gate (when `confidence_required`), then the answer. A refusal leaves the answer empty → `fallback`. |
+| `rewrite` | 20B (reviewed if unsure) | Rewords and expands the query, using the reason and previous attempts. |
+| `retrieve` | — | Hybrid search (dense + BM25, RRF) scoped to the user; marks off-topic or failed searches. |
+| `grade` | local cross-encoder | Scores candidates → zone (high / mid / low) → MMR picks diverse passages. Without the cross-encoder: LLM grading. |
+| `generate_rag` | 120B | Grounded answer with `[n]` citations. The `NO_ANSWER_IN_DOCUMENTS` code word means "nothing" only when it is (almost) the whole reply; a partial answer is kept. |
+| `web_search` | — | Up to 2 queries, deduplicated by URL. |
+| `generate_web` | 120B | Answer from web results with citations. |
+| `evaluate` | 120B | `sufficient`, `grounded`, `score`, `missing`; keeps the best candidate. If no model can check the answer, it is kept with `verified: false` in its evaluation and a notice. |
+| `fallback` | — | Next source (see 7.2). |
+| `no_results` | — | Honest "couldn't find a reliable answer" message. |
+| `finalize` | — | Returns the answer, the gate-approved direct answer, or the best candidate with a caveat. |
+
+### 7.4 Knowledge gate (`tools/direct_answer.py`)
+
+`KnowledgeGate` fields: `question_kind` (`factual` | `open`), `reason`, `time_sensitive`, `references_user_material`,
+`confidence`. The rule (`_gate_passes`):
+
+1. Refuse if `time_sensitive` or `references_user_material`.
+2. Otherwise pass if the question is `open` (opinions, philosophy, ethics, hypotheticals — no source could settle them),
+   or if it is `factual` and confidence is `high`.
+
+Before `question_kind` existed, the gate asked "are you sure you're right?" about opinion questions, answered
+"medium", and sent them to documents and the web (benchmark: 3 of 18 answered directly; now 18 of 18, with all
+4 controls still refused).
+
+### 7.5 Routing functions (`workflow.py`)
 
 | Function | Decision |
 |---|---|
-| `route_after_router` | greeting → `greeting`; direct → `direct`; rag without documents → `no_results`; unclear query → `rewrite`; else `retrieve` (rag) or `web_search`. |
-| `route_after_direct` | Escalated → `web_search`; else `evaluate`. |
+| `route_after_router` | greeting → `greeting`; direct → `direct`; unclear rag/web query → `rewrite`; else the source's first node. |
+| `route_after_direct` | Answer → `finalize`; gate refused → `fallback`. |
 | `route_after_rewrite` | `web_search` or `retrieve` depending on intent. |
-| `route_after_grade` | Relevant chunks → `generate_rag`; none & budget left → `rewrite`; else `no_results`. |
-| `route_after_generate_rag` | Answer produced → `evaluate`; no-answer signal → `rewrite` / `no_results`. |
-| `route_after_web` | Results → `generate_web`; none → `rewrite` / `no_results`. |
-| `route_after_evaluate` | Sufficient & grounded → `finalize`; weak direct → `web_search`; weak rag/web with budget → `rewrite`; else `finalize`. |
+| `route_after_retrieve` | Off-topic or failed search → `fallback`; else `grade`. |
+| `route_after_grade` | high → `generate_rag`; mid with attempts < budget + `WEAK_MATCH_RETRIES` → `rewrite`; else `fallback`. |
+| `route_after_generate_rag` | Answer → `evaluate`; none → `rewrite` (budget left) or `fallback`. |
+| `route_after_web` | Results → `generate_web`; none → `rewrite` or `fallback`. |
+| `route_after_evaluate` | Sufficient & grounded → `finalize`; weak rag/web with budget → `rewrite`; else `fallback`. |
+| `route_after_fallback` | Next source's first node; all tried → `finalize` (if a candidate exists) or `no_results`. |
 
-Loops terminate because every retrieval/search increments `attempts`, which is compared with
-`MAX_RETRIEVAL_ATTEMPTS` / `MAX_WEB_ATTEMPTS`. A global `recursion_limit` of 40 steps is an extra safeguard.
+Loops end because each search increments `attempts`, compared with the source's budget (`_budget`); a
+`recursion_limit` of 60 is an extra safeguard.
 
-### 7.4 State (`graph/state.py`)
+### 7.6 State (`graph/state.py`)
 
-`AgentState` is a `TypedDict`. Most keys are **replaced** by node updates; two are **accumulated**
-with `Annotated[list, operator.add]`:
+`AgentState` is a `TypedDict`. Two keys accumulate (`Annotated[list, operator.add]`): `trace` and `rewritten_queries`.
 
-- `trace` — list of `{node, detail, data}` steps (what the UI shows).
-- `rewritten_queries` — every rewritten query produced across retries.
-
-Other key fields: `query`, `user_id`, `username`, `history`, `doc_names`, `intent`, `standalone_query`,
-`query_is_clear`, `search_queries`, `rewrite_reason` (`vague_query` / `no_relevant_docs` /
-`insufficient_answer` / `no_web_results`), `attempts`, `documents`, `web_results`, `answer`, `tool`,
-`sources`, `evaluation`, `best`.
-
-### 7.5 Structured output
-
-All decision-making LLM calls use `structured(ModelClass)` from `config/llm.py`, which wraps the model with
-`with_structured_output(..., method="json_schema").with_retry(stop_after_attempt=2)`.
-Groq's JSON-schema mode was chosen over tool-calling mode because gpt-oss models intermittently fail
-tool calls (`tool_use_failed`). The schemas are `Route`, `Rewrite`, `DocGrades` and `AnswerEval`.
-
-### 7.6 Worked examples (from the smoke test)
-
-| Question | Path |
+| Group | Keys |
 |---|---|
-| "Hey there! What can you do?" | router → greeting |
-| "Summarize the uploaded document" | router → retrieve → grade (4/4) → generate → evaluate (5/5) → finalize |
-| "skills projects stuff??" | router (vague) → rewrite → retrieve (4 queries) → grade (3/4) → generate → evaluate → finalize |
-| "Refund policy for enterprise customers?" (not in docs) | router → retrieve → grade (0/4) → rewrite → retrieve → grade (0) → rewrite → retrieve → grade (0) → no_results |
-| "Difference between a process and a thread" | router → direct → evaluate → finalize |
-| "Latest AI news this week" | router → web_search → generate_web → evaluate → finalize |
+| Inputs | `query`, `user_id`, `username`, `history`, `memories`, `doc_names` |
+| Routing | `intent`, `source_preference`, `standalone_query`, `query_is_clear`, `confidence_required`, `route_reason`, `tried_sources`, `notices` |
+| Query loop | `search_queries`, `rewritten_queries`, `rewrite_reason`, `attempts` |
+| Evidence | `documents`, `docs_off_topic`, `docs_search_failed`, `match_zone`, `web_results` |
+| Output | `answer`, `tool`, `sources`, `evaluation`, `best`, `trace` |
+
+### 7.7 Notices
+
+Fixed sentences shown above an answer: moving between sources (`FALLBACK_NOTICES`), no documents uploaded
+(`NO_DOCS_NOTICE`), the backup model wrote the answer (`BACKUP_NOTICE`), and the answer couldn't be checked
+(`UNVERIFIED_NOTICE`).
+
+### 7.8 Structured output
+
+Decisions use `structured(ModelClass)` from `config/llm.py`. gpt-oss models use Groq's strict `json_schema` mode
+(constrained decoding, always schema-valid, so no repeat calls); other models use function calling. A plain-JSON
+fallback validated with pydantic covers the rest. Schemas: `Route`, `Rewrite`, `KnowledgeGate`, `DocGrades`,
+`AnswerEval`, `Review`, `MemoryExtraction`.
 
 ---
 
-## 8. Ingestion pipeline
+## 8. Memory
+
+Two kinds, kept separate on purpose:
+
+| | Facts | Episodes |
+|---|---|---|
+| What | Specific details about the user: name, location, hobbies, preferences, how they want answers | A one- or two-sentence summary of an answered exchange |
+| Stored in | SQLite `user_facts`, one row per value | Qdrant collection `user_memories`, Voyage embeddings |
+| Written by | `tools/memory.extract_and_save_memories` | `tools/memory.summarize_exchange` + `memory/store.save_memory` |
+| Read | Every request (`db.list_memories`) | Up to 3 closest (score ≥ 0.45), each cut to 800 chars |
+
+**Fact rules.** A cheap pre-check (`_may_contain_memory`: "I", "my", "call me", "from now on", "keep your answers…",
+punctuation ignored) skips the model for impersonal messages. Otherwise Qwen reports only what to *remember* or
+*forget*; `plan_changes` decides in code how storage changes:
+
+- single-value keys (`preferred_name`, `location`, `occupation`, …, and any `favorite_*`, `preferred_*`, `current_*`) —
+  a new value replaces the old;
+- other keys (`hobbies`, `liked_foods`, …) — values are collected;
+- forget — removes a value, or the whole key for `*`. A correction ("I don't play futsal any more") is forget + remember.
+
+Keys are normalised (snake_case, one spelling of "favourite", aliases such as `city` → `location`). Values compare
+case-insensitively. Deleting a conversation also deletes its episodes.
+
+Memory work runs **after** the reply, on a single background worker, so it adds no waiting time and two quick
+messages can't update the same keys at once.
+
+The original one-row-per-key `user_memory` table was migrated into `user_facts` once (recorded in `migrations` as
+`user_facts_v1`) and kept, unused, as a backup.
+
+---
+
+## 9. Ingestion pipeline
 
 `POST /api/documents/upload` → `routes/documents.py::upload_document` → `rag/ingestion.py::ingest_file`.
 
-1. **Validate** — extension in `{.pdf, .docx, .txt, .md}`; size ≤ `MAX_UPLOAD_MB` (read at most limit+1 bytes);
-   filename sanitized (`_safe_name` strips directories and unsafe characters).
-2. **Deduplicate** — SHA-256 of the bytes. If the same user already has it indexed, return `status: "duplicate"`.
-   A previously failed copy is cleaned up and re-ingested.
-3. **Record** — a `documents` row with `status="processing"`; the file is saved as
-   `backend/documents/<user_id>/<doc_id><ext>`.
-4. **Load** (`load_file`) — PDF: one LangChain `Document` per page with `page` metadata (pypdf);
-   DOCX: paragraphs + table rows; TXT/MD: raw text. `_clean` removes null bytes, re-joins hyphenated
-   line breaks and collapses whitespace. No text → `IngestionError` (e.g. scanned PDFs).
-5. **Chunk** (`split_documents`) — `RecursiveCharacterTextSplitter`, 1000 chars / 200 overlap, splitting on
-   paragraphs → lines → sentences → words; chunks ≤ 20 chars are dropped.
-6. **Embed** — Gemini, `task_type="RETRIEVAL_DOCUMENT"`, filename passed as title, 768 dims.
-7. **Upsert** — Qdrant points with deterministic ids `uuid5(doc_id:chunk_index)` and payload
-   `{page_content, metadata: {user_id, doc_id, source, page, chunk_index, start_index}}`
-   (LangChain-compatible layout), in batches of 128.
-8. **Finish** — status `indexed` with page/chunk counts, or `failed` with the error (partial vectors removed).
+1. **Validate** — extension in `{.pdf, .docx, .txt, .md}`; size ≤ `MAX_UPLOAD_MB` (reads at most limit+1 bytes);
+   filename sanitised.
+2. **Deduplicate** — SHA-256 of the bytes. Same user, already indexed → `status: "duplicate"`. A failed copy is cleaned up and re-ingested.
+3. **Record** — a `documents` row with `status="processing"`; the file is saved as `backend/documents/<user_id>/<doc_id><ext>`.
+4. **Load** — PDF: one document per page (page numbers kept for citations); DOCX: paragraphs + table rows; TXT/MD as-is.
+   `_clean` removes null bytes, re-joins hyphenated line breaks, collapses whitespace. No text → `IngestionError` (422).
+5. **Chunk** — 1,000 chars / 200 overlap, splitting on paragraphs → lines → sentences → words; chunks ≤ 20 chars dropped.
+6. **Embed** — `embed_paced`: Gemini `RETRIEVAL_DOCUMENT`, batches of 90, waiting when the free tier's per-minute limit is hit.
+7. **Upsert** — Qdrant points with ids `uuid5(doc_id:chunk_index)`, a `dense` vector and a `bm25` sparse vector, and
+   payload `{page_content, metadata: {user_id, doc_id, source, page, chunk_index, start_index}}`.
+8. **Finish** — `indexed` with page/chunk counts, or `failed` with the error (partial vectors removed).
 
-Deleting a document removes its vectors (filter on `user_id` + `doc_id`), the stored file and the DB row.
+Deleting a document removes its vectors, the stored file and the DB row.
 
 ---
 
-## 9. Retrieval
+## 10. Retrieval
 
-`rag/retrieval.py::retrieve(queries, user_id, k, min_score)`:
+`rag/retrieval.py::retrieve(queries, user_id, k, min_score, mode)`:
 
-1. Deduplicate the query list, preserving order.
-2. Embed all queries in parallel (thread pool, `task_type="RETRIEVAL_QUERY"`).
-3. For each query, search Qdrant for the top `k` points **filtered to `metadata.user_id`**.
-4. Drop hits below `MIN_RELEVANCE_SCORE` (cosine).
-5. Merge hits by point id, keeping the highest score and the query that found it.
-6. Return the top `k + 2` by score (headroom for the LLM grader).
+1. Deduplicate the query variants; embed them in parallel through the embedding cache.
+2. For each variant, run dense search and BM25 search (`HYBRID_CANDIDATES` each), filtered to `metadata.user_id`.
+3. Fuse with Reciprocal Rank Fusion: each chunk earns `1/(RRF_K + rank)` per list.
+4. Keyword hits keep their place even with low cosine (exact terms are the point of BM25); dense-only hits must pass
+   `MIN_RELEVANCE_SCORE`. If embedding fails, keyword search alone is used.
 
-The LLM grader (`evaluation/evaluator.py::grade_documents`) then keeps only chunks that actually help answer
-the question — this is the main precision filter; the cosine floor only removes obvious noise.
+Then `rag/rerank.py`: the cross-encoder scores each candidate (0–1); the best score sets the **zone**
+(≥ `RELEVANCE_HIGH` → answer; < `RELEVANCE_LOW` → next source; between → one reworded retry); MMR picks
+`RETRIEVAL_K` diverse passages from the top `RERANK_TOP_N`.
+
+Measured on the benchmark: MRR 0.774 (dense only) → 0.822 (hybrid) → 0.872 (reranked), with every out-of-scope
+question recognised.
 
 ---
 
-## 10. Backend module reference
+## 11. Token accounting
+
+`config/usage.py`: a `UsageTracker` (LangChain callback) is attached to each request. Every model call inside the
+graph inherits it; calls outside the graph name their step with `usage_step` metadata (`memory_extract`,
+`episode_summary`). It sums input, output and hidden-reasoning tokens per model and per step.
+
+- Each answer stores its own usage in `messages.meta.usage`.
+- After memory work finishes, `record()` logs one line and appends a record to `backend/data/token_usage.jsonl`
+  with the routing context (message, source preference, route reason, path, latency), so expensive or misrouted
+  questions can be found.
+
+---
+
+## 12. Backend module reference
 
 ### `app.py`
-- Adds the project root to `sys.path` so the app starts from either the root or `backend/`.
-- `lifespan` — verifies required API keys, runs `init_db()`, opens the Qdrant collection.
-- CORS: `CORS_ORIGINS` plus a regex allowing any `localhost` / `127.0.0.1` port.
-- Mounts `health`, `auth`, `chat`, `documents` routers under `/api`.
-
-### `config/settings.py`
-`Settings` (pydantic-settings) reads `.env`; `settings` is the shared instance. See [§5](#5-configuration-reference).
+Adds the project root to `sys.path`; `lifespan` checks the required keys, runs `init_db()` (and migrations), opens the
+Qdrant collection, and starts loading the cross-encoder in the background. CORS: `CORS_ORIGINS` plus any localhost port.
 
 ### `config/llm.py`
 | Function | Description |
 |---|---|
-| `get_llm()` | Cached `ChatGroq` for `LLM_MODEL` (answers). |
-| `get_fast_llm()` | Cached `ChatGroq` for `FAST_LLM_MODEL`, temperature 0. |
-| `structured(model_cls, fast=True)` | Schema-constrained runnable returning a pydantic object; json_schema mode + 1 retry. |
+| `get_llm(temperature=None)` | 120B for answers (one cached client per temperature). |
+| `get_fast_llm()` | 20B, temperature 0, low reasoning — routing and rewrites. |
+| `get_judge_llm()` | 120B, temperature 0, low reasoning — gate, reviews, evaluation. |
+| `get_memory_llm()` | Qwen — memory. |
+| `get_backup_writer(temperature=None)` | 20B set up for writing, when the 120B is rate-limited. |
+| `invoke_answer(messages, temperature=None)` | Writes with the 120B, falling back to the backup writer on a rate limit. |
+| `consume_backup_flag()` | True once if the backup wrote the last answer (→ notice). |
+| `structured(model_cls, fast=True, backup=False, memory=False)` | Schema-constrained runnable (see 7.8). |
 
 ### `models/database.py`
-One shared SQLite connection guarded by a re-entrant lock. `tx()` is a context manager providing a
-serialized transaction (commit on success, rollback on error). All queries use parameter placeholders and
-filter by `user_id`.
+One shared SQLite connection guarded by a re-entrant lock; `tx()` gives a serialized transaction. All queries use
+placeholders and filter by `user_id`.
 
 | Group | Functions |
 |---|---|
-| Setup | `init_db`, `_get_conn`, `tx`, `_now`, `_one`, `_all` |
+| Setup | `init_db`, `_migrate_memory_to_facts`, `_decode_values`, `tx`, `_now`, `_one`, `_all` |
 | Users | `create_user`, `get_user_by_username`, `get_user` |
-| Documents | `add_document`, `update_document` (allow-listed columns), `find_document_by_hash`, `list_documents`, `get_document`, `delete_document` |
+| Facts | `list_memories` (grouped: `memory_key`, `values`, `memory_value`, `updated_at`), `add_fact`, `set_fact`, `delete_fact(value=None)` |
+| Documents | `add_document`, `update_document`, `find_document_by_hash`, `list_documents`, `get_document`, `delete_document` |
 | Conversations | `create_conversation`, `get_conversation`, `list_conversations`, `rename_conversation` (unused), `delete_conversation` |
-| Messages | `add_message` (also bumps `conversations.updated_at`), `list_messages(conv_id, limit)` |
-| Stats | `user_stats` — documents/chunks, conversations, queries per tool, rewrites, evaluations, average latency |
-
-### `models/schemas.py`
-Pydantic models: `Credentials`, `UserOut`, `TokenOut`, `DocumentOut`, `UploadOut`, `ChatRequest`,
-`ChatResponse`, `ConversationOut`, `MessageOut`.
-
-### `api/security.py` and `api/dependencies.py`
-See [§11](#11-authentication--security).
-
-### `rag/vectorstore.py`
-| Function | Description |
-|---|---|
-| `get_embeddings()` | Cached Gemini embeddings client (768 dims). |
-| `get_client()` | Cached Qdrant client (server or embedded) and ensures the collection. |
-| `_ensure_collection` | Creates the collection (cosine); errors if an existing collection has a different vector size; creates payload indexes on a server. |
-| `user_filter(user_id, doc_id=None)` | Qdrant filter on `metadata.user_id` (+ `metadata.doc_id`). |
-| `upsert`, `search`, `delete_document_vectors`, `count_user_vectors` | Lock-protected Qdrant operations. |
-
-### `rag/ingestion.py`, `rag/retrieval.py`
-See [§8](#8-ingestion-pipeline) and [§9](#9-retrieval).
+| Messages | `add_message`, `list_messages(conv_id, limit)` |
+| Stats | `user_stats` |
 
 ### `tools/`
 | Module | Functions | Notes |
 |---|---|---|
-| `__init__.py` | `history_to_messages`, `history_to_text`, `today`, `clean_answer`, `FORMAT_RULES` | `clean_answer` converts gpt-oss `【1†L1-L3】` citations to `[1]`. |
-| `greeting.py` | `respond(query, history, username, doc_count)` | Fast model. |
-| `direct_answer.py` | `answer(query, history) -> (text, needs_web)` | Sentinel `NEEDS_WEB_SEARCH`. |
-| `rag.py` | `format_context`, `generate(query, docs, history) -> str \| None`, `to_sources` | Sentinel `NO_ANSWER_IN_DOCUMENTS` → `None`. |
-| `web_search.py` | `search(query, n)`, `generate(query, results, history)`, `to_sources` | Tavily → DuckDuckGo fallback; DuckDuckGo results are enriched by fetching and cleaning the top 4 pages (2,500 chars each). Never raises; returns `[]` on failure. |
+| `__init__.py` | `history_to_messages(history, keep_full=2, older_max_chars=800)`, `history_to_text`, `today`, `clean_answer`, `FORMAT_RULES` | Older history messages are shortened; the last exchange is kept whole. |
+| `greeting.py` | `respond(...)` | Delegates to `direct_answer.converse`. |
+| `direct_answer.py` | `answer(query, history, confidence_required, memories) -> (text, needs_other_source, gate)`, `converse`, `KnowledgeGate`, `_gate_passes` | See 7.4. |
+| `rag.py` | `format_context`, `generate`, `to_sources` | Partial answers kept (see 7.3). |
+| `web_search.py` | `search`, `generate`, `to_sources`, `provider_names` | "Latest/current" questions get the current year; news uses Tavily's news topic with a day/week window; result text capped at 1,500 chars; results cached. |
+| `memory.py` | `extract_and_save_memories`, `plan_changes`, `apply_changes`, `summarize_exchange`, `normalize_key`, `is_single_value` | See §8. |
 
-### `evaluation/evaluator.py`
+### `memory/`
+`embeddings.py`: `embed_memory`, `embed_memory_query` (Voyage). `store.py`: `ensure_memory_collection`, `save_memory`,
+`search_memories` (always filtered to the user), `delete_conversation_memories`.
+
+### `evaluation/`
 | Function | Returns | Failure behaviour |
 |---|---|---|
-| `grade_documents(query, docs)` | Relevant subset of `docs` | Fail-open (keeps all) |
-| `evaluate_answer(query, answer, context=None)` | `{sufficient, grounded, score, missing}` | Accepts the answer (score 3) |
+| `grade_documents(query, docs)` | Relevant subset + review steps | Used only without the cross-encoder |
+| `evaluate_answer(query, answer, context=None)` | `{sufficient, grounded, score, missing}` | Raises; `evaluate_node` keeps the answer as unverified |
+| `reviewer.verified_decision(...)` | `(decision, review_steps)` | Reviews only uncertain decisions; reviewer failures accept the decision |
 
 ### `graph/`
-See [§7](#7-the-agent-workflow). Public entry points in `workflow.py`:
-`run_agent(query, user, history, doc_names)` → final state, and
-`stream_agent(...)` → generator of `("step", trace_step)` … `("final", state)`.
+`workflow.run_agent(query, user, history, memories, doc_names, callbacks=None)` → final state;
+`stream_agent(...)` → generator of `("status" | "step" | "draft" | "final", payload)`.
 
-### `api/routes/`
-See [§13](#13-http-api-reference). Internal helpers in `chat.py`: `_prepare` (conversation, history,
-doc names, save user message), `_persist` (save assistant message + meta, build response),
-`_error_state` (graceful failure answer).
+### `api/routes/chat.py`
+`_prepare` (conversation, history, facts + episodes, document names, save user message), `_persist` (save the answer
+with meta and usage, queue memory work), `_remember` (background: facts, episode, token log), `_error_state`
+(rate-limit-aware failure answer), `chat`, `chat_stream` (agent thread + relay; `_STREAM_END` ends the stream).
 
 ---
 
-## 11. Authentication & security
+## 13. Authentication & security
 
 ### Passwords
 - `_prehash`: SHA-256 → base64 (44 bytes), so passwords longer than bcrypt's 72-byte limit remain fully significant.
@@ -476,41 +574,43 @@ doc names, save user message), `_persist` (save assistant message + meta, build 
 - `verify_password`: `bcrypt.checkpw`; malformed hashes return `False`.
 
 ### Tokens (JWT, HS256)
-- `create_access_token(user_id, username)` → `base64url(header).base64url(payload).base64url(HMAC-SHA256)`;
-  payload `{sub, name, iat, exp}`, lifetime `JWT_EXPIRE_MINUTES`.
-- `decode_access_token(token)` → verifies the signature with `hmac.compare_digest` (constant time), requires
-  `alg == HS256`, rejects expired tokens, and returns `None` for any malformed input.
+- `create_access_token(user_id, username)` → `header.payload.signature` (base64url, HMAC-SHA256); payload
+  `{sub, name, iat, exp}`.
+- `decode_access_token(token)` verifies the signature in constant time, requires `alg == HS256`, rejects expired tokens.
 - Secret: `JWT_SECRET`, or a random value generated once into `backend/data/.jwt_secret`.
 
 ### Request guard
-`dependencies.get_current_user` (used via `Depends`) reads the `Authorization: Bearer` header, decodes
-the token, confirms the user still exists and returns `{id, username}`. Every failure returns the same
-`401 Not authenticated`. The frontend clears its token and shows the login screen on any 401.
+`dependencies.get_current_user` reads the `Authorization: Bearer` header, decodes the token, confirms the user still
+exists and returns `{id, username}`. Every failure returns the same `401 Not authenticated`; the frontend then shows
+the login screen.
 
 ### Data isolation & input safety
-- Every SQL query filters by `user_id`; every Qdrant query filters by `metadata.user_id`.
+- Every SQL query filters by `user_id`; every Qdrant query (documents and memories) filters by the user.
 - SQL uses placeholders only; dynamic column names in `update_document` are allow-listed.
-- Upload filenames are sanitized and files are stored under generated ids, preventing path traversal.
-- Upload size is enforced while reading. Login errors do not reveal whether a username exists.
+- Upload filenames are sanitised and files stored under generated ids. Upload size is enforced while reading.
+- Login errors don't reveal whether a username exists.
 
 ---
 
-## 12. Data model
+## 14. Data model
 
 ### SQLite (`backend/data/app.db`)
 
 ```
 users ──< documents
-  │
+  ├──< user_facts
   └──< conversations ──< messages
 ```
 
 | Table | Columns | Constraints |
 |---|---|---|
 | `users` | `id`, `username`, `password_hash`, `created_at` | `username` unique, case-insensitive |
-| `documents` | `id`, `user_id`, `filename`, `file_hash`, `size_bytes`, `pages`, `chunks`, `status` (`processing`/`indexed`/`failed`), `error`, `created_at` | `UNIQUE(user_id, file_hash)`, cascade on user delete |
+| `user_facts` | `id`, `user_id`, `memory_key`, `value`, `created_at`, `updated_at` | `UNIQUE(user_id, memory_key, value)`, `value` case-insensitive |
+| `migrations` | `name`, `applied_at` | One-off data migrations applied |
+| `user_memory` | `id`, `user_id`, `memory_key`, `memory_value`, … | Pre-migration backup, no longer written |
+| `documents` | `id`, `user_id`, `filename`, `file_hash`, `size_bytes`, `pages`, `chunks`, `status`, `error`, `created_at` | `UNIQUE(user_id, file_hash)` |
 | `conversations` | `id`, `user_id`, `title`, `created_at`, `updated_at` | cascade on user delete |
-| `messages` | `id`, `conversation_id`, `role` (`user`/`assistant`), `content`, `tool`, `meta` (JSON), `created_at` | cascade on conversation delete |
+| `messages` | `id`, `conversation_id`, `role`, `content`, `tool`, `meta` (JSON), `created_at` | cascade on conversation delete |
 
 `messages.meta` for assistant messages:
 
@@ -518,218 +618,177 @@ users ──< documents
 {
   "intent": "rag",
   "sources": [{"type": "document", "title": "a.pdf", "document": "a.pdf", "page": 2, "score": 0.71, "snippet": "..."}],
+  "notices": ["..."],
   "rewritten_queries": ["..."],
   "evaluation": {"sufficient": true, "grounded": true, "score": 5, "missing": ""},
-  "trace": [{"node": "router", "detail": "Intent → rag. ...", "data": {}}],
-  "latency_ms": 5796
+  "trace": [{"id": "…", "node": "router", "detail": "…", "data": {}}],
+  "latency_ms": 5796,
+  "usage": {"total": {"input": 0, "output": 0}, "by_model": {"openai/gpt-oss-120b": {"calls": 0, "input": 0, "output": 0, "reasoning": 0}}, "by_step": {}}
 }
 ```
 
 ### Qdrant
 
-Collection `agentic_rag_docs`, vectors of size 768, cosine distance. Point payload:
-
-```json
-{
-  "page_content": "chunk text",
-  "metadata": {"user_id": "…", "doc_id": "…", "source": "a.pdf", "page": 2, "chunk_index": 7, "start_index": 5400}
-}
-```
+| Collection | Vectors | Payload |
+|---|---|---|
+| `agentic_rag_docs_v2` | `dense` (768, cosine) + `bm25` (sparse, IDF modifier) | `{page_content, metadata: {user_id, doc_id, source, page, chunk_index, start_index}}` |
+| `user_memories` | one unnamed vector (1,024, Voyage) | `{user_id, text, kind, conversation_id, updated_at}` |
 
 ---
 
-## 13. HTTP API reference
+## 15. HTTP API reference
 
-Base URL `http://localhost:8000/api`. All endpoints except `health`, `auth/register` and `auth/login`
-require `Authorization: Bearer <token>`. Errors have the shape `{"detail": "message"}`.
-
-### Health
-
-| Method & path | Response |
-|---|---|
-| `GET /health` | `{"status": "healthy", "llm": "...", "embeddings": "...", "web_search": "duckduckgo" \| "tavily"}` |
-
-### Auth
+Base URL `http://localhost:8000/api`. All endpoints except `health`, `auth/register` and `auth/login` require
+`Authorization: Bearer <token>`. Errors have the shape `{"detail": "message"}`.
 
 | Method & path | Body | Response |
 |---|---|---|
-| `POST /auth/register` | `{"username", "password"}` | `201` `{"access_token", "token_type": "bearer", "user": {"id", "username"}}` — `409` if taken, `422` if invalid |
-| `POST /auth/login` | `{"username", "password"}` | `200` same as above — `401` on bad credentials |
+| `GET /health` | — | `{"status": "healthy", "llm", "embeddings", "web_search": "tavily → duckduckgo → wikipedia"}` |
+| `POST /auth/register` | `{"username", "password"}` | `201` `{"access_token", "token_type", "user"}` — `409` taken, `422` invalid |
+| `POST /auth/login` | `{"username", "password"}` | same — `401` on bad credentials |
 | `GET /auth/me` | — | `{"id", "username"}` |
-
-### Documents
-
-| Method & path | Body | Response |
-|---|---|---|
 | `GET /documents` | — | `[DocumentOut]` newest first |
-| `POST /documents/upload` | multipart `file` | `{"status": "success" \| "duplicate", "filename", "chunks_indexed", "document": DocumentOut}` — `400` bad type/empty, `413` too large, `422` no extractable text, `500` indexing failed |
-| `DELETE /documents/{id}` | — | `204` — `404` if not found |
+| `POST /documents/upload` | multipart `file` | `{"status": "success" \| "duplicate", "filename", "chunks_indexed", "document"}` — `400`, `413`, `422`, `500` |
+| `DELETE /documents/{id}` | — | `204` |
+| `POST /chat` | `{"message", "conversation_id"?}` | `ChatResponse` (below) |
+| `POST /chat/stream` | same | SSE (below) |
+| `GET /conversations` | — | `[{id, title, created_at, updated_at}]` |
+| `GET /conversations/{id}/messages` | — | `[{id, role, content, tool, meta, created_at}]` oldest first |
+| `DELETE /conversations/{id}` | — | `204` (messages and remembered episodes removed) |
+| `GET /stats` | — | `{documents, chunks, conversations, queries, by_tool, queries_rewritten, answers_evaluated, answers_sufficient, avg_latency_ms}` |
 
-`DocumentOut`: `{id, filename, size_bytes, pages, chunks, status, error, created_at}`.
+`ChatResponse`: `{conversation_id, message_id, answer, tool, intent, sources, notices, rewritten_queries, evaluation,
+trace, latency_ms}` (the stream's `final` event also carries `usage`); `tool` is `rag | web_search | direct | greeting | no_results`.
 
-### Chat
+**Stream events** (`POST /chat/stream`):
 
-**`POST /chat`** — body `{"message": "...", "conversation_id": null | "id"}` (omit/null to start a new conversation).
-
-```json
-{
-  "conversation_id": "…", "message_id": "…",
-  "answer": "…markdown with [n] citations…",
-  "tool": "rag | web_search | direct | greeting | no_results",
-  "intent": "rag",
-  "sources": [ … ], "rewritten_queries": [ … ],
-  "evaluation": {"sufficient": true, "grounded": true, "score": 5, "missing": ""},
-  "trace": [ {"node": "router", "detail": "…", "data": {…}} ],
-  "latency_ms": 5796
-}
-```
-
-**`POST /chat/stream`** — same body; responds with `text/event-stream`:
-
-```
-event: meta
-data: {"conversation_id": "…", "title": "…"}
-
-event: step                      (repeated, one per trace step, as nodes finish)
-data: {"node": "retrieve", "detail": "Attempt 1: …", "data": {…}}
-
-event: final
-data: { …same object as POST /chat… }
-```
-
-### Conversations & stats
-
-| Method & path | Response |
-|---|---|
-| `GET /conversations` | `[{id, title, created_at, updated_at}]`, most recently updated first |
-| `GET /conversations/{id}/messages` | `[{id, role, content, tool, meta, created_at}]` oldest first |
-| `DELETE /conversations/{id}` | `204` (messages cascade) |
-| `GET /stats` | `{documents, chunks, conversations, queries, by_tool, queries_rewritten, answers_evaluated, answers_sufficient, avg_latency_ms}` |
-
-Example:
-
-```bash
-TOKEN=$(curl -s -X POST localhost:8000/api/auth/login -H 'Content-Type: application/json' \
-  -d '{"username":"alice","password":"secret123"}' | jq -r .access_token)
-curl -X POST localhost:8000/api/documents/upload -H "Authorization: Bearer $TOKEN" -F file=@report.pdf
-curl -X POST localhost:8000/api/chat -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-  -d '{"message":"What are the key findings of the report?"}'
-```
+| Event | Payload | Meaning |
+|---|---|---|
+| `meta` | `{conversation_id, title}` | Sent first, so a new chat appears immediately |
+| `status` | `{node, label}` | A step started, e.g. "Searching your documents…" |
+| `step` | `{id, node, detail, data}` | A trace entry, as soon as it exists |
+| `draft` | `{node, text}` | The answer so far (throttled to ~30 chars / 0.15 s) |
+| `final` | `ChatResponse` | The saved answer |
 
 ---
 
-## 14. Frontend
+## 16. Frontend
+
+Redesigned in November 2026: an ink-and-grey interface where the one colour marks where an answer came from
+(citation marks, "From your documents"), with light, dark and system themes.
 
 ### Data flow
 
 ```
-App.jsx ── user, conversations, activeConversationId, activePage
-   ├── LoginScreen            → apiService.login / register
-   ├── Sidebar                → select / new / delete conversation, navigate, log out
-   ├── pages/Chat             → apiService.streamMessage → ChatWindow → Message → SourceCard, ToolBadge
+App.jsx ── session, health polling, conversations, documents, routing
+   ├── pages/Login            → apiService.login / register
+   ├── components/Sidebar     → new chat, chats by recency, navigation, theme switch, log out
+   ├── pages/Chat             → state/chatStore.sendMessage → apiService.streamMessage → Message; InputBox
    ├── pages/Documents        → getDocuments / uploadDocument / deleteDocument
-   └── pages/Dashboard        → getStats
+   └── pages/Overview         → getStats + document library
 ```
 
-### `services/api.jsx`
-- Token stored in `localStorage` (`agentic_rag_token`), all access wrapped in `try/catch`.
-- `request()` adds the bearer token, handles JSON vs `FormData`, extracts the backend `detail` on errors,
-  and on a 401 clears the token and calls the registered unauthorized handler (→ login screen).
-- `streamMessage()` reads the SSE response with `ReadableStream.getReader()`, buffers chunks, splits events on
-  blank lines and dispatches `onMeta` / `onStep` / `onFinal`.
-
-### Components & pages
+### Key pieces
 | File | Responsibility |
 |---|---|
-| `App.jsx` | Session restore via `/auth/me`, login/register screen, layout, conversation list refresh, health indicator. |
-| `pages/Chat.jsx` | Loads a conversation's messages; on send, appends the user bubble and a *pending* agent bubble that fills with live steps, then is replaced by the final answer. `createdHereRef` prevents reloading a conversation that was just created mid-stream. |
-| `components/ChatWindow.jsx` | Empty state with suggestions, message list, auto-scroll. |
-| `components/Message.jsx` | Markdown rendering (GFM), rewritten-query note, sources, tool badge, quality score, latency, collapsible **Agent steps**. |
-| `components/SourceCard.jsx` | Numbered sources (document + page / web link) with expandable snippets. |
-| `components/ToolBadge.jsx` | Colored badge per tool (`rag`, `web_search`, `direct`, `greeting`, `no_results`). |
-| `components/Sidebar.jsx` | New chat, conversation list with delete, Documents / Dashboard nav, user & logout. |
-| `components/InputBox.jsx` | Message input and send button. |
-| `pages/Documents.jsx` | Multi-file drag & drop / picker, client-side type & size checks, sequential upload, status list, delete. |
-| `pages/Dashboard.jsx` | Stat tiles (queries, RAG hit rate, documents, latency, rewrites, sufficiency) and routing breakdown bars. |
-| `index.css` | Tailwind layers + `.markdown` styles for rendered answers. |
+| `App.jsx` | Health polling (4 s offline / 15 s online), session restore via `/auth/me` (a down backend never logs you out), layout; on phones the sidebar folds into a top bar. |
+| `lib/route.js` | Hash routes `#/chat`, `#/chat/<id>`, `#/documents`, `#/overview`, so back, refresh and links work. |
+| `state/chatStore.js` | Conversations and in-flight answers live outside the pages (`useSyncExternalStore`), so an answer keeps streaming when you switch pages or chats. A new chat is stored under `NEW_KEY` until the `meta` event gives its id. |
+| `lib/theme.js` | `useTheme()`: System / Light / Dark, saved in `localStorage` (`agentic_rag_theme`) and applied as `<html data-theme>`. `index.html` applies it before the first paint. |
+| `lib/format.js` | Counts, sizes, seconds, percentages, recency groups, source labels. |
+| `services/api.jsx` | Token in `localStorage` (`agentic_rag_token`); `request()` adds the bearer token and handles errors (401 → login); `streamMessage()` reads the SSE stream (`onMeta`, `onStatus`, `onStep`, `onDraft`, `onFinal`). |
+| `pages/Login.jsx` | Sign-in / sign-up with the backend's rules, offline notice, and an example answer. |
+| `pages/Chat.jsx` | New chat with suggestions based on your documents; otherwise the conversation and composer. |
+| `pages/Documents.jsx` | Drop zone + picker, type/size checks, upload progress, status list, delete with inline confirmation. |
+| `pages/Overview.jsx` | Key numbers, where answers came from, document library. |
+| `components/Sidebar.jsx` | New chat, chats grouped by recency (a dot marks one still answering; inline delete confirmation), navigation, theme switch, user and log out. |
+| `components/Message.jsx` | Answer with notices, Markdown and citation marks; a provenance line (source, checked or not, time); **Sources** and **Steps** disclosures; live status/steps/draft while pending. |
+| `components/InputBox.jsx` | Growing textarea: **Enter** sends, **Shift+Enter** or **Ctrl+Enter** adds a line; drafts kept per chat. |
+| `index.css`, `tailwind.config.js` | Colour tokens as CSS variables for both themes, type scale, component classes, `.markdown` styles. |
+| `preview.html`, `src/dev/` | Design preview with sample data (dev server only). |
 
 ### Dev proxy
-`vite.config.js` proxies `/api` to `http://127.0.0.1:8000`, so the browser makes same-origin requests
-(no CORS issues, any Vite port works). For a production build, serve `frontend/dist` behind the same
-origin as the API, or set `VITE_API_URL`.
+`vite.config.js` proxies `/api` to `http://127.0.0.1:8000`. For a production build, serve `frontend/dist` behind the
+same origin as the API, or set `VITE_API_URL`.
 
 ---
 
-## 15. Testing
+## 17. Testing and benchmarks
 
-`test_rag_pipeline.py` is an end-to-end smoke test against a running backend:
+**Unit tests** (no API calls, ~1 s): `python -m unittest discover backend/tests -p "test_*.py"`
 
-```bash
-python test_rag_pipeline.py                 # uses ./sample.pdf
-python test_rag_pipeline.py path/to/file.pdf
-```
+| File | Covers |
+|---|---|
+| `test_routing.py` | Source orders, documents skipped without uploads, single fallback, auto → model knowledge, retry budgets, partial RAG answers, unchecked answers kept, web recency rules, knowledge-gate rules, memory pre-check |
+| `test_memory.py` | Key normalisation, merge rules (replace / collect / forget / corrections), storage, one-time migration |
+| `test_stream.py` | The stream ends with `final`; the answer is saved after the client disconnects |
 
-It registers a throwaway user (`tester_xxxxxx`), uploads the file, then sends one message per path
-(greeting, RAG, vague RAG, not-in-documents, direct, web search) in one conversation, printing the tool,
-latency, every trace step, the answer and the sources. Each run leaves a test user and document in the
-local database.
+**Smoke test** (backend running): `python test_rag_pipeline.py [path/to/file.pdf]` — registers a throwaway user and
+asks one question per path.
 
-Manual checks worth doing after changes: upload the same file twice (→ duplicate), call a protected
-endpoint without a token (→ 401), and inspect **Agent steps** in the UI for routing decisions.
+**Benchmarks** (`benchmark/`, see each script's docstring; retrieval ones need the backend stopped):
+
+| Script | Measures | Latest result |
+|---|---|---|
+| `run_retrieval.py --stage …` | top-k, MRR, out-of-scope detection | MRR 0.774 → 0.822 (hybrid) → 0.872 (reranked); OOS 100% |
+| `run_selection.py --collect / --compare` | Passage-selection methods: coverage, precision, tokens | In progress |
+| `run_e2e.py`, `run_perf.py` | Full answers; startup, memory, speed | Rerank 20 candidates ≈ 0.7 s; +450 MB |
+| `run_router.py` | 80 routing cases | 73/80 exact, 79/80 acceptable, 0/41 non-document messages sent to RAG |
+| `run_direct_gate.py [--gate-only]` | Opinion/general questions answered from model knowledge | Gate: 3/18 → 18/18; controls 4/4; full path 22/22 |
+| `run_memory.py` | 18 memory conversations | 18/18; 20/20 facts; 0 stale; 0 false saves |
+
+Experiments that call the APIs live in `scripts/experiments/` (run from the root, e.g.
+`python -m scripts.experiments.test_gate`).
 
 ---
 
-## 16. Troubleshooting
+## 18. Troubleshooting
 
 | Symptom | Cause / fix |
 |---|---|
-| `ModuleNotFoundError: No module named 'backend'` or `Could not import module "app"` | You're in a folder other than the project root or `backend/`. `uvicorn app:app --reload` works from those two (the root-level `app.py` re-exports `backend/app.py`). |
-| UI shows **"Cannot reach the backend server"** | Backend not running on `127.0.0.1:8000`, or you're opening an old build. The Vite proxy handles ports/CORS — restart `npm run dev` after changing `vite.config.js`. |
-| `[Errno 10048] … address already in use` | Another process uses port 8000. Stop it or use `--port 8001` (and update the proxy target). |
-| Qdrant `JSONDecodeError` / lock errors at startup | Two backend processes are using the embedded store at once. Run a single backend, or use a Qdrant server (`QDRANT_URL`). |
-| `Missing required settings in .env` | `GROQ_API_KEY` or `GEMINI_API_KEY` missing from the root `.env`. |
-| `Collection … has vector size X but EMBEDDING_DIM=Y` | Changed embedding size. Set a new `COLLECTION_NAME` or delete `backend/vector_db/qdrant_data`. |
-| `404 models/… is not found` (embeddings) | Model retired by Google (e.g. `text-embedding-004`). Use `gemini-embedding-001`. |
-| Groq `model_decommissioned` / not found | Update `LLM_MODEL` / `FAST_LLM_MODEL` to a model listed by Groq. |
+| `ModuleNotFoundError: No module named 'backend'` | Start uvicorn from the project root or `backend/`. |
+| UI says the server isn't running | Backend not on `127.0.0.1:8000`. The page reconnects by itself once it starts. |
+| `[Errno 10048] … address already in use` | A backend is already running (often in another terminal). Stop it with Ctrl+C there, or use `--port 8001` and update the proxy. |
+| Qdrant lock / `JSONDecodeError` at startup | Two processes use the embedded store. Run one backend (stop it before benchmarks), or use `QDRANT_URL`. |
+| `Missing required settings in .env` | `GROQ_API_KEY` or `GEMINI_API_KEY` missing. |
+| `Collection … has vector size X` | Embedding size changed. New `COLLECTION_NAME` or delete `backend/vector_db/qdrant_data`. |
+| "The AI service's free usage limit has been reached" | A Groq limit (per minute or per day). The message says which model and how long to wait. |
+| Answer marked "couldn't be automatically checked" | The checking model was rate-limited; the answer was kept unverified. |
+| Opinion questions going to documents/web | Check the `direct_answer` step under **Steps**: the gate's `question_kind` and reason. `run_direct_gate.py` reproduces it. |
+| Memory not recalled from past chats | `VOYAGE_API_KEY` missing or Voyage unavailable (logged); facts still work. |
 | Upload returns 422 "No extractable text" | Scanned/image-only PDF. OCR it first. |
-| Answers routed to the wrong tool | Inspect the router's reason in **Agent steps**; adjust `ROUTER_PROMPT` in `graph/nodes.py`. |
-| Web search returns nothing | DuckDuckGo rate limiting or blocking. Add a `TAVILY_API_KEY`. |
-| `Router failed` / `grading failed` warnings in the log | Transient Groq errors; the agent falls back safely. Persistent failures usually mean an invalid key or model name. |
+| Web search returns nothing | DuckDuckGo blocking or rate limiting. Add a `TAVILY_API_KEY`. |
 
 ---
 
-## 17. Extending the system
+## 19. Extending the system
 
-**Add a new intent/tool** (e.g. a calculator):
-1. Add the value to `Route.intent`'s `Literal[...]` and describe it in `ROUTER_PROMPT` (`graph/nodes.py`).
-2. Implement the tool in `backend/tools/` and a node in `nodes.py` that sets `answer`, `tool`, `trace`.
-3. Register the node in `build_graph()` and route to it in `route_after_router` (`graph/workflow.py`).
-4. Add a badge entry in `ToolBadge.jsx` and a label in `Message.jsx` `NODE_LABELS`.
+**Add a source/tool:** add it to `Route.source_preference` and `ROUTER_PROMPT`; implement it in `backend/tools/`
+and a node in `nodes.py` that sets `answer`, `tool`, `trace`; add it to `_source_order`, `SOURCE_NODE`,
+`FALLBACK_NOTICES` and `build_graph()`; label it in `Message.jsx` and `lib/format.js`.
 
 **Support a new file type:** extend `SUPPORTED_EXTENSIONS` and `load_file` in `rag/ingestion.py`, and `ACCEPTED`
 in `pages/Documents.jsx`.
 
-**Swap models/providers:** change `LLM_MODEL` / `FAST_LLM_MODEL` in `.env`. For another provider, edit the
-factories in `config/llm.py`; keep structured output working for `Route`, `Rewrite`, `DocGrades`, `AnswerEval`.
-Changing the embedding model or dimension requires re-ingesting documents into a new collection.
+**Swap models:** change `LLM_MODEL` / `FAST_LLM_MODEL` / `MEMORY_LLM_MODEL`. Keep structured output working for
+every schema in 7.8. Changing `RERANKER_MODEL` requires recalibrating `RELEVANCE_HIGH` / `RELEVANCE_LOW`.
 
-**Tune retrieval quality:** `CHUNK_SIZE` / `CHUNK_OVERLAP`, `RETRIEVAL_K`, `MIN_RELEVANCE_SCORE`,
-`MAX_RETRIEVAL_ATTEMPTS`. Candidate improvements: hybrid (BM25 + dense) search, a cross-encoder reranker,
-or per-document filtering from the chat UI.
+**Remember a new kind of fact:** add single-value keys to `SINGLE_VALUE_KEYS` (or use a `favorite_` / `preferred_` /
+`current_` prefix) and variants to `KEY_ALIASES` in `tools/memory.py`; add a case to `benchmark/memory_cases.json`.
 
-**Scale out:** point `QDRANT_URL` to a Qdrant server (enables multiple workers and payload indexes), and
-replace SQLite with Postgres by reimplementing `models/database.py` behind the same functions.
+**Scale out:** point `QDRANT_URL` to a Qdrant server, and replace SQLite with Postgres behind the same
+`models/database.py` functions.
 
 ---
 
-## 18. Known limitations
+## 20. Known limitations
 
-- **Latency** — each agent step is an LLM call; retry-heavy paths (e.g. "no matches found") can take 30–60 s.
-- **Tokens cannot be revoked** — logout only removes the browser's copy; tokens stay valid until expiry.
-  Tokens live in `localStorage` (an HttpOnly cookie would be more robust against XSS).
+- **Local reranker** — the cross-encoder needs ~450 MB of RAM and torch; a hosted reranker is planned for deployment.
+- **Free-tier limits** — each Groq model allows 8,000 tokens/minute and 200,000/day; Gemini embeddings 1,000/day.
+- **Tokens cannot be revoked** — logout only removes the browser's copy; tokens live in `localStorage`.
 - **Single-process embedded Qdrant** — use a Qdrant server for multiple workers.
-- **Synchronous ingestion** — large files block the upload request until indexed; a background job queue would scale better.
+- **Synchronous ingestion** — large files block the upload request until indexed.
 - **No OCR** — image-only PDFs cannot be indexed.
-- **LLM judges are fallible** — grading and evaluation reduce, but do not eliminate, irrelevant or ungrounded answers.
-- **DuckDuckGo scraping** is best-effort and may be rate-limited; Tavily is more reliable.
+- **LLM judges are fallible** — the gate, grading and evaluation reduce, but don't eliminate, wrong routes and
+  ungrounded answers.
 - **No rate limiting** on login or chat endpoints.

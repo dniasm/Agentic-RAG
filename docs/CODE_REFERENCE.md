@@ -1,5 +1,7 @@
 # Agentic RAG — Code Reference
 
+> **Note (2 November 2026):** this file explains the code as it was in the first version (commit `9f5c527`). Routing, memory, token tracking and the frontend have changed a lot since then, and line numbers no longer match. For the current behaviour see [`DOCUMENTATION.md`](DOCUMENTATION.md).
+
 A file-by-file, function-by-function reference for the whole codebase.
 
 - For **what the system does and how to run it**, see [`README.md`](../README.md).

@@ -1,5 +1,7 @@
 # The `graph` folder, explained line by line
 
+> **Note (2 November 2026):** this file explains the code as it was in the first version (commit `9f5c527`). Routing, memory, token tracking and the frontend have changed a lot since then, and line numbers no longer match. For the current behaviour see [`DOCUMENTATION.md`](DOCUMENTATION.md).
+
 This document explains every line of code in `backend/graph/` in plain language. No programming background is assumed.
 
 The folder has four files:
