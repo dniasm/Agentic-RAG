@@ -1,6 +1,4 @@
-from backend.config.llm import structured
-from backend.tools import today
-from backend.tools.direct_answer import KnowledgeGate, GATE_PROMPT, _gate_passes
+from backend.tools.direct_answer import _gate_passes, _run_gate
 
 tests = [
     "Who wrote Pride and Prejudice?",                       # should pass
@@ -11,7 +9,5 @@ tests = [
 ]
 
 for q in tests:
-    gate = structured(KnowledgeGate, fast=False, backup=True).invoke(
-        GATE_PROMPT.format(today=today(), query=q)
-    )
+    gate = _run_gate(q)
     print(f"\n{q}\n  passes={_gate_passes(gate)}  {gate.model_dump()}")

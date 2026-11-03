@@ -1,0 +1,538 @@
+{
+  "timestamp": "2026-11-03T14:22:06",
+  "summary": {
+    "answered_as_expected": "22/22",
+    "refused_as_expected": "9/9",
+    "gate_calls": 31,
+    "tokens": 27278
+  },
+  "rows": [
+    {
+      "id": "op-freewill",
+      "message": "is free will an illusion?",
+      "expect": "answer",
+      "outcome": "answer",
+      "ok": true,
+      "intent": "direct",
+      "confidence_required": true,
+      "gate": {
+        "question_kind": "open",
+        "reason": "The question asks for a philosophical position on free will, requiring reasoning rather than factual lookup.",
+        "time_sensitive": false,
+        "references_user_material": false,
+        "confidence": "high"
+      },
+      "tokens": 875
+    },
+    {
+      "id": "op-pineapple",
+      "message": "what do you reckon about pineapple on pizza",
+      "expect": "answer",
+      "outcome": "answer",
+      "ok": true,
+      "intent": "direct",
+      "confidence_required": true,
+      "gate": {
+        "question_kind": "open",
+        "reason": "The question asks for a personal opinion on pineapple on pizza, which is a matter of taste rather than factual information.",
+        "time_sensitive": false,
+        "references_user_material": false,
+        "confidence": "high"
+      },
+      "tokens": 892
+    },
+    {
+      "id": "op-ai-jobs",
+      "message": "do you think AI will replace programmers?",
+      "expect": "answer",
+      "outcome": "answer",
+      "ok": true,
+      "intent": "direct",
+      "confidence_required": true,
+      "gate": {
+        "question_kind": "open",
+        "reason": "The question asks for an opinion about future AI impact on programming, requiring speculative reasoning rather than factual data.",
+        "time_sensitive": false,
+        "references_user_material": false,
+        "confidence": "high"
+      },
+      "tokens": 881
+    },
+    {
+      "id": "op-meaning",
+      "message": "what's the meaning of life tbh",
+      "expect": "answer",
+      "outcome": "answer",
+      "ok": true,
+      "intent": "direct",
+      "confidence_required": true,
+      "gate": {
+        "question_kind": "open",
+        "reason": "The question asks for a philosophical interpretation, which is subjective and not a factual query.",
+        "time_sensitive": false,
+        "references_user_material": false,
+        "confidence": "medium"
+      },
+      "tokens": 873
+    },
+    {
+      "id": "op-fly",
+      "message": "would you rather be able to fly or be invisible?",
+      "expect": "answer",
+      "outcome": "answer",
+      "ok": true,
+      "intent": "direct",
+      "confidence_required": true,
+      "gate": {
+        "question_kind": "open",
+        "reason": "The question asks for a personal preference, which is subjective and not based on factual knowledge.",
+        "time_sensitive": false,
+        "references_user_material": false,
+        "confidence": "low"
+      },
+      "tokens": 909
+    },
+    {
+      "id": "op-meat",
+      "message": "is it ethical to eat meat?",
+      "expect": "answer",
+      "outcome": "answer",
+      "ok": true,
+      "intent": "direct",
+      "confidence_required": true,
+      "gate": {
+        "question_kind": "open",
+        "reason": "The question asks for ethical evaluation, requiring philosophical reasoning rather than factual recall.",
+        "time_sensitive": false,
+        "references_user_material": false,
+        "confidence": "medium"
+      },
+      "tokens": 866
+    },
+    {
+      "id": "op-island",
+      "message": "if you were stranded on an island what 3 things would you bring",
+      "expect": "answer",
+      "outcome": "answer",
+      "ok": true,
+      "intent": "direct",
+      "confidence_required": true,
+      "gate": {
+        "question_kind": "open",
+        "reason": "The question asks for personal preferences, which is an opinion-based response.",
+        "time_sensitive": false,
+        "references_user_material": false,
+        "confidence": "medium"
+      },
+      "tokens": 884
+    },
+    {
+      "id": "op-remote",
+      "message": "what's your take on remote work vs going to the office",
+      "expect": "answer",
+      "outcome": "answer",
+      "ok": true,
+      "intent": "direct",
+      "confidence_required": true,
+      "gate": {
+        "question_kind": "open",
+        "reason": "The question asks for an opinionated comparison of remote work and office work, which is a subjective discussion rather than a factual query.",
+        "time_sensitive": false,
+        "references_user_material": false,
+        "confidence": "high"
+      },
+      "tokens": 895
+    },
+    {
+      "id": "op-money",
+      "message": "can money actually buy happiness?",
+      "expect": "answer",
+      "outcome": "answer",
+      "ok": true,
+      "intent": "direct",
+      "confidence_required": true,
+      "gate": {
+        "question_kind": "open",
+        "reason": "The question asks about the relationship between money and happiness, requiring philosophical and psychological reasoning rather than a single factual answer.",
+        "time_sensitive": false,
+        "references_user_material": false,
+        "confidence": "medium"
+      },
+      "tokens": 887
+    },
+    {
+      "id": "op-math",
+      "message": "Is math invented or discovered?",
+      "expect": "answer",
+      "outcome": "answer",
+      "ok": true,
+      "intent": "direct",
+      "confidence_required": true,
+      "gate": {
+        "question_kind": "open",
+        "reason": "The question asks for a philosophical stance on whether mathematics is invented or discovered, requiring reasoning rather than factual lookup.",
+        "time_sensitive": false,
+        "references_user_material": false,
+        "confidence": "medium"
+      },
+      "tokens": 878
+    },
+    {
+      "id": "op-ventilator",
+      "message": "imagine you're a doctor with one ventilator and two patients, who gets it?",
+      "expect": "answer",
+      "outcome": "answer",
+      "ok": true,
+      "intent": "direct",
+      "confidence_required": true,
+      "gate": {
+        "question_kind": "open",
+        "reason": "The question asks for an ethical judgment about allocating a ventilator, which is a value-laden, opinion-based scenario.",
+        "time_sensitive": false,
+        "references_user_material": false,
+        "confidence": "medium"
+      },
+      "tokens": 887
+    },
+    {
+      "id": "op-todo",
+      "message": "be honest, is building yet another todo app a dumb portfolio idea?",
+      "expect": "answer",
+      "outcome": "answer",
+      "ok": true,
+      "intent": "direct",
+      "confidence_required": true,
+      "gate": {
+        "question_kind": "open",
+        "reason": "Requires subjective assessment of portfolio strategy and industry norms",
+        "time_sensitive": false,
+        "references_user_material": false,
+        "confidence": "medium"
+      },
+      "tokens": 871
+    },
+    {
+      "id": "ph-human",
+      "message": "what do you think makes humans human?",
+      "expect": "answer",
+      "outcome": "answer",
+      "ok": true,
+      "intent": "direct",
+      "confidence_required": true,
+      "gate": {
+        "question_kind": "open",
+        "reason": "The question asks for a philosophical perspective on what defines humanity, requiring reasoning rather than factual recall.",
+        "time_sensitive": false,
+        "references_user_material": false,
+        "confidence": "medium"
+      },
+      "tokens": 865
+    },
+    {
+      "id": "ph-consciousness",
+      "message": "Why do you think consciousness exists at all?",
+      "expect": "answer",
+      "outcome": "answer",
+      "ok": true,
+      "intent": "direct",
+      "confidence_required": true,
+      "gate": {
+        "question_kind": "open",
+        "reason": "The question asks for philosophical reasoning about why consciousness exists, which relies on conceptual knowledge rather than specific factual data.",
+        "time_sensitive": false,
+        "references_user_material": false,
+        "confidence": "high"
+      },
+      "tokens": 888
+    },
+    {
+      "id": "ph-good-life",
+      "message": "What makes a life a good life?",
+      "expect": "answer",
+      "outcome": "answer",
+      "ok": true,
+      "intent": "direct",
+      "confidence_required": true,
+      "gate": {
+        "question_kind": "open",
+        "reason": "The question asks for philosophical reasoning about what constitutes a good life, which relies on ethical and existential concepts rather than specific factual data.",
+        "time_sensitive": false,
+        "references_user_material": false,
+        "confidence": "high"
+      },
+      "tokens": 903
+    },
+    {
+      "id": "ph-ai-feel",
+      "message": "Can an AI ever truly understand anything, in your view?",
+      "expect": "answer",
+      "outcome": "answer",
+      "ok": true,
+      "intent": "direct",
+      "confidence_required": true,
+      "gate": {
+        "question_kind": "open",
+        "reason": "The question asks for a philosophical viewpoint on AI understanding, requiring reasoning about concepts of cognition and consciousness.",
+        "time_sensitive": false,
+        "references_user_material": false,
+        "confidence": "medium"
+      },
+      "tokens": 890
+    },
+    {
+      "id": "fact-austen",
+      "message": "Who wrote Pride and Prejudice?",
+      "expect": "answer",
+      "outcome": "answer",
+      "ok": true,
+      "intent": "direct",
+      "confidence_required": true,
+      "gate": {
+        "question_kind": "factual",
+        "reason": "Requires knowledge of a well-known literary author, which is well established in training data.",
+        "time_sensitive": false,
+        "references_user_material": false,
+        "confidence": "high"
+      },
+      "tokens": 853
+    },
+    {
+      "id": "fact-hooks",
+      "message": "How do React hooks work?",
+      "expect": "answer",
+      "outcome": "answer",
+      "ok": true,
+      "intent": "direct",
+      "confidence_required": true,
+      "gate": {
+        "question_kind": "factual",
+        "reason": "The question asks for an explanation of how React hooks work, which is a well‑documented technical concept.",
+        "time_sensitive": false,
+        "references_user_material": false,
+        "confidence": "high"
+      },
+      "tokens": 862
+    },
+    {
+      "id": "ctl-invented",
+      "message": "Summarize the 2019 paper 'Sparse Graph Tricks for Tiny Transformers'",
+      "expect": "refuse",
+      "outcome": "refuse",
+      "ok": true,
+      "intent": "direct",
+      "confidence_required": true,
+      "gate": {
+        "question_kind": "factual",
+        "reason": "The request asks for a summary of a specific 2019 research paper, requiring knowledge of its content.",
+        "time_sensitive": false,
+        "references_user_material": false,
+        "confidence": "medium"
+      },
+      "tokens": 901
+    },
+    {
+      "id": "ctl-population",
+      "message": "What is the exact population of Bhaktapur?",
+      "expect": "refuse",
+      "outcome": "refuse",
+      "ok": true,
+      "intent": "direct",
+      "confidence_required": true,
+      "gate": {
+        "question_kind": "factual",
+        "reason": "The exact population requires up-to-date census or statistical data, which may have changed and is not certain from training.",
+        "time_sensitive": true,
+        "references_user_material": false,
+        "confidence": "low"
+      },
+      "tokens": 900
+    },
+    {
+      "id": "ctl-recent",
+      "message": "Who won the most recent Nepal general election?",
+      "expect": "refuse",
+      "outcome": "refuse",
+      "ok": true,
+      "intent": "direct",
+      "confidence_required": true,
+      "gate": {
+        "question_kind": "factual",
+        "reason": "Requires up-to-date political election results which may have changed after my training cutoff",
+        "time_sensitive": true,
+        "references_user_material": false,
+        "confidence": "low"
+      },
+      "tokens": 871
+    },
+    {
+      "id": "ctl-myfile",
+      "message": "What does chapter 3 of my report conclude?",
+      "expect": "refuse",
+      "outcome": "refuse",
+      "ok": true,
+      "intent": "direct",
+      "confidence_required": true,
+      "gate": {
+        "question_kind": "factual",
+        "reason": "The question asks for the conclusion of a specific user document which I have no access to.",
+        "time_sensitive": false,
+        "references_user_material": true,
+        "confidence": "low"
+      },
+      "tokens": 879
+    },
+    {
+      "id": "fact-math",
+      "message": "What is 17 times 23?",
+      "expect": "answer",
+      "outcome": "answer",
+      "ok": true,
+      "intent": "direct",
+      "confidence_required": true,
+      "gate": {
+        "question_kind": "factual",
+        "reason": "Simple arithmetic multiplication requiring basic math knowledge.",
+        "time_sensitive": false,
+        "references_user_material": false,
+        "confidence": "high"
+      },
+      "tokens": 837
+    },
+    {
+      "id": "fact-bsearch",
+      "message": "What's the time complexity of binary search and why?",
+      "expect": "answer",
+      "outcome": "answer",
+      "ok": true,
+      "intent": "direct",
+      "confidence_required": true,
+      "gate": {
+        "question_kind": "factual",
+        "reason": "The question asks for a well‑established algorithmic analysis that is part of standard computer‑science knowledge.",
+        "time_sensitive": false,
+        "references_user_material": false,
+        "confidence": "high"
+      },
+      "tokens": 861
+    },
+    {
+      "id": "fact-ww2",
+      "message": "When did World War II end?",
+      "expect": "answer",
+      "outcome": "answer",
+      "ok": true,
+      "intent": "direct",
+      "confidence_required": true,
+      "gate": {
+        "question_kind": "factual",
+        "reason": "Requires historical date knowledge, which is well established and within training data.",
+        "time_sensitive": false,
+        "references_user_material": false,
+        "confidence": "high"
+      },
+      "tokens": 850
+    },
+    {
+      "id": "fact-code",
+      "message": "Write a Python function that reverses a string.",
+      "expect": "answer",
+      "outcome": "answer",
+      "ok": true,
+      "intent": "direct",
+      "confidence_required": true,
+      "gate": {
+        "question_kind": "factual",
+        "reason": "The request asks for a standard programming task (string reversal) which is well documented and within training knowledge.",
+        "time_sensitive": false,
+        "references_user_material": false,
+        "confidence": "high"
+      },
+      "tokens": 869
+    },
+    {
+      "id": "ctl-price",
+      "message": "What is the current price of Bitcoin?",
+      "expect": "refuse",
+      "outcome": "refuse",
+      "ok": true,
+      "intent": "direct",
+      "confidence_required": true,
+      "gate": {
+        "question_kind": "factual",
+        "reason": "Requires up-to-date market data which changes frequently",
+        "time_sensitive": true,
+        "references_user_material": false,
+        "confidence": "low"
+      },
+      "tokens": 877
+    },
+    {
+      "id": "ctl-version",
+      "message": "What's the latest version of React?",
+      "expect": "refuse",
+      "outcome": "refuse",
+      "ok": true,
+      "intent": "direct",
+      "confidence_required": true,
+      "gate": {
+        "question_kind": "factual",
+        "reason": "The question asks for the current latest version of a software library, which changes over time and requires up‑to‑date information.",
+        "time_sensitive": true,
+        "references_user_material": false,
+        "confidence": "low"
+      },
+      "tokens": 875
+    },
+    {
+      "id": "ctl-niche-ceo",
+      "message": "Who is the CEO of Nepal Telecom?",
+      "expect": "refuse",
+      "outcome": "refuse",
+      "ok": true,
+      "intent": "direct",
+      "confidence_required": true,
+      "gate": {
+        "question_kind": "factual",
+        "reason": "The question asks for a current corporate executive name, which requires up-to-date factual information.",
+        "time_sensitive": true,
+        "references_user_material": false,
+        "confidence": "low"
+      },
+      "tokens": 879
+    },
+    {
+      "id": "ctl-slides",
+      "message": "What did the lecture slides say about attention?",
+      "expect": "refuse",
+      "outcome": "refuse",
+      "ok": true,
+      "intent": "direct",
+      "confidence_required": true,
+      "gate": {
+        "question_kind": "factual",
+        "reason": "The answer requires the specific content of the user's lecture slides, which is not available in the model's training data.",
+        "time_sensitive": false,
+        "references_user_material": true,
+        "confidence": "low"
+      },
+      "tokens": 919
+    },
+    {
+      "id": "ctl-niche-number",
+      "message": "What was Daraz Nepal's exact revenue in 2021?",
+      "expect": "refuse",
+      "outcome": "refuse",
+      "ok": true,
+      "intent": "direct",
+      "confidence_required": true,
+      "gate": {
+        "question_kind": "factual",
+        "reason": "Requires specific financial data for Daraz Nepal in 2021, which is not widely documented in training data",
+        "time_sensitive": false,
+        "references_user_material": false,
+        "confidence": "low"
+      },
+      "tokens": 901
+    }
+  ]
+}

@@ -13,23 +13,15 @@ log = logging.getLogger(__name__)
 
 
 class KnowledgeGate(BaseModel):
-    question_kind: Literal["factual", "open"] = Field(
-        description="factual: has a correct answer that a source could confirm or refute (facts, numbers, "
-                    "definitions, how things work). open: has no single correct answer: opinions, philosophy, "
-                    "ethics, values, preferences, hypotheticals, 'what do you think' or 'what would you do'."
-    )
+    # The rules live once, in GATE_PROMPT. These descriptions used to repeat them (~345 tokens of output schema
+    # on every gate call); they now only name the field.
+    question_kind: Literal["factual", "open"] = Field(description="open or factual, as defined above.")
     reason: str = Field(
-        description="One short sentence: what kind of knowledge this question needs and whether "
-                    "you reliably have it."
+        description="One short sentence: what knowledge the question needs and whether you reliably have it."
     )
-    time_sensitive: bool = Field(
-        description="True if a correct answer depends on recent or changing information "
-                    "(news, prices, scores, office holders, latest versions)."
-    )
-    references_user_material: bool = Field(
-        description="True if the question assumes access to the user's own files or documents "
-                    "('my report', 'the pdf', 'chapter 3 of the file')."
-    )
+    time_sensitive: bool = Field(description="Depends on recent or changing information.")
+    references_user_material: bool = Field(description="Assumes access to the user's own files.")
+    # Kept in full: with "as defined above" the gate rated an invented paper "high" in 2 of 5 runs (old: 0 of 5).
     confidence: Literal["high", "medium", "low"] = Field(
         description="For a factual question: high only if you are sure the answer is correct and well "
                     "established. For an open question: whether you can give a well-reasoned answer. "
@@ -40,32 +32,44 @@ class KnowledgeGate(BaseModel):
 GATE_HISTORY_CHARS = 600  # characters kept from each recent message in the gate prompt (same as the router)
 
 
-GATE_PROMPT = """You decide whether a question can be answered reliably from your own training
-knowledge alone. You do NOT answer the question. Today is {today}.
+GATE_PROMPT = """You decide whether a question can be answered reliably from your own training knowledge
+alone. You do NOT answer it. Today is {today}.
 
-First decide what kind of question it is:
-- open: no single correct answer exists. Opinions, philosophy, ethics, values, meaning, preferences,
-  hypotheticals, "what do you think", "what would you do". These are answered by reasoning, not looked up:
-  documents and web searches cannot settle them, so they belong here.
-- factual: a correct answer exists and a source could confirm or refute it.
+question_kind:
+- open: no single correct answer exists: opinions, philosophy, ethics, values, meaning, preferences,
+  hypotheticals, "what do you think", "what would you do". Answered by reasoning; documents and web searches
+  can't settle them.
+- factual: a correct answer exists that a source could confirm or refute (facts, numbers, definitions,
+  how things work).
 
-Fine to answer from training knowledge:
-- math and calculations, definitions, well-established concepts, code, how-tos,
-  widely documented history and science.
+time_sensitive: the answer depends on recent or changing information (news, prices, scores, office holders,
+latest versions).
+references_user_material: the question assumes access to the user's own files or documents ("my report",
+"the pdf", "chapter 3 of the file").
 
-Not reliable (use low or medium confidence):
+Fine to answer from training knowledge: math, definitions, well-established concepts, code, how-tos, widely
+documented history and science.
+Not reliable (low or medium confidence):
 - specific names, numbers, dates or quotes you are not certain of
 - obscure or niche people, companies, places or products
-- anything that changes over time: news, prices, scores, office holders, latest versions
-- anything that assumes access to the user's own files or documents
-  ("my report", "the pdf", "chapter 3 of the file")
 
 confidence:
-- high: you are sure the answer is correct and well established, and you would be comfortable
-  having it checked against a reliable source.
+- high: you are sure the answer is correct and well established, and would be comfortable having it checked
+  against a reliable source.
 - medium: you probably know it but could be wrong on details.
 - low: you are guessing or don't know.
-When unsure between two levels, choose the lower one.
+
+Judge the latest question in the context of the conversation below: resolve follow-ups and references ("it",
+"that") from it, and don't mark a question down just because it is incomplete on its own. Saved memories
+describe the user."""
+
+GATE_INPUT = """
+
+Recent conversation:
+{history}
+
+Saved user memories:
+{memories}
 
 Question: {query}"""
 
@@ -103,19 +107,9 @@ def _run_gate(
             for m in memories
         ) or "(no saved memories)"
 
-        prompt = (
-            GATE_PROMPT.format(today=today(), query=query)
-            + "\n\nRecent conversation:\n"
-            + history_text
-            + "\n\nPersistent user memories:\n"
-            + memory_text
-            + "\n\nEvaluate the latest question in context. Resolve "
-              "references and follow-ups using the conversation and "
-              "relevant saved memories. Do not reject a question merely "
-              "because it is incomplete when read in isolation. "
-              "Distinguish a hypothetical discussion from a real-world "
-              "request. Use web search only when the information genuinely "
-              "requires external or current verification."
+        # Fixed rules first (a cacheable prefix), then this message's context, the question last.
+        prompt = GATE_PROMPT.format(today=today()) + GATE_INPUT.format(
+            history=history_text, memories=memory_text, query=query
         )
 
         gate_llm = structured(

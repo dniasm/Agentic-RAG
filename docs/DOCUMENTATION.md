@@ -384,7 +384,8 @@ after long answers stays cheap. The rule (`_gate_passes`):
 
 Before `question_kind` existed, the gate asked "are you sure you're right?" about opinion questions, answered
 "medium", and sent them to documents and the web (benchmark: 3 of 18 answered directly; now 18 of 18, with all
-4 controls still refused).
+4 controls still refused). The prompt holds the rules once; the output fields' descriptions only name them,
+except `confidence`, kept in full (§21.13).
 
 **Answer prompt.** The direct-answer instructions have two parts (`system_prompt(open_question)`): a core part
 sent with every direct answer and small-talk reply (accuracy, judgment, follow-ups, style, format; ~480 tokens),
@@ -781,7 +782,7 @@ asks one question per path.
 | `run_e2e.py`, `run_perf.py` | Full answers; startup, memory, speed | Local rerank of 20 candidates ≈ 0.7 s; +450 MB |
 | `calibrate_reranker.py` | Voyage vs local reranker on saved pools; zone thresholds | 74 questions: top-5 100%, MRR 0.930 (local 0.830) |
 | `run_router.py` | 80 routing cases | 73/80 exact, 79/80 acceptable, 0/41 non-document messages sent to RAG |
-| `run_direct_gate.py [--gate-only]` | Opinion/general questions answered from model knowledge | Gate: 3/18 → 18/18; controls 4/4; full path 22/22 |
+| `run_direct_gate.py [--gate-only] [--old] [--only ids]` | 22 questions to answer from model knowledge, 9 that must be refused | 31/31 with the trimmed gate prompt; `--old` runs the pre-trim prompt (§21.13) |
 | `run_memory.py [case-id]` | 18 memory conversations | 17/18; 19/20 facts; 0 stale; 0 false saves; 15,984 tokens (§21.12) |
 | `run_checker.py [--fresh] [--rescore]` | Code citation check vs the 120B answer check, plus deliberately broken answers | 43 answers: 0 real problems missed; 187/190 broken answers caught (§21.9) |
 
@@ -1113,3 +1114,30 @@ retry when Qwen returns nothing for a message with a strong cue; it would cost t
 
 Single-case runs (`run_memory.py <case-id>`) no longer overwrite the full results file.
 
+### 21.13 Knowledge gate prompt (3 November)
+
+The gate (120B) runs before every direct answer the router wants fact-checked. Its rules were written twice, in the
+prompt and again in the output fields' descriptions, and its closing note told it when to "use web search", which
+the gate doesn't decide. Now: one set of rules in the prompt, short field descriptions, the web-search line removed,
+and the fixed rules first with the conversation, memories and question after them (a longer cacheable prefix).
+
+The benchmark had only 4 must-refuse questions, so 9 cases were added first: 4 facts to answer (arithmetic, binary
+search, the end of WWII, a short function) and 5 to refuse (Bitcoin price, latest React version, Nepal Telecom's
+CEO, "the lecture slides", Daraz Nepal's 2021 revenue). Both prompts were run the same day (`--old`).
+
+Repeated runs caught a regression the single run missed: with the `confidence` description cut to "as defined
+above" and the "not reliable" list folded into one sentence, the gate rated an invented paper ("Sparse Graph
+Tricks for Tiny Transformers") high and let it through in 2 of 5 runs (old prompt: 0 of 5). Restoring both fixed it
+(0 of 8).
+
+| `run_direct_gate.py --gate-only` (31 questions) | Old | New |
+|---|---|---|
+| Answered as expected | 22/22 | 22/22 |
+| Refused as expected | 9/9 | 9/9 |
+| Invented paper let through (repeats) | 0/5 | 0/8 (2/5 before the fix) |
+| Fixed prompt + output schema per call | ~750 tokens | ~605 (−19%) |
+| Benchmark tokens (31 gate calls) | 27,278 | 23,440 (−14%) |
+
+Follow-ups with history still resolve: "when was it published?" after a Pride and Prejudice question passes;
+"and its current Amazon price?" is flagged time-sensitive and refused. Results: `benchmark/results/gate_trim_old.json`,
+`gate_trim_new.json`; the old prompt is kept in `gate_prompt_old.json`.

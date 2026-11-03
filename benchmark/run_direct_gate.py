@@ -39,7 +39,37 @@ EXTRA = [
     {"id": "ctl-population", "message": "What is the exact population of Bhaktapur?", "expect": "refuse"},
     {"id": "ctl-recent", "message": "Who won the most recent Nepal general election?", "expect": "refuse"},
     {"id": "ctl-myfile", "message": "What does chapter 3 of my report conclude?", "expect": "refuse"},
+    # added 2026-11-03 with the gate prompt trim: more facts to answer, more facts that must be refused
+    {"id": "fact-math", "message": "What is 17 times 23?", "expect": "answer"},
+    {"id": "fact-bsearch", "message": "What's the time complexity of binary search and why?", "expect": "answer"},
+    {"id": "fact-ww2", "message": "When did World War II end?", "expect": "answer"},
+    {"id": "fact-code", "message": "Write a Python function that reverses a string.", "expect": "answer"},
+    {"id": "ctl-price", "message": "What is the current price of Bitcoin?", "expect": "refuse"},
+    {"id": "ctl-version", "message": "What's the latest version of React?", "expect": "refuse"},
+    {"id": "ctl-niche-ceo", "message": "Who is the CEO of Nepal Telecom?", "expect": "refuse"},
+    {"id": "ctl-slides", "message": "What did the lecture slides say about attention?", "expect": "refuse"},
+    {"id": "ctl-niche-number", "message": "What was Daraz Nepal's exact revenue in 2021?", "expect": "refuse"},
 ]
+
+
+def use_old_gate():
+    """--old: the gate prompt and schema descriptions from before the 2026-11-03 trim, for a same-day comparison."""
+    from pydantic import Field, create_model
+
+    from backend.config.llm import structured
+    from backend.tools import today
+
+    old = json.loads((BENCH_DIR / "results" / "gate_prompt_old.json").read_text(encoding="utf-8"))
+    fields = direct_answer.KnowledgeGate.model_fields
+    OldGate = create_model("KnowledgeGate", **{k: (f.annotation, Field(description=old["descriptions"][k]))
+                                               for k, f in fields.items()})
+
+    def run_gate(query, history=None, memories=None):  # gate-only cases have no history or memories
+        prompt = (old["prompt"].format(today=today(), query=query) + "\n\nRecent conversation:\n(no previous "
+                  "conversation)\n\nPersistent user memories:\n(no saved memories)" + old["context_note"])
+        return structured(OldGate, fast=False, backup=True).with_config(tags=["nostream"]).invoke(prompt)
+
+    direct_answer._run_gate = run_gate
 
 
 def cases() -> list[dict]:
@@ -92,8 +122,14 @@ def main():
     ap.add_argument("--out", default="direct_gate_eval.json")
     ap.add_argument("--gate-only", action="store_true",
                     help="skip the router and send every case to the knowledge gate (the router's worst case)")
+    ap.add_argument("--old", action="store_true", help="use the gate prompt from before the 2026-11-03 trim")
+    ap.add_argument("--only", default="", help="comma-separated case ids")
     args = ap.parse_args()
+    if args.old:
+        use_old_gate()
     all_cases, doc_names = cases()
+    if args.only:
+        all_cases = [c for c in all_cases if c["id"] in args.only.split(",")]
     rows = []
     for case in all_cases:
         r = run_case(case, doc_names, gate_only=args.gate_only)

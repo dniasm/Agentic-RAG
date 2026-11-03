@@ -70,6 +70,7 @@ Old vs current, from the benchmarks and the token log (details: [`docs/DOCUMENTA
 | Memory saves when Qwen misnames its tool (8 tries) | 5/8 | 8/8 |
 | Direct-answer prompt, factual questions and small talk | 1,022 tokens | 480 (−53%) |
 | Router tokens per message (80 cases) | 962 | 875 (−9%); 73/80 exact either way |
+| Knowledge gate prompt per call (31 questions, all correct either way) | ~750 tokens | ~605 (−19%) |
 | Document answers checked without the 120B (43 answers) | 0/43 | 37/43; 0 real problems missed; 187/190 broken answers caught |
 
 ## Running it
