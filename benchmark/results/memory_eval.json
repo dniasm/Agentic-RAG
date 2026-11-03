@@ -1,12 +1,12 @@
 {
-  "timestamp": "2026-11-01T21:35:15",
+  "timestamp": "2026-11-03T13:27:48",
   "model": "qwen/qwen3.8-27b",
   "summary": {
-    "cases_passed": "18/18",
-    "facts_saved": "20/20",
+    "cases_passed": "17/18",
+    "facts_saved": "19/20",
     "stale_values_left": 0,
     "false_saves": 0,
-    "memory_model_tokens": 20998
+    "memory_model_tokens": 15984
   },
   "rows": [
     {
@@ -39,7 +39,7 @@
       "missing": [],
       "unwanted": [],
       "false_save": false,
-      "tokens": 1876
+      "tokens": 1753
     },
     {
       "id": "hobbies-append",
@@ -102,7 +102,7 @@
       "missing": [],
       "unwanted": [],
       "false_save": false,
-      "tokens": 1837
+      "tokens": 0
     },
     {
       "id": "forget-all",
@@ -137,7 +137,7 @@
       "missing": [],
       "unwanted": [],
       "false_save": false,
-      "tokens": 1825
+      "tokens": 1690
     },
     {
       "id": "response-style",
@@ -169,27 +169,25 @@
       "id": "vegetarian",
       "passed": true,
       "memories": {
-        "diet": [
+        "dietary_restrictions": [
           "vegetarian"
         ]
       },
       "missing": [],
       "unwanted": [],
       "false_save": false,
-      "tokens": 898
+      "tokens": 766
     },
     {
       "id": "dislike",
-      "passed": true,
-      "memories": {
-        "disliked_foods": [
-          "spicy food"
-        ]
-      },
-      "missing": [],
+      "passed": false,
+      "memories": {},
+      "missing": [
+        "spicy"
+      ],
       "unwanted": [],
       "false_save": false,
-      "tokens": 901
+      "tokens": 908
     },
     {
       "id": "no-facts-question",
@@ -216,7 +214,7 @@
       "missing": [],
       "unwanted": [],
       "false_save": false,
-      "tokens": 878
+      "tokens": 0
     },
     {
       "id": "no-facts-hypothetical",
@@ -225,7 +223,7 @@
       "missing": [],
       "unwanted": [],
       "false_save": false,
-      "tokens": 887
+      "tokens": 0
     },
     {
       "id": "facts-then-question",
@@ -238,7 +236,7 @@
       "missing": [],
       "unwanted": [],
       "false_save": false,
-      "tokens": 1793
+      "tokens": 764
     }
   ]
 }

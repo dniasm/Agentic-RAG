@@ -64,9 +64,8 @@ def run_case(case: dict, pace: dict) -> dict:
 
 
 def main():
-    cases = json.loads((BENCH_DIR / "memory_cases.json").read_text(encoding="utf-8"))["cases"]
-    if len(sys.argv) > 1:
-        cases = [c for c in cases if c["id"] in sys.argv[1:]]
+    all_cases = json.loads((BENCH_DIR / "memory_cases.json").read_text(encoding="utf-8"))["cases"]
+    cases = [c for c in all_cases if c["id"] in sys.argv[1:]] if len(sys.argv) > 1 else all_cases
     db.init_db()
     pace = {"spent": []}
     rows = []
@@ -90,6 +89,9 @@ def main():
         "memory_model_tokens": sum(r["tokens"] for r in rows),
     }
     print("\n" + "  ".join(f"{k}: {v}" for k, v in summary.items()))
+    if len(cases) != len(all_cases):  # a single-case run must not replace the full results
+        print("single case: results not saved")
+        return
     out = BENCH_DIR / "results" / "memory_eval.json"
     out.write_text(json.dumps({"timestamp": datetime.now().isoformat(timespec="seconds"), "model":
                                settings.memory_llm_model, "summary": summary, "rows": rows},

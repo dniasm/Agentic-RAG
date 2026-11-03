@@ -432,7 +432,9 @@ Fixed sentences shown above an answer: moving between sources (`FALLBACK_NOTICES
 
 Decisions use `structured(ModelClass)` from `config/llm.py`. gpt-oss models use Groq's strict `json_schema` mode
 (constrained decoding, always schema-valid, so no repeat calls); other models use function calling. A plain-JSON
-fallback validated with pydantic covers the rest. Schemas: `Route`, `Rewrite`, `KnowledgeGate`, `DocGrades`,
+fallback validated with pydantic covers the rest; it sends the full JSON schema, including nested definitions. When
+Qwen files a correct answer under a misspelled tool name, Groq rejects the call but returns the generation;
+`_recover_tool_call` reads the arguments from it instead of losing them. Schemas: `Route`, `Rewrite`, `KnowledgeGate`, `DocGrades`,
 `AnswerEval`, `Review`, `MemoryExtraction`.
 
 ---
@@ -448,8 +450,10 @@ Two kinds, kept separate on purpose:
 | Written by | `tools/memory.extract_and_save_memories` | `tools/memory.summarize_exchange` + `memory/store.save_memory` |
 | Read | Every request (`db.list_memories`) | Up to 3 closest (score ≥ 0.45), each cut to 800 chars |
 
-**Fact rules.** A cheap pre-check (`_may_contain_memory`: "I", "my", "call me", "from now on", "keep your answers…",
-punctuation ignored) skips the model for impersonal messages. Otherwise Qwen reports only what to *remember* or
+**Fact rules.** A cheap pre-check (`_may_contain_memory`) skips the model for messages that can't hold a fact.
+Memory commands ("remember", "forget", "call me", "from now on") always go through. Otherwise each clause is checked
+for "I", "my", "keep your answers…" and similar cues, but clauses that are questions, hypotheticals or requests
+("how do I…", "what's my…", "if I were…", "give me…") are skipped (§21.12). Otherwise Qwen reports only what to *remember* or
 *forget*; `plan_changes` decides in code how storage changes:
 
 - single-value keys (`preferred_name`, `location`, `occupation`, …, and any `favorite_*`, `preferred_*`, `current_*`) —
@@ -778,7 +782,7 @@ asks one question per path.
 | `calibrate_reranker.py` | Voyage vs local reranker on saved pools; zone thresholds | 74 questions: top-5 100%, MRR 0.930 (local 0.830) |
 | `run_router.py` | 80 routing cases | 73/80 exact, 79/80 acceptable, 0/41 non-document messages sent to RAG |
 | `run_direct_gate.py [--gate-only]` | Opinion/general questions answered from model knowledge | Gate: 3/18 → 18/18; controls 4/4; full path 22/22 |
-| `run_memory.py` | 18 memory conversations | 18/18; 20/20 facts; 0 stale; 0 false saves |
+| `run_memory.py [case-id]` | 18 memory conversations | 17/18; 19/20 facts; 0 stale; 0 false saves; 15,984 tokens (§21.12) |
 | `run_checker.py [--fresh] [--rescore]` | Code citation check vs the 120B answer check, plus deliberately broken answers | 43 answers: 0 real problems missed; 187/190 broken answers caught (§21.9) |
 
 Experiments that call the APIs live in `scripts/experiments/` (run from the root, e.g.
@@ -1064,4 +1068,48 @@ prompt: 0 in 5). Restoring that description fixed it (5/5 to the documents).
 | "what can you do?" | model knowledge | small talk |
 | Tokens per message (incl. reviews) | 962 | 875 (−9%) |
 | Fixed prompt + output schema | 813 | 743 |
+
+### 21.12 Memory extraction: fewer calls, and two broken backup paths fixed (3 November)
+
+**Fewer calls.** The cheap filter that decides whether a message might hold a personal fact fired on any "I",
+"me", "my" or "we", so "how do I center a div" or "give me an overview of BM25" cost a memory-model call (~1,600
+tokens) that found nothing. It now looks at each clause: a clause that is a question, hypothetical or request ("how
+do I…", "what's my…", "if I were…", "give me…", "check my files…") doesn't count; memory commands ("remember",
+"forget", "call me", "from now on") always do.
+
+| Filter fires on | Old | New |
+|---|---|---|
+| 80 router benchmark messages | 10 | 2 (one is a real fact: "I'm Asmin btw") |
+| 74 document benchmark questions | 5 | 0 |
+| Turns in the 18 memory conversations that state a fact | all | all |
+| Question-only turns in those conversations | 3 of 4 | 0 of 4 |
+
+**Shorter field descriptions were tried and rejected**: the memory model then saved nothing for "I'm Asmin and I live
+in Pokhara", ignored "forget all my hobbies", and filed "I'll call you Nova" as the user's own name. They stay in full.
+
+**Two backup paths were broken** (found while benchmarking). The memory model (Qwen) misspelled its tool's name in 3
+of 8 identical calls ("MemoryExclusion", "MemoryExression"); Groq rejects those, and the plain-JSON fallback sent only
+the top-level fields, so Qwen copied the schema back instead of answering. Both failures silently lost the fact.
+Now: a misnamed call is read from the rejected generation (it usually holds the right facts; no extra call), and the
+plain-JSON fallback sends the full schema. Same message, 8 calls: 5/8 saved before, 8/8 after.
+
+**Before vs after** (`benchmark/run_memory.py`, 18 conversations; "before" is the 1 November run, kept in
+`benchmark/results/memory_eval_before.json`; "after" is `memory_eval.json`):
+
+| | Before | After |
+|---|---|---|
+| Cases passed | 18/18 | 17/18 (16/18 in an earlier run the same day) |
+| Facts saved | 20/20 | 19/20 |
+| Stale values left after corrections | 0 | 0 |
+| False saves (questions, thanks, hypotheticals) | 0 | 0 |
+| Memory-model tokens | 20,998 | 15,984 (−24%) |
+| Same message sent 8 times: fact saved | 5/8 (misnamed tool calls lost) | 8/8 |
+| Unit tests | 65 | 68 (filter cases, tool-call recovery) |
+
+Every miss after the change was Qwen returning an empty list for a plainly stated fact ("I hate spicy food",
+"I play futsal"); the filter had passed the message on in each case, and each case passed 3/3 when repeated. Qwen's
+reliability varies from day to day, which also explains the 18/18 on 1 November. A possible follow-up is one
+retry when Qwen returns nothing for a message with a strong cue; it would cost tokens only in that case.
+
+Single-case runs (`run_memory.py <case-id>`) no longer overwrite the full results file.
 

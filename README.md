@@ -65,7 +65,11 @@ Old vs current, from the benchmarks and the token log (details: [`docs/DOCUMENTA
 | Reranker memory footprint | ~450 MB + torch | none (hosted) |
 | Opinion/philosophy questions answered directly | 3/18 | 18/18 |
 | Personal scenarios answered as advice plans | 2/2 | 0/10 |
-| Memory benchmark | — | 18/18 cases, 0 false saves |
+| Memory benchmark (18 conversations) | 18/18 cases, 20,998 tokens | 17/18, 15,984 tokens (−24%); 0 false saves both |
+| Memory model called on 80 router test messages | 10 | 2 |
+| Memory saves when Qwen misnames its tool (8 tries) | 5/8 | 8/8 |
+| Direct-answer prompt, factual questions and small talk | 1,022 tokens | 480 (−53%) |
+| Router tokens per message (80 cases) | 962 | 875 (−9%); 73/80 exact either way |
 | Document answers checked without the 120B (43 answers) | 0/43 | 37/43; 0 real problems missed; 187/190 broken answers caught |
 
 ## Running it

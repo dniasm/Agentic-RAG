@@ -59,6 +59,9 @@ def is_single_value(key: str) -> bool:
 
 
 # ---------------------------------------------------------------- extraction
+# Field descriptions stay in full even though they repeat EXTRACT_PROMPT: with short ones (2026-11-03) the memory
+# model saved nothing for "I'm Asmin and I live in Pokhara", ignored "forget all my hobbies", and filed
+# "I'll call you Nova" as the user's own name.
 class MemoryOp(BaseModel):
     key: str = Field(description="Short lowercase snake_case key, e.g. preferred_name, hobbies, liked_foods.")
     value: str = Field(description="One value. For forget: the value to remove, or * for the whole key.")
@@ -90,12 +93,35 @@ _PERSONAL = re.compile(
 )
 
 
+# Always worth a memory call, wherever they appear in the message.
+_COMMAND = re.compile(r"\b(remember|forget|call me|call yourself|i'll call you|i will call you|your name is|"
+                      r"from now on|going forward)\b")
+# A clause starting with these is a question, a hypothetical or a request ("how do I…", "what's my…", "if I were…",
+# "give me…", "check my files…"): its "I"/"my" doesn't state a fact. Measured 2026-11-03: these made up most memory
+# calls that found nothing (the old filter fired on any "I", "me", "my" or "we").
+_NOT_A_STATEMENT = frozenset("""
+    how what what's whats why when where which who who's whom whose can could should would will shall may might
+    do does did is are was were am has have had if any explain show give tell pull look check summarise summarize
+    list write help find search compare describe translate define generate make create fix debug convert calculate
+    please
+""".split())
+
+
 def _may_contain_memory(message: str) -> bool:
-    """Cheap filter to avoid an LLM call for messages with nothing personal in them
-    ("thanks!", "what is BM25?"). Punctuation is ignored, so "From now on, ..." matches "from now on "."""
+    """Cheap filter to avoid an LLM call for messages with nothing personal to save. Runs when the message gives a
+    memory command, or has a clause stating something personal ("I play futsal", "milk tea is my favourite",
+    "I live in Pokhara, any good cafes?"); questions and requests that merely mention "I" or "my" are skipped."""
     text = message.casefold().replace("’", "'")
-    words = " ".join(re.sub(r"[^\w']+", " ", text).split()) + " "
-    return any(cue.replace("’", "'") in words for cue in MEMORY_CUES) or bool(_PERSONAL.search(text))
+    if _COMMAND.search(text):
+        return True
+    for clause in re.split(r"[.!?;,:\n]+", text):
+        words = re.sub(r"[^\w']+", " ", clause).split()
+        if not words or words[0] in _NOT_A_STATEMENT:
+            continue
+        joined = " " + " ".join(words) + " "
+        if any(" " + cue.replace("’", "'") in joined for cue in MEMORY_CUES) or _PERSONAL.search(joined):
+            return True
+    return False
 
 
 EXTRACT_PROMPT = """You manage the long-term memory of a personal AI assistant.

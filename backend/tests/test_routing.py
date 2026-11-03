@@ -195,8 +195,42 @@ class MemoryPrecheck(unittest.TestCase):
 
     def test_runs_on_personal_statements(self):
         for message in ("milk tea is my favourite", "I play futsal", "remember that I'm vegetarian",
-                        "call me Ash", "From now on, keep your answers short.", "Keep your replies brief"):
+                        "call me Ash", "From now on, keep your answers short.", "Keep your replies brief",
+                        "I live in Pokhara, any good cafes?", "Help me, I'm a beginner at Python",
+                        "my birthday is on March 3", "Can you remember that I'm vegetarian?"):
             self.assertTrue(memory._may_contain_memory(message), message)
+
+    def test_skips_questions_and_requests_that_only_mention_i_or_my(self):
+        for message in ("how do I center a div", "What's my favourite colour?", "If I were a doctor, which field?",
+                        "Give me an overview of BM25", "check my files: what does article 17 say",
+                        "show me one in javascript", "How do I calculate a moving average in pandas?"):
+            self.assertFalse(memory._may_contain_memory(message), message)
+
+
+class StructuredOutputRecovery(unittest.TestCase):
+    def test_misnamed_tool_call_is_recovered_from_the_rejected_generation(self):
+        import groq
+        from langchain_core.runnables import RunnableLambda
+        from backend.config.llm import _recover_tool_call
+        generation = ('<tool_call>\n<function=MemoryExclusion>\n<parameter=facts>\n'
+                      '[{"key": "liked_foods", "value": "pizza", "action": "forget"}]\n</parameter>\n</function>')
+
+        def fail(_):
+            raise groq.BadRequestError("tool call validation failed", response=mock.Mock(status_code=400),
+                                       body={"error": {"code": "tool_use_failed", "failed_generation": generation}})
+        result = _recover_tool_call(RunnableLambda(fail), memory.MemoryExtraction).invoke("prompt")
+        self.assertEqual([(f.key, f.value, f.action) for f in result.facts], [("liked_foods", "pizza", "forget")])
+
+    def test_call_without_arguments_goes_to_the_next_fallback(self):
+        import groq
+        from langchain_core.runnables import RunnableLambda
+        from backend.config.llm import _recover_tool_call
+
+        def fail(_):
+            raise groq.BadRequestError("tool call validation failed", response=mock.Mock(status_code=400),
+                                       body={"error": {"failed_generation": "<function=MemoryExcovery>\n</function>"}})
+        with self.assertRaises(groq.BadRequestError):
+            _recover_tool_call(RunnableLambda(fail), memory.MemoryExtraction).invoke("prompt")
 
 
 class TokenTrims(unittest.TestCase):

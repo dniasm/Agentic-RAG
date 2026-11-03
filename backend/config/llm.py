@@ -113,20 +113,58 @@ def consume_backup_flag() -> bool:
 _STRICT_MODELS = {"openai/gpt-oss-20b", "openai/gpt-oss-120b"}
 
 
+_THINK = re.compile(r"<think>.*?</think>", re.S)
+
+
 def _plain_json(llm: ChatGroq, model_cls):
-    """Fallback: ask for the JSON in plain text and validate it ourselves."""
-    fields = json.dumps(model_cls.model_json_schema().get("properties", {}), ensure_ascii=False)
+    """Fallback: ask for the JSON in plain text and validate it ourselves.
+
+    The full schema is sent, including nested definitions ($defs): with only the top-level properties, a list of
+    objects (MemoryExtraction.facts) had no item format, and Qwen copied the schema back instead of filling it in."""
+    schema = json.dumps(model_cls.model_json_schema(), ensure_ascii=False)
 
     def run(prompt):
         log.info("Structured output for %s fell back to plain JSON on %s", model_cls.__name__, llm.model_name)
         text = prompt if isinstance(prompt, str) else str(prompt)
         reply = llm.invoke(
-            f"{text}\n\nReply with ONLY a JSON object (no prose, no code fences) with exactly these fields:\n{fields}"
+            f"{text}\n\nReply with ONLY a JSON object (no prose, no code fences) holding your answer. It must "
+            f"conform to this JSON Schema; return the data, not the schema:\n{schema}"
         ).content
-        match = re.search(r"\{.*\}", reply, re.S)
+        match = re.search(r"\{.*\}", _THINK.sub("", reply), re.S)
         if not match:
             raise ValueError("The model's reply contained no JSON object")
         return model_cls.model_validate_json(match.group(0))
+
+    return RunnableLambda(run)
+
+
+_PARAMETER = re.compile(r"<parameter=(\w+)>\s*(.*?)\s*</parameter>", re.S)
+
+
+def _recover_tool_call(primary, model_cls):
+    """Tool calling, keeping answers the model got right but filed under a misspelled tool name.
+
+    Measured 2026-11-03: Qwen called "MemoryExclusion", "MemoryExression" or "_unique_placeholder" instead of
+    "MemoryExtraction" in 3 of 8 identical calls. Groq rejects those (tool_use_failed) but returns the generation,
+    which usually still holds the right arguments; reading them costs no extra call. A call with no arguments
+    can't be recovered and goes on to the next fallback."""
+
+    def run(prompt, config):
+        try:
+            return primary.invoke(prompt, config)
+        except groq.BadRequestError as e:
+            body = getattr(e, "body", None) or {}
+            generation = (body.get("error", body) if isinstance(body, dict) else {}).get("failed_generation") or ""
+            arguments = {}
+            for name, raw in _PARAMETER.findall(generation):
+                try:
+                    arguments[name] = json.loads(raw)
+                except ValueError:
+                    arguments[name] = raw
+            if not arguments:
+                raise
+            log.info("Recovered %s from a misnamed tool call on %s", model_cls.__name__, generation[:60])
+            return model_cls.model_validate(arguments)
 
     return RunnableLambda(run)
 
@@ -142,7 +180,7 @@ def _structured_for(llm: ChatGroq, model_cls):
     if llm.model_name in _STRICT_MODELS:
         primary = llm.with_structured_output(model_cls, method="json_schema", strict=True)
     else:
-        primary = llm.with_structured_output(model_cls, method="function_calling")
+        primary = _recover_tool_call(llm.with_structured_output(model_cls, method="function_calling"), model_cls)
     return primary.with_fallbacks([_plain_json(llm, model_cls).with_retry(stop_after_attempt=2)])
 
 
