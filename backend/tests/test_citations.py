@@ -49,6 +49,31 @@ class CitationChecks(unittest.TestCase):
                   "- MySQL stores the complaints [1]\n\nTogether, these components form the technology stack.")
         self.assertTrue(c.check(answer, EVIDENCE).ok)
 
+    def test_list_after_a_cited_lead_in_is_covered(self):
+        ev = ["The controller shall designate a data protection officer in any case where the processing is carried "
+              "out by a public authority, or the core activities involve regular and systematic monitoring of data subjects."]
+        answer = ("A controller must designate a data protection officer in any of the following cases [1]:\n\n"
+                  "1. The processing is carried out by a public authority.\n"
+                  "2. The core activities involve regular and systematic monitoring of data subjects.")
+        self.assertTrue(c.check(answer, ev).ok)
+
+    def test_short_sentence_with_a_number_is_still_checked(self):
+        ev = ["Nepal has three tiers of government: federal, seven provincial and 753 local governments."]
+        self.assertTrue(c.check("Nepal has 753 local governments [1].", ev).ok)
+        self.assertFalse(c.check("Nepal has 760 local governments [1].", ev).ok)
+
+    def test_plurals_and_hyphenated_compounds_match(self):
+        ev = ["Where notification is not made within 72 hours, it shall be accompanied by reasons for the delay."]
+        self.assertTrue(c.check("If the 72-hour notification is late, reasons for the delay must be given [1].", ev).ok)
+
+    def test_names_from_the_question_and_chemical_formulas(self):
+        ev = ["The free parameters are usually chosen as k1 in [1.2, 2.0] and b = 0.75."]
+        answer = "The b parameter is typically set to 0.75 in BM25 [1]."
+        self.assertFalse(c.check(answer, ev).ok)                                  # BM25 isn't in the passage...
+        self.assertTrue(c.check(answer, ev, question="What value is b set to in BM25?").ok)  # ...but it's the topic
+        ev = ["In the Calvin cycle, atmospheric carbon dioxide is incorporated into ribulose bisphosphate."]
+        self.assertTrue(c.check("The Calvin cycle fixes atmospheric CO₂ into ribulose-1,5-bisphosphate [1].", ev).ok)
+
     def test_ordinals_decades_and_number_lists_are_read_correctly(self):
         self.assertEqual(c._numbers("k1 in [1.2, 2.0] since the 1970s and the 20th century"), ["1.2", "2.0"])
         self.assertEqual(c._numbers("fines up to 20,000,000 EUR"), ["20000000"])

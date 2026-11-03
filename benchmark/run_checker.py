@@ -15,7 +15,7 @@ Then each answer is broken on purpose in five ways and checked again by code (th
 Uses the large model (~3,500 tokens per question), paced for Groq's per-minute limit; answers and verdicts are
 cached in results/checker_eval.json, so a re-run only scores (and --rescore re-runs the code check only).
 
-    python benchmark/run_checker.py [--per-shape 4] [--gap 20] [--rescore]
+    python benchmark/run_checker.py [--per-shape 4] [--gap 20] [--rescore] [--fresh]
 """
 import argparse
 import json
@@ -45,11 +45,11 @@ INVENTED = [
 ]
 
 
-def sample(questions, per_shape):
-    rnd = random.Random(7)
+def sample(questions, per_shape, seed=7, exclude=()):
+    rnd = random.Random(seed)
     out = []
     for shape in SHAPES:
-        group = sorted([q for q in questions if q["shape"] == shape], key=lambda q: q["id"])
+        group = sorted([q for q in questions if q["shape"] == shape and q["id"] not in exclude], key=lambda q: q["id"])
         out += rnd.sample(group, min(per_shape, len(group)))
     return out
 
@@ -111,27 +111,34 @@ def main():
     ap.add_argument("--per-shape", type=int, default=4)
     ap.add_argument("--gap", type=float, default=20, help="seconds between questions (Groq's per-minute limit)")
     ap.add_argument("--rescore", action="store_true", help="don't call the model; re-run the code checks only")
+    ap.add_argument("--fresh", action="store_true",
+                    help="validation run: skip the questions in checker_eval.json (the rules were tuned on them), "
+                         "use another seed and save to checker_eval_fresh.json")
     args = ap.parse_args()
+    out_path, seed, exclude = OUT, 7, set()
+    if args.fresh:
+        exclude = set(json.loads(OUT.read_text(encoding="utf-8"))["answers"])
+        out_path, seed = rs.RESULTS / "checker_eval_fresh.json", 11
 
     rs.SCORE_FLOOR = rs.FLOORS["voyage"]
     data = json.loads(rs.POOL_JSON.read_text(encoding="utf-8"))["pools"]
     npz = rs._use_voyage_scores(data, np.load(rs.POOL_NPZ))
     questions = [q for q in rs.load_questions() if q["id"] in data]
-    cache = json.loads(OUT.read_text(encoding="utf-8")) if OUT.exists() else {"answers": {}}
+    cache = json.loads(out_path.read_text(encoding="utf-8")) if out_path.exists() else {"answers": {}}
 
-    for q in sample(questions, args.per_shape):
+    for q in sample(questions, args.per_shape, seed, exclude):
         if q["id"] in cache["answers"] or args.rescore:
             continue
         docs = passages_for(q, data, npz)
         answer, verdict = _retry(write_and_judge, q, docs)
         cache["answers"][q["id"]] = {"shape": q["shape"], "question": q["question"], "answer": answer,
                                      "verdict": verdict, "evidence": [d["content"] for d in docs]}
-        OUT.write_text(json.dumps(cache, indent=1, ensure_ascii=False), encoding="utf-8")
+        out_path.write_text(json.dumps(cache, indent=1, ensure_ascii=False), encoding="utf-8")
         print(f"  {q['id']:<24} {'(no answer)' if answer is None else ('model: ok' if verdict['sufficient'] and verdict['grounded'] else 'model: FLAGGED')}")
         time.sleep(args.gap)
 
     report(cache)
-    OUT.write_text(json.dumps(cache, indent=1, ensure_ascii=False), encoding="utf-8")
+    out_path.write_text(json.dumps(cache, indent=1, ensure_ascii=False), encoding="utf-8")
 
 
 def report(cache):
@@ -139,7 +146,7 @@ def report(cache):
     agree = {"both_ok": 0, "code_only_flags": 0, "model_only_flags": 0, "both_flag": 0}
     details, catch = [], {}
     for k, (qid, a) in enumerate(sorted(rows.items())):
-        r = citations.check(a["answer"], a["evidence"])
+        r = citations.check(a["answer"], a["evidence"], question=a["question"])
         model_ok = bool(a["verdict"]["sufficient"] and a["verdict"]["grounded"])
         key = ("both_ok" if r.ok else "code_only_flags") if model_ok else ("model_only_flags" if r.ok else "both_flag")
         agree[key] += 1
@@ -150,7 +157,7 @@ def report(cache):
             details.append((qid, key, a["verdict"].get("missing", "")[:140], r.problems,
                             [(s.text[:110], s.support, s.missing_numbers) for s in r.unsupported][:2], [u[:110] for u in r.uncited][:2]))
         for kind, broken in corruptions(a["answer"], len(a["evidence"]), k).items():
-            caught = not citations.check(broken, a["evidence"]).ok
+            caught = not citations.check(broken, a["evidence"], question=a["question"]).ok
             catch.setdefault(kind, [0, 0])
             catch[kind][0] += caught
             catch[kind][1] += 1

@@ -195,6 +195,31 @@ class TokenTrims(unittest.TestCase):
         self.assertIn("[3] (source: a.pdf, page 3)", context)
         self.assertNotIn("passage 1", context)
 
+    def test_cited_answer_on_strong_evidence_skips_the_model_check(self):
+        docs = [{"source": "a.pdf", "content": "Nepal has seven provincial governments and 753 local governments."}]
+        state = {"tool": "rag", "answer": "Nepal has 753 local governments [1].", "standalone_query": "q",
+                 "documents": docs, "sources": [], "notices": [], "match_zone": "high"}
+        with mock.patch.object(nodes, "evaluate_answer") as ev:
+            out = nodes.evaluate_node(state)
+        ev.assert_not_called()
+        self.assertEqual(out["evaluation"]["checked_by"], "code")
+        self.assertTrue(out["evaluation"]["sufficient"])
+
+    def test_flagged_or_weak_evidence_answers_go_to_the_model(self):
+        docs = [{"source": "a.pdf", "content": "Nepal has seven provincial governments and 753 local governments."}]
+        verdict = {"sufficient": True, "grounded": True, "score": 5, "missing": ""}
+        for answer, zone in [("Nepal has 760 local governments [1].", "high"),   # number not in the passage
+                             ("Nepal has 753 local governments [1].", "mid"),    # evidence not strong
+                             ("Nepal has 753 local governments [1].", "")]:      # reranker unavailable
+            state = {"tool": "rag", "answer": answer, "standalone_query": "q", "documents": docs,
+                     "sources": [], "notices": [], "match_zone": zone}
+            with mock.patch.object(nodes, "evaluate_answer", return_value=verdict) as ev:
+                nodes.evaluate_node(state)
+            ev.assert_called_once()
+        with mock.patch.object(settings, "citation_precheck", False),                 mock.patch.object(nodes, "evaluate_answer", return_value=verdict) as ev:
+            nodes.evaluate_node(dict(state, answer="Nepal has 753 local governments [1].", match_zone="high"))
+        ev.assert_called_once()
+
     def test_gate_history_is_capped(self):
         from backend.tools import direct_answer
         long_answer = "word " * 2000

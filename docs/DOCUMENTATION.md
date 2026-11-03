@@ -234,6 +234,7 @@ overridden by an environment variable / `.env` entry with the same name (case-in
 | `WEAK_MATCH_RETRIES` | `1` | Extra reworded searches in the middle zone. |
 | `MIN_RELEVANCE_SCORE` / `RAG_SKIP_SCORE` | `0.45` / `0.52` | Used only when the reranker is unavailable. |
 | `MAX_RETRIEVAL_ATTEMPTS` / `MAX_WEB_ATTEMPTS` | `1` / `2` | Search rounds per source. |
+| `CITATION_PRECHECK` | `True` | Check document answers' citations in code first; skip the 120B check when they hold up and the evidence zone is high. |
 | `VERIFY_DECISIONS` / `MAX_REVIEW_ROUNDS` / `REVIEW_ONLY_UNCERTAIN` | `True` / `2` / `True` | 120B reviews the 20B's uncertain decisions. |
 | `WEB_RESULTS` / `TAVILY_SEARCH_DEPTH` / `WEB_CACHE_TTL_SECONDS` | `5` / `basic` / `3600` | Web search. |
 | `HISTORY_TURNS` | `6` | Past messages passed to the agent. |
@@ -289,6 +290,7 @@ day7/
 │   │   └── store.py            # conversation memory in Qdrant
 │   ├── evaluation/
 │   │   ├── evaluator.py        # LLM passage grading (fallback) + answer evaluation
+│   │   ├── citations.py        # answer check in code: cited, citations real, content matches
 │   │   └── reviewer.py         # small model proposes, large model reviews
 │   ├── graph/
 │   │   ├── state.py            # AgentState
@@ -365,7 +367,7 @@ the best candidate seen so far (`finalize`, with a caveat) or `no_results`.
 | `generate_rag` | 120B | Grounded answer with `[n]` citations. The `NO_ANSWER_IN_DOCUMENTS` code word means "nothing" only when it is (almost) the whole reply; a partial answer is kept. |
 | `web_search` | — | Up to 2 queries, deduplicated by URL. |
 | `generate_web` | 120B | Answer from web results with citations. |
-| `evaluate` | 120B | `sufficient`, `grounded`, `score`, `missing`, checked against only the passages the answer cites (all of them if it cites none); keeps the best candidate. If no model can check the answer, it is kept with `verified: false` in its evaluation and a notice. |
+| `evaluate` | code, then 120B | Document answers with a high evidence zone are checked in code first (`evaluation/citations.py`); if every claim is cited and found in its passage, the evaluation is `checked_by: "code"` and the model is not called. Otherwise the 120B returns `sufficient`, `grounded`, `score`, `missing`, checked against only the passages the answer cites (all of them if it cites none); keeps the best candidate. If no model can check the answer, it is kept with `verified: false` in its evaluation and a notice. |
 | `fallback` | — | Next source (see 7.2). |
 | `no_results` | — | Honest "couldn't find a reliable answer" message. |
 | `finalize` | — | Returns the answer, the gate-approved direct answer, or the best candidate with a caveat. |
@@ -585,6 +587,7 @@ placeholders and filter by `user_id`.
 |---|---|---|
 | `grade_documents(query, docs)` | Relevant subset + review steps | Used only without the cross-encoder |
 | `evaluate_answer(query, answer, context=None)` | `{sufficient, grounded, score, missing}` | Raises; `evaluate_node` keeps the answer as unverified |
+| `citations.check(answer, evidence, question="")` | `CitationReport(ok, uncited, invalid, unsupported, support)` | No model, no network; never raises on normal text |
 | `reviewer.verified_decision(...)` | `(decision, review_steps)` | Reviews only uncertain decisions; reviewer failures accept the decision |
 
 ### `graph/`
@@ -763,12 +766,13 @@ asks one question per path.
 | Script | Measures | Latest result |
 |---|---|---|
 | `run_retrieval.py --stage …` | top-k, MRR, out-of-scope detection | MRR 0.774 → 0.822 (hybrid) → 0.872 (reranked); OOS 100% |
-| `run_selection.py --collect / --compare` | Passage-selection methods: coverage, precision, tokens | In progress |
+| `run_selection.py --collect / --compare` | Passage-selection methods: coverage, precision, tokens | Keep MMR, 6 passages (§21.8) |
 | `run_e2e.py`, `run_perf.py` | Full answers; startup, memory, speed | Local rerank of 20 candidates ≈ 0.7 s; +450 MB |
 | `calibrate_reranker.py` | Voyage vs local reranker on saved pools; zone thresholds | 74 questions: top-5 100%, MRR 0.930 (local 0.830) |
 | `run_router.py` | 80 routing cases | 73/80 exact, 79/80 acceptable, 0/41 non-document messages sent to RAG |
 | `run_direct_gate.py [--gate-only]` | Opinion/general questions answered from model knowledge | Gate: 3/18 → 18/18; controls 4/4; full path 22/22 |
 | `run_memory.py` | 18 memory conversations | 18/18; 20/20 facts; 0 stale; 0 false saves |
+| `run_checker.py [--fresh] [--rescore]` | Code citation check vs the 120B answer check, plus deliberately broken answers | 43 answers: 0 real problems missed; 187/190 broken answers caught (§21.9) |
 
 Experiments that call the APIs live in `scripts/experiments/` (run from the root, e.g.
 `python -m scripts.experiments.test_gate`).
@@ -962,3 +966,39 @@ cut the writer's input by 40–58% but lose facts: on all 67 questions, the best
 coverage. Decision: keep 6 passages with MMR; coverage comes first. (Choosing a method per question type would also
 need the router to classify the question's shape, which it doesn't.)
 
+### 21.9 Answer check: 120B on every answer → code first (3 November)
+
+Document answers are now checked in code (`backend/evaluation/citations.py`, no model, no tokens) before the 120B:
+
+1. **Cited**: every factual sentence has an `[n]` in the sentence, its paragraph, or the list it belongs to.
+2. **Real citations**: every `[n]` points at a passage the writer was given.
+3. **Content matches**: the sentence's key words appear in the passage it cites (same tokenizer as the keyword
+   search, with plural and stem matching); numbers and names with digits in them (BM25, COVID-19) must appear exactly.
+
+If all three hold and the reranker rated the evidence "high", the answer goes out with no 120B check. Anything the
+code flags, weaker evidence, or web answers still go to the 120B. The code cannot judge completeness or catch a
+claim that reuses the passage's words but reverses their meaning; with strong evidence that risk was not seen.
+
+`benchmark/run_checker.py`: the 120B writes and checks each answer exactly as the app does, then the code checks
+the same answer. Each answer is also broken on purpose five ways. The rules were tuned on the first 23 answers, then
+tested on 20 questions they had never seen (`--fresh`).
+
+| | Tuning set (23) | Fresh set, as first run (20) | Fresh set, after fixes (20) |
+|---|---|---|---|
+| Same verdict as the 120B | 20 | 16 | 18 |
+| Real problems the code missed | 0 | 0 | 0 |
+| Flagged only by the 120B | 0 | 1 (the 120B was wrong: passage [6] contains the claim) | 1 (same) |
+| Flagged only by the code (sent on to the 120B) | 3 (1 real, 1 borderline, 1 false) | 3 (false) | 1 (borderline) |
+| Broken answers caught | 98/100 | 88/90 | 89/90 |
+
+The three false alarms on the fresh set came from rule bugs, fixed for all answers (not these ones): a list under
+a cited lead-in, "72-hour" vs "72 hours", a name the question itself is about ("BM25"), and "CO₂" vs "carbon
+dioxide". A real gap was also fixed: short sentences with a number ("Nepal has 760 local governments [1]") were
+skipped as too short. The fixes changed no verdict on the tuning set. The missed broken answers all had citations
+moved to overlapping passages that really do contain the claim.
+
+| | Old | New |
+|---|---|---|
+| Document answers checked by the 120B | 43/43 | 6/43 (the rest pass in code) |
+| 120B tokens per skipped check | ~1,000–1,900 | 0 |
+| Real problems missed | — | 0/43 |

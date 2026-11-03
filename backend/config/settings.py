@@ -116,6 +116,14 @@ class Settings(BaseSettings):
     # answerable questions scored 0.58-0.76, unrelated ones 0.47-0.59.
     rag_skip_score: float = 0.52
 
+    # --- Answer check
+    # Check document answers in code first (backend/evaluation/citations.py: every claim cited, citations exist,
+    # cited passages contain the claim). When that passes and the reranker rated the evidence "high", the large
+    # model's check is skipped (~1,000-1,900 tokens). Anything the code flags still goes to the large model.
+    # Benchmarked 2026-11-03 (benchmark/run_checker.py, 43 answers): no problem the large model found was missed;
+    # 37/43 answers would skip the large-model check; 187/190 deliberately broken answers were caught.
+    citation_precheck: bool = True
+
     # --- Decision verification loop (large model reviews the small model's decisions)
     verify_decisions: bool = True
     max_review_rounds: int = 2

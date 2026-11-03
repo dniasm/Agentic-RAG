@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 from backend.config.llm import consume_backup_flag
 from backend.config.settings import settings
+from backend.evaluation import citations
 from backend.evaluation.evaluator import evaluate_answer, grade_documents
 from backend.evaluation.reviewer import verified_decision
 from backend.graph.state import AgentState
@@ -1069,6 +1070,22 @@ def _cited(items: list, answer: str) -> list[tuple[int, dict]]:
     return [(i, item) for i, item in numbered if i in cited] or numbered
 
 
+def _code_check(state: AgentState) -> dict | None:
+    """The answer check without a model, for document answers on strong evidence. Returns a passing evaluation
+    if the citations hold up, or None when the large model should check the answer (code flagged something,
+    the evidence was weak, or this isn't a document answer)."""
+    if not settings.citation_precheck or state.get("tool") != "rag" or state.get("match_zone") != "high":
+        return None
+    docs = state.get("documents", [])
+    report = citations.check(state.get("answer", ""), [d.get("content", "") for d in docs],
+                             question=state.get("standalone_query", ""))
+    if not report.ok:
+        log.info("Code citation check flagged the answer (%s); asking the model", "; ".join(report.problems))
+        return None
+    return {"sufficient": True, "grounded": True, "score": 4, "missing": "", "checked_by": "code",
+            "citation_support": report.support}
+
+
 def evaluate_node(state: AgentState) -> dict:
     tool = state.get("tool")
     answer_text = state.get("answer", "")
@@ -1089,7 +1106,7 @@ def evaluate_node(state: AgentState) -> dict:
     notices = list(state.get("notices", []))
 
     try:
-        ev = evaluate_answer(
+        ev = _code_check(state) or evaluate_answer(
             state["standalone_query"],
             state["answer"],
             context,
@@ -1144,6 +1161,9 @@ def evaluate_node(state: AgentState) -> dict:
         f"(score {ev.get('score')}/5, "
         f"grounded={ev.get('grounded')})."
     )
+    if ev.get("checked_by") == "code":
+        detail = (f"Citations checked in code: every claim is cited and found in its passage "
+                  f"(support {ev['citation_support']:.2f}); model check skipped.")
 
     if not ok and ev.get("missing"):
         detail += f" Missing: {ev['missing']}"

@@ -44,8 +44,9 @@ START → router ─┬─ greeting (small talk) ──────────�
 - **Grade**: a reranker (Voyage, hosted) scores the candidates. High → answer, mid → one reworded search, low → next source.
   MMR picks diverse passages. If the reranker is unavailable, an LLM relevance check takes over.
 - **Generate**: answers only from the selected passages, with `[n]` citations.
-- **Evaluate** (120B): checks the answer is sufficient and grounded. If the check itself can't run, the answer is
-  kept and marked unverified.
+- **Evaluate**: document answers on strong evidence are checked in code first (every claim cited, every citation
+  real, the cited passage contains the claim). If that passes, no model check is needed; otherwise the 120B checks
+  that the answer is sufficient and grounded. If the check itself can't run, the answer is kept and marked unverified.
 - **Memory**: facts about the user (name, preferences, …) are stored as key-value rows in SQLite; past exchanges
   are stored as short summaries in a Voyage-embedded Qdrant collection and recalled when relevant.
 - **Tokens**: every model call is counted per model and step; each request is logged to `backend/data/token_usage.jsonl`.
@@ -65,6 +66,7 @@ Old vs current, from the benchmarks and the token log (details: [`docs/DOCUMENTA
 | Opinion/philosophy questions answered directly | 3/18 | 18/18 |
 | Personal scenarios answered as advice plans | 2/2 | 0/10 |
 | Memory benchmark | — | 18/18 cases, 0 false saves |
+| Document answers checked without the 120B (43 answers) | 0/43 | 37/43; 0 real problems missed; 187/190 broken answers caught |
 
 ## Running it
 

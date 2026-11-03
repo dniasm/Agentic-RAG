@@ -25,7 +25,7 @@ _MARKDOWN = re.compile(r"^\s*(?:[-*+]|\d+[.)]|#+)\s*|[*_`>|]")
 # ways to compare exactly.
 _NUMBER = re.compile(r"(?<![\w\-‐‑–—.])\d+(?:,\d{3})*(?:\.\d+)?(?![\d.,]*\d)(?!\s?(?:st|nd|rd|th|s)\b)")
 
-MIN_CONTENT_TOKENS = 4      # shorter sentences ("Yes.", "In short:") don't need a citation
+MIN_CONTENT_TOKENS = 4      # shorter sentences ("Yes.", "In short:") don't need a citation unless they state a number
 # Share of a sentence's key words that must appear in its cited passages. Measured on 23 real answers
 # (benchmark/run_checker.py): invented claims scored 0-0.14 (two outliers, 0.33 and 0.5); real cited sentences had
 # a median of 0.79, and the few below 0.4 were mostly real problems (outside knowledge, an unsupported opinion).
@@ -36,8 +36,10 @@ STEM = 5                    # "classified" and "classification" match on their f
 _LEAD_IN = re.compile(r":\s*$")
 _HEADING = re.compile(r"^\s*(?:\*\*[^*]+\*\*|__[^_]+__)\s*:?\s*$|^\s*#+\s")
 _FORMULA = re.compile(r"\\(?:text|frac|times|log|sum|mathrm|cdot)\b|\\\[|\\\(|\$\$")  # LaTeX formula lines
-# A name with a number in it, after tokenizing: "bm25", "covid19" (from COVID-19), "gpt4". Not "20th" or "k1".
-_IDENTIFIER = re.compile(r"^[a-z]{2,}\d+[a-z\d]*$")
+# A name with a number in it, after tokenizing: "bm25", "covid19" (from COVID-19), "gpt4". Not "20th" or "k1", and
+# not a long word joined to a number by a hyphen ("ribulose-1,5-bisphosphate" -> "ribulose1").
+_IDENTIFIER = re.compile(r"^[a-z]{2,6}\d+[a-z\d]*$")
+_SUBSCRIPT = re.compile(r"[₀-₉]")  # chemical formulas (CO₂) are written many ways ("carbon dioxide")
 # Numbers in the passages are matched loosely (any form), so only numbers the passage really lacks are flagged.
 _ANY_NUMBER = re.compile(r"\d+(?:,\d{3})*(?:\.\d+)?")
 _SUMMARY = re.compile(r"^\W*(?:thus|so|overall|together|therefore|hence|in (?:short|summary|sum|conclusion)|"
@@ -91,7 +93,19 @@ def _numbers(text: str) -> list[str]:
 
 
 def _found(token: str, words: set[str], stems: set[str]) -> bool:
-    return token in words or (len(token) >= STEM and token[:STEM] in stems)
+    if token in words or (len(token) >= STEM and token[:STEM] in stems):
+        return True
+    if token + "s" in words or (token.endswith("s") and token[:-1] in words):  # "hour" ~ "hours"
+        return True
+    # a joined compound ("72hour" from "72-hour") is found if its parts are ("72 hours")
+    parts = re.findall(r"[a-z]+|\d+", token)
+    return len(parts) > 1 and all(p.isdigit() or _found(p, words, stems) for p in parts)
+
+
+def _identifiers(text: str, known: set[str]) -> list[str]:
+    """Names with digits in the sentence that must appear exactly, except ones the question itself names."""
+    tokens = tokenize(_SUBSCRIPT.sub("", CITATION.sub(" ", text)))
+    return [t for t in tokens if _IDENTIFIER.match(t) and t not in known]
 
 
 def split_sentences(answer: str, blocks: dict | None = None) -> list[tuple[int, str]]:
@@ -116,8 +130,11 @@ def split_sentences(answer: str, blocks: dict | None = None) -> list[tuple[int, 
     return out
 
 
-def check(answer: str, evidence: list[str], threshold: float = SUPPORT_THRESHOLD) -> CitationReport:
-    """evidence[i] is the text of passage [i + 1]."""
+def check(answer: str, evidence: list[str], threshold: float = SUPPORT_THRESHOLD,
+          question: str = "") -> CitationReport:
+    """evidence[i] is the text of passage [i + 1]. The question is optional: names it mentions ("BM25") don't have
+    to appear in every passage cited for a detail about them."""
+    asked = set(tokenize(question))
     passage_words = [set(tokenize(text)) for text in evidence]
     passage_numbers = [set(n.replace(",", "") for n in _ANY_NUMBER.findall(text)) | {
         n.replace(" ", "") for n in re.findall(r"\d{1,3}(?: \d{3})+", text)} for text in evidence]
@@ -128,6 +145,13 @@ def check(answer: str, evidence: list[str], threshold: float = SUPPORT_THRESHOLD
     for p, s in sentences:
         by_paragraph.setdefault(p, []).extend(_cited(s))
         by_block.setdefault(block_of[p], []).extend(_cited(s))
+    # A list after a cited lead-in ("... must appoint a DPO when any of the following applies [4]:") is covered by
+    # the lead-in's citation, even with a blank line between them.
+    for i, (p, s) in enumerate(sentences[1:], 1):
+        prev_p, prev = sentences[i - 1]
+        b, prev_b = block_of[p], block_of[prev_p]
+        if b != prev_b and not by_block.get(b) and _LEAD_IN.search(prev) and _cited(prev):
+            by_block[b] = _cited(prev)
 
     all_cited = sorted({n for ns in by_paragraph.values() for n in ns})
     claims, uncited, invalid, unsupported, supports = 0, [], [], [], []
@@ -135,7 +159,8 @@ def check(answer: str, evidence: list[str], threshold: float = SUPPORT_THRESHOLD
         own = _cited(s)
         invalid += [n for n in own if not 1 <= n <= len(evidence)]
         keywords = _keywords(s)
-        if len(keywords) < MIN_CONTENT_TOKENS or _META.search(s):
+        # Short sentences ("Yes.") need no citation, unless they state a number or a name with digits in it.
+        if (len(keywords) < MIN_CONTENT_TOKENS and not _numbers(s) and not _identifiers(s, asked)) or _META.search(s):
             continue
         if _SUMMARY.match(s) or _FORMULA.search(s) or (not own and (_LEAD_IN.search(s) or _HEADING.match(s))):
             continue  # a closing summary, formula, lead-in or heading: no claim of its own to check
@@ -157,7 +182,7 @@ def check(answer: str, evidence: list[str], threshold: float = SUPPORT_THRESHOLD
         numbers = set().union(*(passage_numbers[n - 1] for n in cites))
         missing = [n for n in _numbers(s) if n not in numbers]
         # Names with digits in them (BM25, COVID-19, GPT-4, ISO 27001) must appear exactly, like numbers.
-        missing += [t for t in keywords if _IDENTIFIER.match(t) and t not in words]
+        missing += [t for t in _identifiers(s, asked) if t not in words]
         supports.append(support)
         if support < threshold or missing:
             unsupported.append(Sentence(s, cites, round(support, 2), missing))
