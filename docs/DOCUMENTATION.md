@@ -358,7 +358,7 @@ the best candidate seen so far (`finalize`, with a caveat) or `no_results`.
 
 | Node | Model | Purpose |
 |---|---|---|
-| `router` | 20B (120B reviews if unsure) | `Route`: small talk vs information request, source preference, clarity, standalone query, confidence, and `confidence_required` (whether a direct answer must pass the knowledge gate). |
+| `router` | 20B (120B reviews if unsure) | `Route`: small talk vs information request, source preference, clarity, standalone query, confidence, and `confidence_required` (whether a direct answer must pass the knowledge gate). A message that explicitly asks to read the user's own material ("according to my documents", "what do my notes say", "the paper I uploaded", or an uploaded file's name) always goes to the documents, whatever the router chose (`asks_for_documents`); "without my notes" and similar don't count. |
 | `greeting` | 120B, temperature 0.8 | Small talk via `direct_answer.converse`, same persona as every answer. |
 | `direct` | 120B | Knowledge gate (when `confidence_required`), then the answer. A refusal leaves the answer empty → `fallback`. |
 | `rewrite` | 20B (reviewed if unsure) | Rewords and expands the query, using the reason and previous attempts. |

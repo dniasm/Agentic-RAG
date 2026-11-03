@@ -200,7 +200,9 @@ SOURCE SELECTION
 - model_knowledge: ordinary explanations, coding, calculations, reasoning,
   opinions, general questions, and follow-ups answerable without external
   information.
-- documents: the user explicitly wants information from uploaded documents.
+- documents: the user explicitly wants information from uploaded documents,
+  e.g. "according to my documents", "in my notes", "from the file I
+  uploaded", or a message naming one of the uploaded files.
 - web: current, recent, time-sensitive, or explicitly online information.
 - auto: only when the appropriate source genuinely cannot be determined.
 
@@ -243,6 +245,36 @@ Recent conversation:
 Latest user message:
 {query}
 """
+
+
+# The user plainly asks for their own material: "according to my documents", "check my files", "the paper I
+# uploaded", "from the uploaded report". The small model sometimes missed this and answered from its own knowledge
+# with high confidence (so the review was skipped); an explicit request is too clear to leave to a guess.
+_DOC_NOUN = r"(?:documents?|docs|files?|pdfs?|notes|uploads?|papers?|reports?|slides|materials?)"
+_MINE = r"(?:my|our|the\s+uploaded|my\s+uploaded|our\s+uploaded)\s+(?:own\s+)?"
+_DOC_REQUEST = re.compile(
+    # reading from them: "according to my documents", "check my files", "look in my notes", "from the uploaded paper"
+    rf"\b(?:according\s+to|based\s+on|as\s+per|from|using|use|check|search|consult|refer\s+to|go\s+through|"
+    rf"look\s+(?:in|at|through)|summari[sz]e|key\s+points\s+of)\s+{_MINE}{_DOC_NOUN}\b"
+    # asking what they say: "what do my notes say", "does my report mention"
+    rf"|\b{_MINE}{_DOC_NOUN}\s+(?:say|says|said|mention|mentions|state|states|describe|describes|cover|covers|"
+    rf"explain|explains)\b"
+    # "the regulation I uploaded", "from the paper we've uploaded"; "the uploaded paper"
+    rf"|\b(?:the|from|in)\s+\w+(?:\s+\w+)?\s+(?:that\s+)?(?:i|we)(?:'ve|\s+have)?\s+uploaded\b"
+    rf"|\bthe\s+uploaded\s+\w+",
+    re.I)
+# "without my notes", "don't use my documents", "not from my files": a request NOT to use them.
+_DOC_REFUSAL = re.compile(r"\b(?:without|not|don'?t|do\s+not|never|instead\s+of|ignore|ignoring|outside(?:\s+of)?|"
+                          r"rather\s+than|besides|apart\s+from)\b(?:\W+\w+){0,3}?\W+$", re.I)
+
+
+def asks_for_documents(query: str, doc_names: list[str]) -> bool:
+    """True when the message explicitly asks for the user's uploaded material or names an uploaded file."""
+    for m in _DOC_REQUEST.finditer(query):
+        if not _DOC_REFUSAL.search(query[:m.start()]):
+            return True
+    text = query.lower()
+    return any(name.lower() in text for name in doc_names if len(name) > 4)
 
 
 def router_node(state: AgentState) -> dict:
@@ -305,6 +337,11 @@ def router_node(state: AgentState) -> dict:
 
     standalone = standalone or state["query"]
     notices: list[str] = []
+
+    if kind == "information_request" and pref != "documents" and asks_for_documents(state["query"], docs):
+        log.info("Router chose %s, but the message explicitly asks for the user's documents", pref)
+        reason = f"The message explicitly asks for the user's documents (router had chosen {pref}). {reason}"
+        pref = "documents"
 
     if kind == "small_talk":
         intent = "greeting"

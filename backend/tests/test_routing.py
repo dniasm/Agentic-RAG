@@ -72,6 +72,27 @@ class RouterAuto(unittest.TestCase):
     def test_documents_preference_goes_to_rag(self):
         self.assertEqual(self._route("documents", ["report.pdf"]), "rag")
 
+    def test_explicit_document_request_overrides_the_router(self):
+        # The router once chose model_knowledge for "According to my documents, ..." with high confidence.
+        decision = nodes.Route(
+            message_type="information_request", source_preference="model_knowledge", reasoning="r",
+            query_is_clear=True, standalone_query="q", confidence="high", confidence_required=True)
+        query = "According to my documents, how many local governments does Nepal have?"
+        with mock.patch.object(nodes, "verified_decision", return_value=(decision, [])):
+            out = nodes.router_node({"query": query, "doc_names": ["who.pdf"]})
+        self.assertEqual((out["intent"], out["source_preference"]), ("rag", "documents"))
+
+    def test_document_request_rule(self):
+        docs = ["okapi_bm25.md"]
+        for q in ["According to my documents, how many local governments does Nepal have?",
+                  "what do my notes say about tf-idf?", "pull the definition from the regulation I uploaded",
+                  "according to the uploaded paper, what accuracy did it get?", "in okapi_bm25.md what is k1?"]:
+            self.assertTrue(nodes.asks_for_documents(q, docs), q)
+        for q in ["Without my notes, explain stemming.", "Answer from your own knowledge, not my documents: what is GDPR?",
+                  "What should I put in my notes for a lecture?", "I uploaded my CV yesterday, any interview tips?",
+                  "how do I organise my files on Windows?", "instead of my documents, search the web for BM25"]:
+            self.assertFalse(nodes.asks_for_documents(q, docs), q)
+
     def test_auto_reaches_documents_after_the_gate_refuses(self):
         # direct was tried (gate refused: the question refers to the user's material) -> documents next.
         state = {"source_preference": "auto", "doc_names": ["report.pdf"], "tried_sources": ["direct"]}
