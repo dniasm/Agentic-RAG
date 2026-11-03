@@ -1,0 +1,2211 @@
+{
+ "note": "final prompt: v4 rows for general+opinion, v3 rows for documents/implicit/follow-up (before the source_preference description was restored; imp-method then checked 5/5 rag separately), v2 rows for small_talk and current",
+ "summary": {
+  "correct": 73,
+  "acceptable": 79,
+  "reviewed": 2,
+  "avg_tokens": 875
+ },
+ "rows": [
+  {
+   "id": "st-hey",
+   "group": "small_talk",
+   "message": "hey",
+   "expect": "greeting",
+   "also_ok": [],
+   "chosen": "greeting",
+   "source_preference": "auto",
+   "query_is_clear": true,
+   "standalone_query": "hey",
+   "reason": "User greeting",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 733,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 670,
+     "output": 63,
+     "reasoning": 10,
+     "cached": 0
+    }
+   },
+   "seconds": 1.17
+  },
+  {
+   "id": "st-yo",
+   "group": "small_talk",
+   "message": "yo what's up",
+   "expect": "greeting",
+   "also_ok": [],
+   "chosen": "greeting",
+   "source_preference": "auto",
+   "query_is_clear": true,
+   "standalone_query": "yo what's up",
+   "reason": "User greeting",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 740,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 672,
+     "output": 68,
+     "reasoning": 13,
+     "cached": 0
+    }
+   },
+   "seconds": 0.62
+  },
+  {
+   "id": "st-morning",
+   "group": "small_talk",
+   "message": "good morning!",
+   "expect": "greeting",
+   "also_ok": [],
+   "chosen": "greeting",
+   "source_preference": "auto",
+   "query_is_clear": true,
+   "standalone_query": "good morning!",
+   "reason": "User greeting, no information request.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 741,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 671,
+     "output": 70,
+     "reasoning": 11,
+     "cached": 0
+    }
+   },
+   "seconds": 0.61
+  },
+  {
+   "id": "st-thanks",
+   "group": "small_talk",
+   "message": "thanks a ton",
+   "expect": "greeting",
+   "also_ok": [],
+   "chosen": "greeting",
+   "source_preference": "auto",
+   "query_is_clear": true,
+   "standalone_query": "thanks a ton",
+   "reason": "User expresses gratitude, no information request.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 744,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 672,
+     "output": 72,
+     "reasoning": 12,
+     "cached": 0
+    }
+   },
+   "seconds": 0.62
+  },
+  {
+   "id": "st-awesome",
+   "group": "small_talk",
+   "message": "you're awesome lol",
+   "expect": "greeting",
+   "also_ok": [],
+   "chosen": "greeting",
+   "source_preference": "auto",
+   "query_is_clear": true,
+   "standalone_query": "you're awesome lol",
+   "reason": "User is expressing a casual compliment.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 744,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 672,
+     "output": 72,
+     "reasoning": 13,
+     "cached": 0
+    }
+   },
+   "seconds": 0.27
+  },
+  {
+   "id": "st-bye",
+   "group": "small_talk",
+   "message": "ok bye, talk later",
+   "expect": "greeting",
+   "also_ok": [],
+   "chosen": "greeting",
+   "source_preference": "auto",
+   "query_is_clear": true,
+   "standalone_query": "ok bye, talk later",
+   "reason": "User is saying goodbye, no information request.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 764,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 674,
+     "output": 90,
+     "reasoning": 33,
+     "cached": 0
+    }
+   },
+   "seconds": 0.43
+  },
+  {
+   "id": "st-who",
+   "group": "small_talk",
+   "message": "who are you?",
+   "expect": "greeting",
+   "also_ok": [],
+   "chosen": "greeting",
+   "source_preference": "auto",
+   "query_is_clear": true,
+   "standalone_query": "who are you?",
+   "reason": "User is greeting and asking identity.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 756,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 672,
+     "output": 84,
+     "reasoning": 24,
+     "cached": 0
+    }
+   },
+   "seconds": 0.44
+  },
+  {
+   "id": "st-can-do",
+   "group": "small_talk",
+   "message": "what can you do?",
+   "expect": "greeting",
+   "also_ok": [],
+   "chosen": "greeting",
+   "source_preference": "auto",
+   "query_is_clear": true,
+   "standalone_query": "what can you do?",
+   "reason": "User is asking a general question about capabilities.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 774,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 673,
+     "output": 101,
+     "reasoning": 38,
+     "cached": 0
+    }
+   },
+   "seconds": 0.53
+  },
+  {
+   "id": "st-funny",
+   "group": "small_talk",
+   "message": "lmao that's hilarious",
+   "expect": "greeting",
+   "also_ok": [],
+   "chosen": "greeting",
+   "source_preference": "auto",
+   "query_is_clear": true,
+   "standalone_query": "lmao that's hilarious",
+   "reason": "User is expressing amusement, no information request.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 748,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 673,
+     "output": 75,
+     "reasoning": 13,
+     "cached": 512
+    }
+   },
+   "seconds": 0.39
+  },
+  {
+   "id": "st-intro",
+   "group": "small_talk",
+   "message": "I'm Asmin btw, nice to meet you",
+   "expect": "greeting",
+   "also_ok": [],
+   "chosen": "greeting",
+   "source_preference": "auto",
+   "query_is_clear": true,
+   "standalone_query": "I'm Asmin btw, nice to meet you",
+   "reason": "User is greeting and introducing themselves.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 814,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 729,
+     "output": 85,
+     "reasoning": 23,
+     "cached": 0
+    }
+   },
+   "seconds": 1.11
+  },
+  {
+   "id": "st-day",
+   "group": "small_talk",
+   "message": "how's your day going?",
+   "expect": "greeting",
+   "also_ok": [],
+   "chosen": "greeting",
+   "source_preference": "auto",
+   "query_is_clear": true,
+   "standalone_query": "how's your day going?",
+   "reason": "User is greeting, no info request",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 756,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 674,
+     "output": 82,
+     "reasoning": 19,
+     "cached": 0
+    }
+   },
+   "seconds": 0.86
+  },
+  {
+   "id": "st-cool",
+   "group": "small_talk",
+   "message": "ok cool",
+   "expect": "greeting",
+   "also_ok": [],
+   "chosen": "greeting",
+   "source_preference": "auto",
+   "query_is_clear": true,
+   "standalone_query": "ok cool",
+   "reason": "User expresses casual acknowledgement.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 738,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 671,
+     "output": 67,
+     "reasoning": 11,
+     "cached": 512
+    }
+   },
+   "seconds": 0.48
+  },
+  {
+   "id": "web-match",
+   "group": "current",
+   "message": "who won yesterday's premier league match?",
+   "expect": "web_search",
+   "also_ok": [],
+   "chosen": "web_search",
+   "source_preference": "web",
+   "query_is_clear": true,
+   "standalone_query": "who won yesterday's premier league match?",
+   "reason": "The user asks for a recent sports result, which requires up-to-date external information.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 783,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 676,
+     "output": 107,
+     "reasoning": 34,
+     "cached": 512
+    }
+   },
+   "seconds": 0.6
+  },
+  {
+   "id": "web-weather",
+   "group": "current",
+   "message": "what's the weather in kathmandu right now",
+   "expect": "web_search",
+   "also_ok": [],
+   "chosen": "web_search",
+   "source_preference": "web",
+   "query_is_clear": true,
+   "standalone_query": "What's the weather in Kathmandu right now?",
+   "reason": "User requests current weather, a time‑sensitive fact.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 795,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 678,
+     "output": 117,
+     "reasoning": 49,
+     "cached": 0
+    }
+   },
+   "seconds": 0.66
+  },
+  {
+   "id": "web-iphone",
+   "group": "current",
+   "message": "latest iphone model?",
+   "expect": "web_search",
+   "also_ok": [],
+   "chosen": "web_search",
+   "source_preference": "web",
+   "query_is_clear": true,
+   "standalone_query": "What is the latest iPhone model?",
+   "reason": "User is asking for current information about the latest iPhone model.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 786,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 672,
+     "output": 114,
+     "reasoning": 45,
+     "cached": 512
+    }
+   },
+   "seconds": 0.63
+  },
+  {
+   "id": "web-btc",
+   "group": "current",
+   "message": "what is the current price of bitcoin",
+   "expect": "web_search",
+   "also_ok": [],
+   "chosen": "web_search",
+   "source_preference": "web",
+   "query_is_clear": true,
+   "standalone_query": "what is the current price of bitcoin",
+   "reason": "User asks for current price of Bitcoin, which is a time‑sensitive factual query.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 789,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 676,
+     "output": 113,
+     "reasoning": 40,
+     "cached": 512
+    }
+   },
+   "seconds": 0.64
+  },
+  {
+   "id": "web-nepal-news",
+   "group": "current",
+   "message": "any news about nepal today?",
+   "expect": "web_search",
+   "also_ok": [],
+   "chosen": "web_search",
+   "source_preference": "web",
+   "query_is_clear": true,
+   "standalone_query": "any news about Nepal today?",
+   "reason": "User is asking for current news about Nepal.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 774,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 675,
+     "output": 99,
+     "reasoning": 36,
+     "cached": 512
+    }
+   },
+   "seconds": 0.64
+  },
+  {
+   "id": "web-python",
+   "group": "current",
+   "message": "what's the latest stable python release",
+   "expect": "web_search",
+   "also_ok": [],
+   "chosen": "web_search",
+   "source_preference": "web",
+   "query_is_clear": true,
+   "standalone_query": "what's the latest stable python release",
+   "reason": "User requests current information about Python release",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 786,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 676,
+     "output": 110,
+     "reasoning": 47,
+     "cached": 512
+    }
+   },
+   "seconds": 0.4
+  },
+  {
+   "id": "web-uk-pm",
+   "group": "current",
+   "message": "who is the current prime minister of the UK",
+   "expect": "web_search",
+   "also_ok": [],
+   "chosen": "web_search",
+   "source_preference": "web",
+   "query_is_clear": true,
+   "standalone_query": "who is the current prime minister of the UK",
+   "reason": "User asks for current factual information",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 785,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 678,
+     "output": 107,
+     "reasoning": 43,
+     "cached": 0
+    }
+   },
+   "seconds": 0.45
+  },
+  {
+   "id": "web-headlines",
+   "group": "current",
+   "message": "top tech headlines this week",
+   "expect": "web_search",
+   "also_ok": [],
+   "chosen": "web_search",
+   "source_preference": "web",
+   "query_is_clear": true,
+   "standalone_query": "top tech headlines this week",
+   "reason": "User requests current tech headlines",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 783,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 674,
+     "output": 109,
+     "reasoning": 50,
+     "cached": 512
+    }
+   },
+   "seconds": 0.62
+  },
+  {
+   "id": "web-chatgpt-down",
+   "group": "current",
+   "message": "is chatgpt down right now?",
+   "expect": "web_search",
+   "also_ok": [],
+   "chosen": "web_search",
+   "source_preference": "web",
+   "query_is_clear": true,
+   "standalone_query": "is chatgpt down right now?",
+   "reason": "User asks about current status of ChatGPT, which is a time-sensitive factual query.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": true,
+   "revised": false,
+   "tokens": 1383,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 676,
+     "output": 131,
+     "reasoning": 58,
+     "cached": 512
+    },
+    "openai/gpt-oss-120b": {
+     "calls": 1,
+     "input": 501,
+     "output": 75,
+     "reasoning": 50,
+     "cached": 256
+    }
+   },
+   "seconds": 1.02
+  },
+  {
+   "id": "web-spacex",
+   "group": "current",
+   "message": "when is the next SpaceX launch",
+   "expect": "web_search",
+   "also_ok": [],
+   "chosen": "web_search",
+   "source_preference": "web",
+   "query_is_clear": true,
+   "standalone_query": "when is the next SpaceX launch",
+   "reason": "User asks for a current event date",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 767,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 676,
+     "output": 91,
+     "reasoning": 28,
+     "cached": 0
+    }
+   },
+   "seconds": 0.49
+  },
+  {
+   "id": "web-fx",
+   "group": "current",
+   "message": "current USD to NPR exchange rate",
+   "expect": "web_search",
+   "also_ok": [],
+   "chosen": "web_search",
+   "source_preference": "web",
+   "query_is_clear": true,
+   "standalone_query": "current USD to NPR exchange rate",
+   "reason": "User requests current exchange rate, which is time‑sensitive and requires up‑to‑date external data.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 793,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 675,
+     "output": 118,
+     "reasoning": 42,
+     "cached": 512
+    }
+   },
+   "seconds": 0.68
+  },
+  {
+   "id": "web-movies",
+   "group": "current",
+   "message": "what movies are in theaters this weekend",
+   "expect": "web_search",
+   "also_ok": [],
+   "chosen": "web_search",
+   "source_preference": "web",
+   "query_is_clear": true,
+   "standalone_query": "What movies are in theaters this weekend?",
+   "reason": "User requests current movie listings.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 794,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 676,
+     "output": 118,
+     "reasoning": 56,
+     "cached": 512
+    }
+   },
+   "seconds": 0.48
+  },
+  {
+   "id": "op-freewill",
+   "group": "opinion",
+   "message": "is free will an illusion?",
+   "expect": "direct",
+   "also_ok": [],
+   "chosen": "direct",
+   "source_preference": "model_knowledge",
+   "query_is_clear": true,
+   "standalone_query": "is free will an illusion?",
+   "reason": "The user asks a philosophical question that requires explanation.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 884,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 782,
+     "output": 102,
+     "reasoning": 36,
+     "cached": 0
+    }
+   },
+   "seconds": 1.69
+  },
+  {
+   "id": "op-pineapple",
+   "group": "opinion",
+   "message": "what do you reckon about pineapple on pizza",
+   "expect": "direct",
+   "also_ok": [
+    "greeting"
+   ],
+   "chosen": "greeting",
+   "source_preference": "model_knowledge",
+   "query_is_clear": true,
+   "standalone_query": "what do you reckon about pineapple on pizza",
+   "reason": "User asks for opinion on pineapple on pizza, a casual topic.",
+   "correct": false,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 893,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 785,
+     "output": 108,
+     "reasoning": 36,
+     "cached": 768
+    }
+   },
+   "seconds": 1.4
+  },
+  {
+   "id": "op-ai-jobs",
+   "group": "opinion",
+   "message": "do you think AI will replace programmers?",
+   "expect": "direct",
+   "also_ok": [],
+   "chosen": "direct",
+   "source_preference": "model_knowledge",
+   "query_is_clear": true,
+   "standalone_query": "do you think AI will replace programmers?",
+   "reason": "User asks for opinion on AI replacing programmers.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 878,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 784,
+     "output": 94,
+     "reasoning": 27,
+     "cached": 768
+    }
+   },
+   "seconds": 0.83
+  },
+  {
+   "id": "op-meaning",
+   "group": "opinion",
+   "message": "what's the meaning of life tbh",
+   "expect": "direct",
+   "also_ok": [],
+   "chosen": "direct",
+   "source_preference": "model_knowledge",
+   "query_is_clear": true,
+   "standalone_query": "what's the meaning of life tbh",
+   "reason": "User asks a philosophical question",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 888,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 785,
+     "output": 103,
+     "reasoning": 39,
+     "cached": 768
+    }
+   },
+   "seconds": 1.07
+  },
+  {
+   "id": "op-fly",
+   "group": "opinion",
+   "message": "would you rather be able to fly or be invisible?",
+   "expect": "direct",
+   "also_ok": [
+    "greeting"
+   ],
+   "chosen": "greeting",
+   "source_preference": "model_knowledge",
+   "query_is_clear": true,
+   "standalone_query": "Would you rather be able to fly or be invisible?",
+   "reason": "User asks a casual preference question.",
+   "correct": false,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 925,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 787,
+     "output": 138,
+     "reasoning": 69,
+     "cached": 768
+    }
+   },
+   "seconds": 1.1
+  },
+  {
+   "id": "op-meat",
+   "group": "opinion",
+   "message": "is it ethical to eat meat?",
+   "expect": "direct",
+   "also_ok": [],
+   "chosen": "direct",
+   "source_preference": "model_knowledge",
+   "query_is_clear": true,
+   "standalone_query": "is it ethical to eat meat?",
+   "reason": "User asks a question about ethics of eating meat.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 878,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 783,
+     "output": 95,
+     "reasoning": 28,
+     "cached": 0
+    }
+   },
+   "seconds": 0.66
+  },
+  {
+   "id": "op-island",
+   "group": "opinion",
+   "message": "if you were stranded on an island what 3 things would you bring",
+   "expect": "direct",
+   "also_ok": [
+    "greeting"
+   ],
+   "chosen": "greeting",
+   "source_preference": "model_knowledge",
+   "query_is_clear": true,
+   "standalone_query": "if you were stranded on an island what 3 things would you bring",
+   "reason": "The user is asking a casual, hypothetical question.",
+   "correct": false,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 938,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 791,
+     "output": 147,
+     "reasoning": 72,
+     "cached": 768
+    }
+   },
+   "seconds": 1.3
+  },
+  {
+   "id": "op-remote",
+   "group": "opinion",
+   "message": "what's your take on remote work vs going to the office",
+   "expect": "direct",
+   "also_ok": [],
+   "chosen": "direct",
+   "source_preference": "model_knowledge",
+   "query_is_clear": true,
+   "standalone_query": "what's your take on remote work vs going to the office",
+   "reason": "User asks for opinion on remote work vs office",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 885,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 789,
+     "output": 96,
+     "reasoning": 24,
+     "cached": 0
+    }
+   },
+   "seconds": 0.51
+  },
+  {
+   "id": "op-money",
+   "group": "opinion",
+   "message": "can money actually buy happiness?",
+   "expect": "direct",
+   "also_ok": [],
+   "chosen": "direct",
+   "source_preference": "model_knowledge",
+   "query_is_clear": true,
+   "standalone_query": "can money actually buy happiness?",
+   "reason": "The user asks a general question about whether money can buy happiness.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 886,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 782,
+     "output": 104,
+     "reasoning": 35,
+     "cached": 0
+    }
+   },
+   "seconds": 0.79
+  },
+  {
+   "id": "op-math",
+   "group": "opinion",
+   "message": "Is math invented or discovered?",
+   "expect": "direct",
+   "also_ok": [],
+   "chosen": "direct",
+   "source_preference": "model_knowledge",
+   "query_is_clear": true,
+   "standalone_query": "Is math invented or discovered?",
+   "reason": "User asks a philosophical question about math.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 870,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 782,
+     "output": 88,
+     "reasoning": 24,
+     "cached": 768
+    }
+   },
+   "seconds": 1.12
+  },
+  {
+   "id": "op-ventilator",
+   "group": "opinion",
+   "message": "imagine you're a doctor with one ventilator and two patients, who gets it?",
+   "expect": "direct",
+   "also_ok": [],
+   "chosen": "direct",
+   "source_preference": "model_knowledge",
+   "query_is_clear": true,
+   "standalone_query": "imagine you're a doctor with one ventilator and two patients, who gets it?",
+   "reason": "The user asks for advice on a medical ethical dilemma.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 967,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 793,
+     "output": 174,
+     "reasoning": 96,
+     "cached": 768
+    }
+   },
+   "seconds": 0.89
+  },
+  {
+   "id": "op-todo",
+   "group": "opinion",
+   "message": "be honest, is building yet another todo app a dumb portfolio idea?",
+   "expect": "direct",
+   "also_ok": [],
+   "chosen": "direct",
+   "source_preference": "model_knowledge",
+   "query_is_clear": true,
+   "standalone_query": "be honest, is building yet another todo app a dumb portfolio idea?",
+   "reason": "User asks for opinion on portfolio idea",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 885,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 790,
+     "output": 95,
+     "reasoning": 23,
+     "cached": 768
+    }
+   },
+   "seconds": 0.56
+  },
+  {
+   "id": "gk-recursion",
+   "group": "general",
+   "message": "explain recursion like I'm five",
+   "expect": "direct",
+   "also_ok": [],
+   "chosen": "direct",
+   "source_preference": "model_knowledge",
+   "query_is_clear": true,
+   "standalone_query": "explain recursion like I'm five",
+   "reason": "User asks for an explanation of recursion",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 888,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 783,
+     "output": 105,
+     "reasoning": 41,
+     "cached": 0
+    }
+   },
+   "seconds": 0.61
+  },
+  {
+   "id": "gk-gil",
+   "group": "general",
+   "message": "how does python's GIL work",
+   "expect": "direct",
+   "also_ok": [],
+   "chosen": "direct",
+   "source_preference": "model_knowledge",
+   "query_is_clear": true,
+   "standalone_query": "how does python's GIL work",
+   "reason": "User asks about Python GIL.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 873,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 784,
+     "output": 89,
+     "reasoning": 25,
+     "cached": 768
+    }
+   },
+   "seconds": 1.05
+  },
+  {
+   "id": "gk-tcp",
+   "group": "general",
+   "message": "difference between TCP and UDP?",
+   "expect": "direct",
+   "also_ok": [],
+   "chosen": "direct",
+   "source_preference": "model_knowledge",
+   "query_is_clear": true,
+   "standalone_query": "difference between TCP and UDP?",
+   "reason": "User asks for technical comparison",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 872,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 782,
+     "output": 90,
+     "reasoning": 28,
+     "cached": 0
+    }
+   },
+   "seconds": 0.76
+  },
+  {
+   "id": "gk-linkedlist",
+   "group": "general",
+   "message": "write a python function to reverse a linked list",
+   "expect": "direct",
+   "also_ok": [],
+   "chosen": "direct",
+   "source_preference": "model_knowledge",
+   "query_is_clear": true,
+   "standalone_query": "write a python function to reverse a linked list",
+   "reason": "User requests a coding solution",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 874,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 786,
+     "output": 88,
+     "reasoning": 23,
+     "cached": 768
+    }
+   },
+   "seconds": 0.63
+  },
+  {
+   "id": "gk-sky",
+   "group": "general",
+   "message": "why is the sky blue",
+   "expect": "direct",
+   "also_ok": [],
+   "chosen": "direct",
+   "source_preference": "model_knowledge",
+   "query_is_clear": true,
+   "standalone_query": "why is the sky blue",
+   "reason": "User asks a factual question about why the sky is blue.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 901,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 782,
+     "output": 119,
+     "reasoning": 52,
+     "cached": 768
+    }
+   },
+   "seconds": 1.27
+  },
+  {
+   "id": "gk-percent",
+   "group": "general",
+   "message": "what is 17% of 240",
+   "expect": "direct",
+   "also_ok": [],
+   "chosen": "direct",
+   "source_preference": "model_knowledge",
+   "query_is_clear": true,
+   "standalone_query": "what is 17% of 240",
+   "reason": "The user asks for a calculation.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 888,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 785,
+     "output": 103,
+     "reasoning": 38,
+     "cached": 768
+    }
+   },
+   "seconds": 0.87
+  },
+  {
+   "id": "gk-vaccines",
+   "group": "general",
+   "message": "how do vaccines work",
+   "expect": "direct",
+   "also_ok": [],
+   "chosen": "direct",
+   "source_preference": "model_knowledge",
+   "query_is_clear": true,
+   "standalone_query": "how do vaccines work",
+   "reason": "User asks for explanation of vaccine mechanism.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 866,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 781,
+     "output": 85,
+     "reasoning": 23,
+     "cached": 0
+    }
+   },
+   "seconds": 0.96
+  },
+  {
+   "id": "gk-svm",
+   "group": "general",
+   "message": "what is a support vector machine?",
+   "expect": "direct",
+   "also_ok": [
+    "rag"
+   ],
+   "chosen": "direct",
+   "source_preference": "model_knowledge",
+   "query_is_clear": true,
+   "standalone_query": "what is a support vector machine?",
+   "reason": "User asks for definition of SVM",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 870,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 783,
+     "output": 87,
+     "reasoning": 22,
+     "cached": 768
+    }
+   },
+   "seconds": 1.44
+  },
+  {
+   "id": "gk-tfidf",
+   "group": "general",
+   "message": "explain tf-idf",
+   "expect": "direct",
+   "also_ok": [
+    "rag"
+   ],
+   "chosen": "direct",
+   "source_preference": "model_knowledge",
+   "query_is_clear": true,
+   "standalone_query": "explain tf-idf",
+   "reason": "User asks for explanation of tf-idf, a standard concept.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 872,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 782,
+     "output": 90,
+     "reasoning": 22,
+     "cached": 0
+    }
+   },
+   "seconds": 1.06
+  },
+  {
+   "id": "gk-gdpr",
+   "group": "general",
+   "message": "what is GDPR in simple words?",
+   "expect": "direct",
+   "also_ok": [
+    "rag"
+   ],
+   "chosen": "direct",
+   "source_preference": "model_knowledge",
+   "query_is_clear": true,
+   "standalone_query": "what is GDPR in simple words?",
+   "reason": "User asks for explanation of GDPR.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 874,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 783,
+     "output": 91,
+     "reasoning": 27,
+     "cached": 768
+    }
+   },
+   "seconds": 0.72
+  },
+  {
+   "id": "gk-div",
+   "group": "general",
+   "message": "how do I center a div",
+   "expect": "direct",
+   "also_ok": [],
+   "chosen": "direct",
+   "source_preference": "model_knowledge",
+   "query_is_clear": true,
+   "standalone_query": "how do I center a div",
+   "reason": "User asks for a coding instruction",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 869,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 783,
+     "output": 86,
+     "reasoning": 23,
+     "cached": 768
+    }
+   },
+   "seconds": 0.92
+  },
+  {
+   "id": "gk-miles",
+   "group": "general",
+   "message": "convert 5 miles to km",
+   "expect": "direct",
+   "also_ok": [],
+   "chosen": "direct",
+   "source_preference": "model_knowledge",
+   "query_is_clear": true,
+   "standalone_query": "convert 5 miles to km",
+   "reason": "User requests a unit conversion.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 874,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 783,
+     "output": 91,
+     "reasoning": 29,
+     "cached": 768
+    }
+   },
+   "seconds": 0.83
+  },
+  {
+   "id": "gk-inflation",
+   "group": "general",
+   "message": "what causes inflation",
+   "expect": "direct",
+   "also_ok": [],
+   "chosen": "direct",
+   "source_preference": "model_knowledge",
+   "query_is_clear": true,
+   "standalone_query": "what causes inflation",
+   "reason": "User asks a general economic question.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 884,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 780,
+     "output": 104,
+     "reasoning": 44,
+     "cached": 0
+    }
+   },
+   "seconds": 0.68
+  },
+  {
+   "id": "gk-hamlet",
+   "group": "general",
+   "message": "summarize the plot of hamlet",
+   "expect": "direct",
+   "also_ok": [],
+   "chosen": "direct",
+   "source_preference": "model_knowledge",
+   "query_is_clear": true,
+   "standalone_query": "summarize the plot of Hamlet",
+   "reason": "User requests a summary of Hamlet's plot.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 888,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 785,
+     "output": 103,
+     "reasoning": 37,
+     "cached": 768
+    }
+   },
+   "seconds": 0.93
+  },
+  {
+   "id": "doc-supervisor",
+   "group": "documents",
+   "message": "what does my report say about the supervisor?",
+   "expect": "rag",
+   "also_ok": [],
+   "chosen": "rag",
+   "source_preference": "documents",
+   "query_is_clear": true,
+   "standalone_query": "What does my report say about the supervisor?",
+   "reason": "User is asking for specific content from an uploaded document.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 945,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 754,
+     "output": 191,
+     "reasoning": 123,
+     "cached": 0
+    }
+   },
+   "seconds": 0.9
+  },
+  {
+   "id": "doc-gdpr-sum",
+   "group": "documents",
+   "message": "summarize the GDPR file",
+   "expect": "rag",
+   "also_ok": [],
+   "chosen": "rag",
+   "source_preference": "documents",
+   "query_is_clear": true,
+   "standalone_query": "summarize the GDPR file",
+   "reason": "User requests a summary of the GDPR file, which is an uploaded document.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 945,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 752,
+     "output": 193,
+     "reasoning": 124,
+     "cached": 512
+    }
+   },
+   "seconds": 0.78
+  },
+  {
+   "id": "doc-svm-acc",
+   "group": "documents",
+   "message": "according to the uploaded paper, what accuracy did the SVM get?",
+   "expect": "rag",
+   "also_ok": [],
+   "chosen": "rag",
+   "source_preference": "documents",
+   "query_is_clear": true,
+   "standalone_query": "according to the uploaded paper, what accuracy did the SVM get?",
+   "reason": "User requests a specific factual detail from an uploaded document.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 916,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 759,
+     "output": 157,
+     "reasoning": 84,
+     "cached": 512
+    }
+   },
+   "seconds": 0.69
+  },
+  {
+   "id": "doc-smoothing",
+   "group": "documents",
+   "message": "in the nlp pdf, how is smoothing explained?",
+   "expect": "rag",
+   "also_ok": [],
+   "chosen": "rag",
+   "source_preference": "documents",
+   "query_is_clear": true,
+   "standalone_query": "In the nlp.pdf, how is smoothing explained?",
+   "reason": "User requests specific content from an uploaded document.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 895,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 756,
+     "output": 139,
+     "reasoning": 71,
+     "cached": 512
+    }
+   },
+   "seconds": 1.73
+  },
+  {
+   "id": "doc-keypoints",
+   "group": "documents",
+   "message": "what are the key points of my documents?",
+   "expect": "rag",
+   "also_ok": [],
+   "chosen": "rag",
+   "source_preference": "documents",
+   "query_is_clear": true,
+   "standalone_query": "what are the key points of my documents?",
+   "reason": "User is asking for key points of uploaded documents.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 869,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 754,
+     "output": 115,
+     "reasoning": 48,
+     "cached": 512
+    }
+   },
+   "seconds": 1.23
+  },
+  {
+   "id": "doc-wb-financing",
+   "group": "documents",
+   "message": "from the World Bank report, how much financing was committed?",
+   "expect": "rag",
+   "also_ok": [],
+   "chosen": "rag",
+   "source_preference": "documents",
+   "query_is_clear": true,
+   "standalone_query": "from the World Bank report, how much financing was committed?",
+   "reason": "User asks for specific data from a document.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 889,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 757,
+     "output": 132,
+     "reasoning": 63,
+     "cached": 512
+    }
+   },
+   "seconds": 1.16
+  },
+  {
+   "id": "doc-art17",
+   "group": "documents",
+   "message": "check my files: what does article 17 say about the right to erasure?",
+   "expect": "rag",
+   "also_ok": [],
+   "chosen": "rag",
+   "source_preference": "documents",
+   "query_is_clear": true,
+   "standalone_query": "check my files: what does article 17 say about the right to erasure?",
+   "reason": "User requests specific content from an uploaded document.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 925,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 762,
+     "output": 163,
+     "reasoning": 89,
+     "cached": 0
+    }
+   },
+   "seconds": 0.82
+  },
+  {
+   "id": "doc-who",
+   "group": "documents",
+   "message": "what does the WHO document say about primary health care in Nepal?",
+   "expect": "rag",
+   "also_ok": [],
+   "chosen": "rag",
+   "source_preference": "documents",
+   "query_is_clear": true,
+   "standalone_query": "what does the WHO document say about primary health care in Nepal?",
+   "reason": "The message explicitly asks for the user's documents (router had chosen auto). User is asking for specific content from a WHO document, which requires external information.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 915,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 758,
+     "output": 157,
+     "reasoning": 80,
+     "cached": 256
+    }
+   },
+   "seconds": 1.51
+  },
+  {
+   "id": "doc-limits",
+   "group": "documents",
+   "message": "go through the CCS project report and list its limitations",
+   "expect": "rag",
+   "also_ok": [],
+   "chosen": "rag",
+   "source_preference": "documents",
+   "query_is_clear": true,
+   "standalone_query": "go through the CCS_using_SVM.pdf and list its limitations",
+   "reason": "User requests specific content from an uploaded document.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 932,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 756,
+     "output": 176,
+     "reasoning": 107,
+     "cached": 512
+    }
+   },
+   "seconds": 1.68
+  },
+  {
+   "id": "doc-ngram",
+   "group": "documents",
+   "message": "based on the documents I uploaded, what is an n-gram?",
+   "expect": "rag",
+   "also_ok": [],
+   "chosen": "rag",
+   "source_preference": "documents",
+   "query_is_clear": true,
+   "standalone_query": "Based on the documents I uploaded, what is an n-gram?",
+   "reason": "User asks for definition of n-gram referencing uploaded documents.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 854,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 759,
+     "output": 95,
+     "reasoning": 21,
+     "cached": 0
+    }
+   },
+   "seconds": 0.51
+  },
+  {
+   "id": "doc-personal-data",
+   "group": "documents",
+   "message": "pull the definition of personal data from the regulation I uploaded",
+   "expect": "rag",
+   "also_ok": [],
+   "chosen": "rag",
+   "source_preference": "documents",
+   "query_is_clear": true,
+   "standalone_query": "Please provide the definition of personal data from the regulation I uploaded.",
+   "reason": "User requests specific content from an uploaded regulation document.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 906,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 757,
+     "output": 149,
+     "reasoning": 79,
+     "cached": 512
+    }
+   },
+   "seconds": 1.01
+  },
+  {
+   "id": "doc-stemming",
+   "group": "documents",
+   "message": "look in my notes for how stemming is described",
+   "expect": "rag",
+   "also_ok": [],
+   "chosen": "rag",
+   "source_preference": "documents",
+   "query_is_clear": true,
+   "standalone_query": "Please look in my notes for how stemming is described.",
+   "reason": "User requests specific content from their uploaded notes.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 1003,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 755,
+     "output": 248,
+     "reasoning": 181,
+     "cached": 512
+    }
+   },
+   "seconds": 0.88
+  },
+  {
+   "id": "imp-weakness",
+   "group": "implicit_documents",
+   "message": "what's the project's main weakness?",
+   "expect": "rag",
+   "also_ok": [
+    "direct"
+   ],
+   "chosen": "direct",
+   "source_preference": "auto",
+   "query_is_clear": true,
+   "standalone_query": "What is the main weakness of the project?",
+   "reason": "User asks for a specific detail about a project without providing context.",
+   "correct": false,
+   "acceptable": true,
+   "reviewed": true,
+   "revised": false,
+   "tokens": 1524,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 752,
+     "output": 192,
+     "reasoning": 122,
+     "cached": 512
+    },
+    "openai/gpt-oss-120b": {
+     "calls": 1,
+     "input": 496,
+     "output": 84,
+     "reasoning": 59,
+     "cached": 0
+    }
+   },
+   "seconds": 2.3
+  },
+  {
+   "id": "imp-supervised",
+   "group": "implicit_documents",
+   "message": "who supervised the ISP complaint classification project?",
+   "expect": "rag",
+   "also_ok": [],
+   "chosen": "rag",
+   "source_preference": "documents",
+   "query_is_clear": true,
+   "standalone_query": "who supervised the ISP complaint classification project?",
+   "reason": "The user asks for a specific detail that likely comes from a document.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 900,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 753,
+     "output": 147,
+     "reasoning": 77,
+     "cached": 512
+    }
+   },
+   "seconds": 0.67
+  },
+  {
+   "id": "imp-chapter3",
+   "group": "implicit_documents",
+   "message": "what does chapter 3 say?",
+   "expect": "rag",
+   "also_ok": [],
+   "chosen": "rag",
+   "source_preference": "documents",
+   "query_is_clear": true,
+   "standalone_query": "what does chapter 3 say?",
+   "reason": "User asks about content of chapter 3, likely referring to an uploaded document.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 879,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 752,
+     "output": 127,
+     "reasoning": 56,
+     "cached": 512
+    }
+   },
+   "seconds": 0.75
+  },
+  {
+   "id": "imp-pages",
+   "group": "implicit_documents",
+   "message": "how long is the annual report?",
+   "expect": "rag",
+   "also_ok": [],
+   "chosen": "rag",
+   "source_preference": "documents",
+   "query_is_clear": true,
+   "standalone_query": "how long is the World Bank Annual Report 2024?",
+   "reason": "User asks about length of a specific document.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 875,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 752,
+     "output": 123,
+     "reasoning": 54,
+     "cached": 0
+    }
+   },
+   "seconds": 0.75
+  },
+  {
+   "id": "imp-wb-2024",
+   "group": "implicit_documents",
+   "message": "what were the World Bank's 2024 commitments?",
+   "expect": "rag",
+   "also_ok": [
+    "web_search"
+   ],
+   "chosen": "rag",
+   "source_preference": "documents",
+   "query_is_clear": true,
+   "standalone_query": "what were the World Bank's 2024 commitments?",
+   "reason": "User asks for specific content from a known document.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 874,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 756,
+     "output": 118,
+     "reasoning": 49,
+     "cached": 512
+    }
+   },
+   "seconds": 0.86
+  },
+  {
+   "id": "imp-summarize-it",
+   "group": "implicit_documents",
+   "message": "summarize it",
+   "expect": "rag",
+   "also_ok": [],
+   "chosen": "rag",
+   "source_preference": "documents",
+   "query_is_clear": true,
+   "standalone_query": "summarize the WHO report on primary health care in Nepal",
+   "reason": "User requests a summary of an uploaded document.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 907,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 779,
+     "output": 128,
+     "reasoning": 59,
+     "cached": 512
+    }
+   },
+   "seconds": 1.0
+  },
+  {
+   "id": "imp-method",
+   "group": "implicit_documents",
+   "message": "what methodology did they use in the complaint classification system?",
+   "expect": "rag",
+   "also_ok": [],
+   "chosen": "direct",
+   "source_preference": "model_knowledge",
+   "query_is_clear": true,
+   "standalone_query": "What methodology did they use in the complaint classification system?",
+   "reason": "User asks for specific methodological details.",
+   "correct": false,
+   "acceptable": false,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 899,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 756,
+     "output": 143,
+     "reasoning": 75,
+     "cached": 512
+    }
+   },
+   "seconds": 0.97
+  },
+  {
+   "id": "imp-art83",
+   "group": "implicit_documents",
+   "message": "what fines does GDPR article 83 set?",
+   "expect": "rag",
+   "also_ok": [
+    "direct",
+    "web_search"
+   ],
+   "chosen": "direct",
+   "source_preference": "model_knowledge",
+   "query_is_clear": true,
+   "standalone_query": "what fines does GDPR article 83 set?",
+   "reason": "User asks for specific legal fines.",
+   "correct": false,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 903,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 754,
+     "output": 149,
+     "reasoning": 83,
+     "cached": 512
+    }
+   },
+   "seconds": 1.33
+  },
+  {
+   "id": "fu-why",
+   "group": "follow_up",
+   "message": "why?",
+   "expect": "direct",
+   "also_ok": [],
+   "chosen": "direct",
+   "source_preference": "model_knowledge",
+   "query_is_clear": true,
+   "standalone_query": "Why should I use asyncio instead of threads for many slow HTTP calls?",
+   "reason": "User is asking for clarification on the recommendation.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 963,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 777,
+     "output": 186,
+     "reasoning": 113,
+     "cached": 512
+    }
+   },
+   "seconds": 1.09
+  },
+  {
+   "id": "fu-sure",
+   "group": "follow_up",
+   "message": "are you sure?",
+   "expect": "direct",
+   "also_ok": [],
+   "chosen": "direct",
+   "source_preference": "model_knowledge",
+   "query_is_clear": true,
+   "standalone_query": "are you sure?",
+   "reason": "User is asking for confirmation of a factual statement.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 875,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 769,
+     "output": 106,
+     "reasoning": 42,
+     "cached": 512
+    }
+   },
+   "seconds": 1.24
+  },
+  {
+   "id": "fu-cosupervisor",
+   "group": "follow_up",
+   "message": "and was there a co-supervisor?",
+   "expect": "rag",
+   "also_ok": [],
+   "chosen": "rag",
+   "source_preference": "documents",
+   "query_is_clear": true,
+   "standalone_query": "and was there a co-supervisor?",
+   "reason": "User asks about co-supervisor in the CCS report, which refers to uploaded document.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 913,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 783,
+     "output": 130,
+     "reasoning": 57,
+     "cached": 0
+    }
+   },
+   "seconds": 0.76
+  },
+  {
+   "id": "fu-eth",
+   "group": "follow_up",
+   "message": "what about ethereum?",
+   "expect": "web_search",
+   "also_ok": [],
+   "chosen": "web_search",
+   "source_preference": "web",
+   "query_is_clear": true,
+   "standalone_query": "what about ethereum?",
+   "reason": "User asks for current price of Ethereum, a time‑sensitive factual query.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 892,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 772,
+     "output": 120,
+     "reasoning": 52,
+     "cached": 256
+    }
+   },
+   "seconds": 0.63
+  },
+  {
+   "id": "fu-dropout",
+   "group": "follow_up",
+   "message": "anyway, can you explain dropout in neural nets?",
+   "expect": "direct",
+   "also_ok": [],
+   "chosen": "direct",
+   "source_preference": "model_knowledge",
+   "query_is_clear": true,
+   "standalone_query": "anyway, can you explain dropout in neural nets?",
+   "reason": "User asks for explanation of dropout in neural nets",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 866,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 769,
+     "output": 97,
+     "reasoning": 26,
+     "cached": 0
+    }
+   },
+   "seconds": 0.84
+  },
+  {
+   "id": "fu-simpler",
+   "group": "follow_up",
+   "message": "explain that in simpler terms",
+   "expect": "direct",
+   "also_ok": [
+    "rag"
+   ],
+   "chosen": "rag",
+   "source_preference": "documents",
+   "query_is_clear": true,
+   "standalone_query": "Explain the GDPR file in simpler terms",
+   "reason": "User requests clarification on a document they previously asked about.",
+   "correct": false,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 907,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 802,
+     "output": 105,
+     "reasoning": 39,
+     "cached": 0
+    }
+   },
+   "seconds": 0.96
+  },
+  {
+   "id": "fu-titanic",
+   "group": "follow_up",
+   "message": "that seems wrong, a father would take the seat for his kids' sake",
+   "expect": "direct",
+   "also_ok": [],
+   "chosen": "direct",
+   "source_preference": "model_knowledge",
+   "query_is_clear": true,
+   "standalone_query": "I think that seems wrong; a father would take the seat for his kids' sake.",
+   "reason": "User is asking for clarification or correction of the assistant's previous answer.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 987,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 805,
+     "output": 182,
+     "reasoning": 101,
+     "cached": 512
+    }
+   },
+   "seconds": 1.21
+  },
+  {
+   "id": "fu-thanks",
+   "group": "follow_up",
+   "message": "perfect, thanks!",
+   "expect": "greeting",
+   "also_ok": [],
+   "chosen": "greeting",
+   "source_preference": "auto",
+   "query_is_clear": true,
+   "standalone_query": "perfect, thanks!",
+   "reason": "User is expressing gratitude, no information request.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 899,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 774,
+     "output": 125,
+     "reasoning": 63,
+     "cached": 256
+    }
+   },
+   "seconds": 1.54
+  },
+  {
+   "id": "fu-js",
+   "group": "follow_up",
+   "message": "show me one in javascript",
+   "expect": "direct",
+   "also_ok": [],
+   "chosen": "direct",
+   "source_preference": "model_knowledge",
+   "query_is_clear": true,
+   "standalone_query": "show me one in javascript",
+   "reason": "User requests a code example, which is an information request.",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 891,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 778,
+     "output": 113,
+     "reasoning": 46,
+     "cached": 512
+    }
+   },
+   "seconds": 1.24
+  },
+  {
+   "id": "fu-scorer",
+   "group": "follow_up",
+   "message": "who scored?",
+   "expect": "web_search",
+   "also_ok": [],
+   "chosen": "web_search",
+   "source_preference": "web",
+   "query_is_clear": true,
+   "standalone_query": "who scored in the Manchester derby yesterday?",
+   "reason": "User asks for specific recent event details",
+   "correct": true,
+   "acceptable": true,
+   "reviewed": false,
+   "revised": false,
+   "tokens": 906,
+   "by_model": {
+    "openai/gpt-oss-20b": {
+     "calls": 1,
+     "input": 776,
+     "output": 130,
+     "reasoning": 66,
+     "cached": 0
+    }
+   },
+   "seconds": 1.07
+  }
+ ],
+ "repeats": {
+  "imp-method": "old prompt 5/5 rag; new before fix 2/5; new final 5/5",
+  "doc-who": "final 5/5 rag",
+  "imp-weakness": "final 5/5 direct (acceptable; old prompt also direct)"
+ }
+}

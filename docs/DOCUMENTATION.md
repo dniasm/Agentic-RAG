@@ -386,6 +386,13 @@ Before `question_kind` existed, the gate asked "are you sure you're right?" abou
 "medium", and sent them to documents and the web (benchmark: 3 of 18 answered directly; now 18 of 18, with all
 4 controls still refused).
 
+**Answer prompt.** The direct-answer instructions have two parts (`system_prompt(open_question)`): a core part
+sent with every direct answer and small-talk reply (accuracy, judgment, follow-ups, style, format; ~480 tokens),
+and an open-question part (~530 tokens: taking positions, role-play perspective, personal scenarios, pushback)
+added when the gate says `open`, or when the router judged the question subjective and skipped the gate. Small
+talk gets the core part only. The memory note tells the model saved memories describe the user, never a
+character it is asked to play.
+
 ### 7.5 Routing functions (`workflow.py`)
 
 | Function | Decision |
@@ -1002,3 +1009,59 @@ moved to overlapping passages that really do contain the claim.
 | Document answers checked by the 120B | 43/43 | 6/43 (the rest pass in code) |
 | 120B tokens per skipped check | ~1,000–1,900 | 0 |
 | Real problems missed | — | 0/43 |
+
+### 21.10 Direct-answer prompt split (3 November)
+
+The direct-answer prompt (35% of all tokens in the log, the largest single step) carried its role-play and
+personal-scenario rules on every call, including factual questions and small talk. It is now split: a core part
+always, an open-question part only for opinions, hypotheticals, role-play and personal scenarios. Duplicated rules
+(follow-ups, personal reactions) were removed from the shared format rules, which also shortens the document- and
+web-answer prompts.
+
+| Prompt | Old | New |
+|---|---|---|
+| Factual direct answers and small talk | 1,022 tokens | 480 (−53%) |
+| Opinions, role-play, personal scenarios | 1,022 | 1,006 |
+| Document answers | 250 | 216 |
+| Full answer prompt, factual question (`benchmark/run_direct_prompt.py`) | ~1,090 | 550 |
+
+`benchmark/run_direct_prompt.py`: 19 questions through the real router → gate → answer path, with two saved
+memories (Kathmandu, student) to test that they stay out of role-play.
+
+| | Result |
+|---|---|
+| Personal (7), opinion (3), role-play (2) questions that got the open-question rules | 12/12 |
+| Factual (4) and small talk (2 of 3) on the core prompt | 6/6 ("what can you do?" was routed as a question and got the full prompt) |
+| Personal answers: first person, no lists, no "Why:", no counselling/lawyer/evidence advice, ≤ 3 paragraphs | 7/7 (old prompt: 7/7) |
+| Saved memories kept out of the character | 6/7 on the first run (burglar scenario: "my tiny Kathmandu flat"); after adding the rule to the memory note itself, 3/3 re-runs of that case clean |
+
+Old and new personal answers read alike (first-person, in-the-moment reactions); the old-prompt answers are kept
+in `benchmark/results/direct_prompt_eval.json` for comparison. Cached prompt tokens on Groq cost half and don't
+count toward rate limits, so the real saving is somewhat below the token difference shown.
+
+### 21.11 Router prompt (3 November)
+
+The router runs on every message (28% of logged tokens). Its rules were written twice, in the prompt and again in
+the output fields' descriptions (sent with every call as part of the output schema). Now: one set of rules in the
+prompt, short field descriptions (except `source_preference`, see below), the two overlapping sections on
+follow-ups and standalone queries merged, small-talk examples added ("who are you?", "what can you do?"), and the
+file list capped at 20 names.
+
+Two lines were added after the first benchmark run showed misses: documents also cover "the X report" mentions and
+details only the user's files could contain ("what does chapter 3 say?"), and a follow-up uses the source its
+topic needs ("who scored?" after a match question: web). In code, `asks_for_documents` now also catches "what does
+the X document/report/paper say …", only when the user has uploaded files.
+
+Repeated runs caught one regression the single run missed: with a one-line `source_preference` description, "what
+methodology did they use in the complaint classification system?" went to model knowledge 3 times in 5 (old
+prompt: 0 in 5). Restoring that description fixed it (5/5 to the documents).
+
+| `benchmark/run_router.py` (80 cases) | Old | New |
+|---|---|---|
+| Exact | 73 | 73 in the merged run; the one new miss (`imp-method`) was then fixed: 5/5 in repeats |
+| Acceptable | 79 | 79 (80 with the fix) |
+| Non-document messages sent to the documents | 0/41 | 0/41 |
+| "what can you do?" | model knowledge | small talk |
+| Tokens per message (incl. reviews) | 962 | 875 (−9%) |
+| Fixed prompt + output schema | 813 | 743 |
+

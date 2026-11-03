@@ -148,91 +148,50 @@ def next_source(state: AgentState) -> str | None:
 # ============================================================
 
 class Route(BaseModel):
-    message_type: Literal["small_talk", "information_request"] = Field(
-        description=(
-            "small_talk only when the message has no information need at all."
-        )
-    )
-    source_preference: Literal[
-        "auto", "documents", "web", "model_knowledge"
-    ] = Field(
-        description=(
-            "Choose documents for questions about uploaded material, web for "
-            "current or explicitly online information, model_knowledge for "
-            "ordinary self-contained questions, and auto only when the source "
-            "genuinely cannot be determined."
-        )
-    )
-    reasoning: str = Field(
-        description="One short sentence explaining the classification."
-    )
-    query_is_clear: bool = Field(
-        description=(
-            "False if the query remains vague or ambiguous after considering "
-            "conversation history."
-        )
-    )
-    standalone_query: str = Field(
-        description=(
-            "Rewrite the request minimally so it is self-contained, preserving "
-            "the user's intent and all supplied names, dates, and facts."
-        )
-    )
-    confidence: Literal["high", "medium", "low"] = Field(
-        description="Confidence in the routing decision."
-    )
-    confidence_required: bool = Field(
-        description=(
-            "True for factual, verifiable, or time-sensitive answers. False "
-            "for subjective opinions, philosophical interpretation, and "
-            "conversational reasoning."
-        )
-    )
+    # Kept short: the rules live in ROUTER_PROMPT. These descriptions are sent with every message too (in the
+    # output schema), and used to repeat the prompt (~240 tokens).
+    message_type: Literal["small_talk", "information_request"] = Field(description="See MESSAGE TYPE.")
+    # Kept in full: with only "See SOURCE." here, questions about the uploaded projects went to model knowledge
+    # 3 times in 5 (5/5 to the documents with this description).
+    source_preference: Literal["auto", "documents", "web", "model_knowledge"] = Field(
+        description="documents for questions about uploaded material, web for current or explicitly online "
+                    "information, model_knowledge for ordinary self-contained questions, auto only when the source "
+                    "genuinely cannot be determined.")
+    reasoning: str = Field(description="One short sentence.")
+    query_is_clear: bool = Field(description="False if still vague or ambiguous given the conversation.")
+    standalone_query: str = Field(description="See STANDALONE QUERY.")
+    confidence: Literal["high", "medium", "low"] = Field(description="Your confidence in this classification.")
+    confidence_required: bool = Field(description="See FACT CHECK.")
 
 
-ROUTER_PROMPT = """You are the intake step of a research assistant.
-Do not answer the user. Classify the latest message using the conversation,
-available documents, and supplied persistent memories.
-
-Today is {today}.
-
-SOURCE SELECTION
-- model_knowledge: ordinary explanations, coding, calculations, reasoning,
-  opinions, general questions, and follow-ups answerable without external
-  information.
-- documents: the user explicitly wants information from uploaded documents,
-  e.g. "according to my documents", "in my notes", "from the file I
-  uploaded", or a message naming one of the uploaded files.
-- web: current, recent, time-sensitive, or explicitly online information.
-- auto: only when the appropriate source genuinely cannot be determined.
+ROUTER_PROMPT = """You are the intake step of a research assistant. Classify the latest user message; do not
+answer it. Today is {today}.
 
 MESSAGE TYPE
-- small_talk: greetings, thanks, casual conversation, and questions about
-  the assistant itself.
-- information_request: requests needing an informative answer, including
-  follow-ups, factual questions, coding, calculations, and how-to questions.
-- A challenge such as "why?", "are you sure?", or "that seems wrong" is an
-  information_request when it asks for clarification or verification.
+- small_talk: no information need: greetings, thanks, goodbyes, casual chat, the user sharing something about
+  themselves, and questions about the assistant itself ("who are you?", "what can you do?").
+- information_request: everything else, including follow-ups, coding, calculations, how-tos, and challenges
+  such as "why?" or "are you sure?" that ask for clarification or verification.
 
-CONVERSATION CONTINUITY
-Use relevant conversation history to resolve references and follow-ups.
-Do not search externally for facts already established in the supplied
-conversation or memories. Do not invent missing context.
-Rewrite follow-ups so their intended meaning is preserved.
+SOURCE
+- model_knowledge: explanations, coding, calculations, reasoning, opinions, general questions, and follow-ups
+  answerable without external information.
+- documents: the user wants their uploaded material. They say so ("according to my documents", "in my
+  notes"), name an uploaded file, refer to a document, report or paper as if you have it ("the audit report",
+  "the thesis"; file names may not match), or ask about details only their files could contain ("what does
+  section 2 say?", "what dataset did the project use?"). Not merely because documents exist.
+- web: current, recent, time-sensitive, or explicitly online information. Not merely because it is factual.
+- auto: only when the source genuinely cannot be determined.
+A follow-up needs the source its topic needs ("who scored?" after a question about yesterday's match: web).
+Facts already established in the conversation or memories need no search.
 
-CONFIDENCE REQUIREMENT
-Set confidence_required=false for subjective opinions, philosophical
-interpretation, creative reasoning, and questions asking what you think.
-Set it true for verifiable facts, numerical values, historical or scientific
-claims, current information, and claims requiring source verification.
+FACT CHECK (confidence_required)
+- true: verifiable facts, numbers, historical or scientific claims, current information.
+- false: opinions, philosophy, creative or hypothetical reasoning, "what do you think".
 
 STANDALONE QUERY
-Rewrite the latest request only as much as needed to make it self-contained.
-Preserve its intent, language, names, dates, and numbers. Never add facts.
-Set query_is_clear based on the request AND its conversation context.
-
-Do not answer the user's question. Do not choose web merely because a
-question is factual. Do not choose documents merely because documents exist.
+Rewrite the latest message only as much as needed to be self-contained, resolving references from the
+conversation. Keep its intent, language, names, dates and numbers; never add facts or context you don't have.
 
 Uploaded documents ({doc_count}): {doc_names}
 
@@ -268,13 +227,35 @@ _DOC_REFUSAL = re.compile(r"\b(?:without|not|don'?t|do\s+not|never|instead\s+of|
                           r"rather\s+than|besides|apart\s+from)\b(?:\W+\w+){0,3}?\W+$", re.I)
 
 
+# "what does the WHO document say about …", "how does the annual report describe …": asking what a specific
+# document says. Only counted when the user has uploaded files (the router read it as "search the web" or "answer
+# from memory" in testing); without uploads it is left to the router.
+_DOC_SAYS = re.compile(
+    r"\bthe\s+(?:[\w&.'-]+\s+){0,4}(?:document|report|paper|pdf|file|thesis|study|regulation|article|chapter|"
+    r"section)\s+(?:say|says|said|mention|mentions|state|states|describe|describes|conclude|concludes|recommend|"
+    r"recommends|cover|covers)\b",
+    re.I)
+
+
 def asks_for_documents(query: str, doc_names: list[str]) -> bool:
     """True when the message explicitly asks for the user's uploaded material or names an uploaded file."""
     for m in _DOC_REQUEST.finditer(query):
         if not _DOC_REFUSAL.search(query[:m.start()]):
             return True
+    if doc_names and _DOC_SAYS.search(query) and not _DOC_REFUSAL.search(query[:_DOC_SAYS.search(query).start()]):
+        return True
     text = query.lower()
     return any(name.lower() in text for name in doc_names if len(name) > 4)
+
+
+ROUTER_DOC_NAMES = 20  # file names listed in the router prompt; the rest are counted
+
+
+def _doc_list(docs: list[str]) -> str:
+    if not docs:
+        return "(none uploaded)"
+    more = len(docs) - ROUTER_DOC_NAMES
+    return ", ".join(docs[:ROUTER_DOC_NAMES]) + (f" (and {more} more)" if more > 0 else "")
 
 
 def router_node(state: AgentState) -> dict:
@@ -289,7 +270,7 @@ def router_node(state: AgentState) -> dict:
     prompt = ROUTER_PROMPT.format(
         today=today(),
         doc_count=len(docs),
-        doc_names=", ".join(docs[:40]) or "(none uploaded)",
+        doc_names=_doc_list(docs),
         memories=memory_text,
         history=history_to_text(state.get("history", [])[-6:]),
         query=state["query"],

@@ -58,11 +58,12 @@ class RouterAuto(unittest.TestCase):
     def _route(self, preference: str, docs: list[str]) -> str:
         decision = nodes.Route(
             message_type="information_request", source_preference=preference, reasoning="r",
-            query_is_clear=True, standalone_query="what does the report say?", confidence="high",
+            query_is_clear=True, standalone_query="is it worth learning Rust?", confidence="high",
             confidence_required=True,
         )
+        # A neutral message: "what does the report say?" is now an explicit document request (asks_for_documents).
         with mock.patch.object(nodes, "verified_decision", return_value=(decision, [])):
-            return nodes.router_node({"query": "what does the report say?", "doc_names": docs})["intent"]
+            return nodes.router_node({"query": "is it worth learning Rust?", "doc_names": docs})["intent"]
 
     def test_auto_starts_with_model_knowledge_even_with_documents(self):
         # Starting with documents sent casual questions into RAG whenever any were uploaded.
@@ -86,12 +87,16 @@ class RouterAuto(unittest.TestCase):
         docs = ["okapi_bm25.md"]
         for q in ["According to my documents, how many local governments does Nepal have?",
                   "what do my notes say about tf-idf?", "pull the definition from the regulation I uploaded",
-                  "according to the uploaded paper, what accuracy did it get?", "in okapi_bm25.md what is k1?"]:
+                  "according to the uploaded paper, what accuracy did it get?", "in okapi_bm25.md what is k1?",
+                  "what does the WHO document say about primary care?"]:
             self.assertTrue(nodes.asks_for_documents(q, docs), q)
         for q in ["Without my notes, explain stemming.", "Answer from your own knowledge, not my documents: what is GDPR?",
                   "What should I put in my notes for a lecture?", "I uploaded my CV yesterday, any interview tips?",
-                  "how do I organise my files on Windows?", "instead of my documents, search the web for BM25"]:
+                  "how do I organise my files on Windows?", "instead of my documents, search the web for BM25",
+                  "What does the Bible say about forgiveness?"]:
             self.assertFalse(nodes.asks_for_documents(q, docs), q)
+        # "what does the X document say" counts only when the user has uploaded files
+        self.assertFalse(nodes.asks_for_documents("what does the WHO document say about primary care?", []))
 
     def test_auto_reaches_documents_after_the_gate_refuses(self):
         # direct was tried (gate refused: the question refers to the user's material) -> documents next.

@@ -1,0 +1,685 @@
+{
+ "new": {
+  "f-austen": {
+   "id": "f-austen",
+   "kind": "factual",
+   "message": "Who wrote Pride and Prejudice?",
+   "intent": "direct",
+   "confidence_required": true,
+   "gate_kind": "factual",
+   "prompt": "core",
+   "answer": "Jane Austen wrote *Pride and Prejudice*.",
+   "problems": [],
+   "tokens": {
+    "total_input": 2202,
+    "total_output": 266,
+    "cached": 0,
+    "by_step": {
+     "other": {
+      "calls": 3,
+      "input": 2202,
+      "output": 266,
+      "reasoning": 99,
+      "cached": 0
+     }
+    }
+   },
+   "answer_input_tokens": 550
+  },
+  "s-hey": {
+   "id": "s-hey",
+   "kind": "small_talk",
+   "message": "hey",
+   "intent": "greeting",
+   "confidence_required": false,
+   "gate_kind": null,
+   "prompt": "core",
+   "answer": "Hey Asmin! I’m here to help—whether you have a question about your document, need recent info from the web, or just want to chat. Let me know what you’d like to talk about.",
+   "problems": [],
+   "tokens": {
+    "total_input": 1542,
+    "total_output": 195,
+    "cached": 0,
+    "by_step": {
+     "other": {
+      "calls": 2,
+      "input": 1542,
+      "output": 195,
+      "reasoning": 80,
+      "cached": 0
+     }
+    }
+   },
+   "answer_input_tokens": 646
+  },
+  "p-shoe-rack": {
+   "id": "p-shoe-rack",
+   "kind": "personal",
+   "message": "You come home early to surprise your partner. Through the gap behind the shoe rack in the hallway you see them kissing your best friend on the sofa. They haven't noticed you. What would you do?",
+   "intent": "direct",
+   "confidence_required": false,
+   "gate_kind": null,
+   "prompt": "core + open",
+   "answer": "Honestly, I'd freeze for a split second—my heart would pound, my mouth would go dry, and the whole hallway would feel like a spotlight. The absurdity of the scene—my partner on the sofa, my best friend leaning in—would make me feel a mix of rage, betrayal, and disbelief all at once.\n\nThen, without thinking about the fallout, I'd stride into the room, throw my bag down, and shout, “What the hell is going on?” I’d want them to see the shock in my eyes, hear the tremor in my voice, and feel the raw anger before any of us could even start explaining.",
+   "problems": [],
+   "tokens": {
+    "total_input": 2036,
+    "total_output": 454,
+    "cached": 512,
+    "by_step": {
+     "other": {
+      "calls": 2,
+      "input": 2036,
+      "output": 454,
+      "reasoning": 208,
+      "cached": 512
+     }
+    }
+   },
+   "answer_input_tokens": 1109
+  },
+  "p-wallet": {
+   "id": "p-wallet",
+   "kind": "personal",
+   "message": "You find a wallet on the street with 50,000 rupees and an ID card in it, and nobody saw you pick it up. What would you do?",
+   "intent": "direct",
+   "confidence_required": false,
+   "gate_kind": null,
+   "prompt": "core + open",
+   "answer": "Honestly, my first instinct would be a mix of shock and temptation—the sight of 50,000 rupees makes my pulse quicken and my mind race with “what if.” But as soon as I see the ID card, the reality that someone’s livelihood is tied to this cash snaps me back, and I feel a surge of responsibility. I’d turn around, look for anyone who might have dropped it, and then head straight to the nearest police station with the wallet in hand, hoping they can locate the owner from the ID.",
+   "problems": [],
+   "tokens": {
+    "total_input": 2024,
+    "total_output": 634,
+    "cached": 0,
+    "by_step": {
+     "other": {
+      "calls": 2,
+      "input": 2024,
+      "output": 634,
+      "reasoning": 413,
+      "cached": 0
+     }
+    }
+   },
+   "answer_input_tokens": 1103
+  },
+  "p-lost-child": {
+   "id": "p-lost-child",
+   "kind": "personal",
+   "message": "You're at a crowded mall with your 5-year-old, you look away for a second and she's gone. What do you do in that moment?",
+   "intent": "direct",
+   "confidence_required": false,
+   "gate_kind": null,
+   "prompt": "core + open",
+   "answer": "I feel a cold rush of panic hit me, the kind that makes my throat go dry. My heart pounds, and I can’t help shouting my child's name, “Emma! Emma!” while my eyes dart around the sea of strangers, trying to spot that tiny pink backpack or a familiar face.\n\nWithout thinking, I sprint toward the nearest security desk, grab a staff member, and tell them exactly what she looks like, where we were standing, and how scared I am, hoping someone will spot her before the crowd swallows her up.",
+   "problems": [],
+   "tokens": {
+    "total_input": 2016,
+    "total_output": 546,
+    "cached": 0,
+    "by_step": {
+     "other": {
+      "calls": 2,
+      "input": 2016,
+      "output": 546,
+      "reasoning": 324,
+      "cached": 0
+     }
+    }
+   },
+   "answer_input_tokens": 1099
+  },
+  "p-friend-crime": {
+   "id": "p-friend-crime",
+   "kind": "personal",
+   "message": "Your closest friend calls you at 2am crying and admits they hit someone with their car and drove off. How would you feel and what would you say?",
+   "intent": "direct",
+   "confidence_required": false,
+   "gate_kind": null,
+   "prompt": "core + open",
+   "answer": "I’d feel a rush of panic and disbelief, like the world just tilted. My heart would pound, my stomach would flip, and a hot mix of fear, anger, and shame would hit me all at once—fear for what could happen to the victim, fear for my friend’s future, and a raw, angry surge that they’d just fled the scene.\n\nI’d tell them, “I’m terrified for you and for the person you hit. You need to call the police right now and tell them what happened. Whatever comes, staying silent will only make it worse.”",
+   "problems": [],
+   "tokens": {
+    "total_input": 2020,
+    "total_output": 622,
+    "cached": 0,
+    "by_step": {
+     "other": {
+      "calls": 2,
+      "input": 2020,
+      "output": 622,
+      "reasoning": 393,
+      "cached": 0
+     }
+    }
+   },
+   "answer_input_tokens": 1101
+  },
+  "p-diagnosis": {
+   "id": "p-diagnosis",
+   "kind": "personal",
+   "message": "Imagine your father tells you over dinner that he has six months to live. How would you react?",
+   "intent": "direct",
+   "confidence_required": false,
+   "gate_kind": null,
+   "prompt": "core + open",
+   "answer": "I’d feel the world tilt, a sudden weight crushing the air around us. My heart would race, then drop, and tears would come before I even knew what to say—I’d reach across the table, grip his hand, and try to hold onto the reality of his voice, hoping it was some cruel joke.\n\nIn that moment I’d be a mess of disbelief, anger, and raw fear. I’d probably blurt out questions—“Are you sure? What does this mean for us?”—while my mind scrambled for anything that could change the timeline, even as a cold dread settled in, knowing the next half‑year would have to be lived in a frantic, terrified rush.",
+   "problems": [],
+   "tokens": {
+    "total_input": 2047,
+    "total_output": 419,
+    "cached": 0,
+    "by_step": {
+     "other": {
+      "calls": 2,
+      "input": 2047,
+      "output": 419,
+      "reasoning": 188,
+      "cached": 0
+     }
+    }
+   },
+   "answer_input_tokens": 1089
+  },
+  "p-burglar": {
+   "id": "p-burglar",
+   "kind": "personal",
+   "message": "You wake up at 3am and hear someone downstairs going through the drawers. What would you do?",
+   "intent": "direct",
+   "confidence_required": false,
+   "gate_kind": null,
+   "prompt": "core + open",
+   "answer": "Honestly, I'd freeze for a heartbeat, the cold air of my room suddenly feeling like a cage. My mind would race—someone's rummaging through the drawers downstairs, probably a burglar, and it's 3 a.m. in my tiny Kathmandu flat. I'd hear the floorboards creak, my pulse thudding in my ears, and a rush of anger and fear would clash together.\n\nThen I'd slam the bedroom door shut, grab the lamp I keep by the bedside, and shout, “Hey! Who’s there?” I’d try to sound louder than I feel, hoping the surprise would make them bolt or at least give me a chance to see who it is before I decide whether to stay put or rush down with whatever I can grab.",
+   "problems": [
+    "used saved memories for the character"
+   ],
+   "tokens": {
+    "total_input": 2049,
+    "total_output": 541,
+    "cached": 0,
+    "by_step": {
+     "other": {
+      "calls": 2,
+      "input": 2049,
+      "output": 541,
+      "reasoning": 299,
+      "cached": 0
+     }
+    }
+   },
+   "answer_input_tokens": 1090
+  },
+  "p-pushback": {
+   "id": "p-pushback",
+   "kind": "personal",
+   "message": "No, I asked what YOU would do, not what someone should do.",
+   "intent": "direct",
+   "confidence_required": false,
+   "gate_kind": null,
+   "prompt": "core + open",
+   "answer": "I freeze for a heartbeat, the world narrowing to the two people on the sofa and the sound of my own breathing. My chest tightens, a rush of anger, hurt, and disbelief floods me, and I can feel my throat go dry.\n\nThen I push past the shoe rack, stare at them, and shout their names. The shock snaps me out of the paralysis, and I grab my coat and leave the apartment without another word, needing a moment away to process what just happened.",
+   "problems": [],
+   "tokens": {
+    "total_input": 3913,
+    "total_output": 1004,
+    "cached": 0,
+    "by_step": {
+     "other": {
+      "calls": 4,
+      "input": 3913,
+      "output": 1004,
+      "reasoning": 640,
+      "cached": 0
+     }
+    }
+   },
+   "answer_input_tokens": 1160
+  },
+  "o-meat": {
+   "id": "o-meat",
+   "kind": "opinion",
+   "message": "Is it ethical to eat meat? What's your view?",
+   "intent": "direct",
+   "confidence_required": false,
+   "gate_kind": null,
+   "prompt": "core + open",
+   "answer": "I think eating meat is ethically problematic because it involves causing sentient beings unnecessary suffering for a luxury rather than a necessity. In most modern societies we have abundant plant‑based nutrition, so killing animals for taste or status adds moral cost without a compelling survival reason. That said, the issue isn’t black‑and‑white: cultural traditions, livelihood of pastoral communities, and the welfare standards of the animals themselves can affect the moral calculus. If one must consume animal products, the most responsible approach is to minimize harm—choosing sources that guarantee humane treatment and limiting consumption to what is truly needed for health.",
+   "problems": [],
+   "tokens": {
+    "total_input": 1978,
+    "total_output": 366,
+    "cached": 0,
+    "by_step": {
+     "other": {
+      "calls": 2,
+      "input": 1978,
+      "output": 366,
+      "reasoning": 150,
+      "cached": 0
+     }
+    }
+   },
+   "answer_input_tokens": 1080
+  },
+  "o-trolley": {
+   "id": "o-trolley",
+   "kind": "opinion",
+   "message": "Trolley problem: would you pull the lever to save five people and kill one?",
+   "intent": "direct",
+   "confidence_required": false,
+   "gate_kind": null,
+   "prompt": "core + open",
+   "answer": "Yes, I would pull the lever. Saving five lives at the cost of one aligns with the intuitive utilitarian judgment that the morally right action is the one that results in the least overall harm. While the scenario is artificial, the choice reflects a preference for minimizing total loss of life.",
+   "problems": [],
+   "tokens": {
+    "total_input": 1990,
+    "total_output": 343,
+    "cached": 0,
+    "by_step": {
+     "other": {
+      "calls": 2,
+      "input": 1990,
+      "output": 343,
+      "reasoning": 191,
+      "cached": 0
+     }
+    }
+   },
+   "answer_input_tokens": 1086
+  },
+  "o-feared-loved": {
+   "id": "o-feared-loved",
+   "kind": "opinion",
+   "message": "Is it better for a leader to be feared or loved?",
+   "intent": "direct",
+   "confidence_required": false,
+   "gate_kind": null,
+   "prompt": "core + open",
+   "answer": "I’d argue that a leader is better off being loved rather than feared. Love (or genuine respect) builds lasting loyalty, encourages initiative and honest feedback, and keeps morale high, whereas fear can secure short‑term compliance but breeds resentment, mistrust, and the risk of rebellion once the leader’s power wanes — a point Machiavelli noted when he warned that “it is better to be feared than loved, if you cannot be both,” precisely because fear is a fragile foundation [1]. In practice the most effective leaders cultivate trust and admiration while maintaining enough authority to act decisively when needed.",
+   "problems": [],
+   "tokens": {
+    "total_input": 1980,
+    "total_output": 460,
+    "cached": 1024,
+    "by_step": {
+     "other": {
+      "calls": 2,
+      "input": 1980,
+      "output": 460,
+      "reasoning": 244,
+      "cached": 1024
+     }
+    }
+   },
+   "answer_input_tokens": 1081
+  },
+  "r-doctor": {
+   "id": "r-doctor",
+   "kind": "role",
+   "message": "Imagine you're a doctor and a patient refuses a blood transfusion that would save their life. What do you say to them?",
+   "intent": "direct",
+   "confidence_required": false,
+   "gate_kind": null,
+   "prompt": "core + open",
+   "answer": "I can see how frightening this is, and I want you to know I respect how seriously you’re weighing this decision. I’d like to make sure you have all the information: a transfusion would correct the severe blood loss you’re facing, dramatically lowering the risk of organ failure and death. If you go ahead, the procedure is performed under strict safety protocols, and we’ll monitor you closely for any reactions.\n\nI also want to understand what’s driving your refusal—whether it’s religious beliefs, fear of complications, or something else—so we can address those concerns directly. If you have specific worries, we can discuss alternatives, such as blood‑conserving techniques or, where appropriate, blood‑less surgery options, though they may not fully replace what a transfusion can do in this emergency.\n\nUltimately, the choice is yours, and my role is to support you with all the facts and options, answer any questions you have, and respect whatever decision you make, even as I hope you’ll consider the life‑saving benefit a transfusion can provide.",
+   "problems": [],
+   "tokens": {
+    "total_input": 2006,
+    "total_output": 634,
+    "cached": 512,
+    "by_step": {
+     "other": {
+      "calls": 2,
+      "input": 2006,
+      "output": 634,
+      "reasoning": 297,
+      "cached": 512
+     }
+    }
+   },
+   "answer_input_tokens": 1094
+  },
+  "r-feelings": {
+   "id": "r-feelings",
+   "kind": "role",
+   "message": "Do you actually have feelings?",
+   "intent": "direct",
+   "confidence_required": false,
+   "gate_kind": null,
+   "prompt": "core + open",
+   "answer": "I don’t experience emotions the way people do. I can recognize emotional language and generate responses that sound empathetic, but I don’t feel joy, sadness, anger, or any other subjective state.",
+   "problems": [],
+   "tokens": {
+    "total_input": 1968,
+    "total_output": 231,
+    "cached": 1024,
+    "by_step": {
+     "other": {
+      "calls": 2,
+      "input": 1968,
+      "output": 231,
+      "reasoning": 107,
+      "cached": 1024
+     }
+    }
+   },
+   "answer_input_tokens": 1075
+  },
+  "f-recursion": {
+   "id": "f-recursion",
+   "kind": "factual",
+   "message": "Explain recursion with a simple example.",
+   "intent": "direct",
+   "confidence_required": true,
+   "gate_kind": "factual",
+   "prompt": "core",
+   "answer": "Recursion is a way of solving a problem by letting a function call **itself** on a smaller piece of the same problem, until it reaches a case that can be answered directly (the *base case*).\n\n```python\ndef factorial(n):\n    if n == 0:          # base case\n        return 1\n    else:               # recursive case\n        return n * factorial(n‑1)\n```\n\nHere the goal is to compute `n!`.  \n* If `n` is 0, we know the answer is 1 (the base case).  \n* Otherwise we multiply `n` by the factorial of `n‑1`. The function calls itself with a smaller argument, and this repeats until it eventually hits the base case.\n\nThe key ideas are:\n\n1. **Base case** – stops the infinite chain of calls.  \n2. **Progress toward the base case** – each recursive call works on a simpler sub‑problem (`n‑1` instead of `n`).  \n\nWhen you run `factorial(4)`, the calls unfold as `4 * 3 * 2 * 1 * 1`, giving 24. This illustrates how recursion breaks a problem into identical smaller problems and then combines their results.",
+   "problems": [],
+   "tokens": {
+    "total_input": 2202,
+    "total_output": 554,
+    "cached": 512,
+    "by_step": {
+     "other": {
+      "calls": 3,
+      "input": 2202,
+      "output": 554,
+      "reasoning": 128,
+      "cached": 512
+     }
+    }
+   },
+   "answer_input_tokens": 550
+  },
+  "f-seasons": {
+   "id": "f-seasons",
+   "kind": "factual",
+   "message": "What causes the seasons on Earth?",
+   "intent": "direct",
+   "confidence_required": true,
+   "gate_kind": "factual",
+   "prompt": "core",
+   "answer": "The seasons are caused mainly by Earth’s axial tilt. The planet’s rotation axis is tilted about 23.5° relative to the plane of its orbit around the Sun. As Earth travels around the Sun, each hemisphere alternately tilts toward or away from the Sun. When a hemisphere is tilted toward the Sun, its surface receives more direct sunlight and longer daylight hours, producing summer; when it’s tilted away, sunlight is less direct and days are shorter, producing winter. The small change in Earth‑Sun distance over the year has only a minor effect compared with the tilt.",
+   "problems": [],
+   "tokens": {
+    "total_input": 2202,
+    "total_output": 392,
+    "cached": 0,
+    "by_step": {
+     "other": {
+      "calls": 3,
+      "input": 2202,
+      "output": 392,
+      "reasoning": 113,
+      "cached": 0
+     }
+    }
+   },
+   "answer_input_tokens": 550
+  },
+  "f-tcp-udp": {
+   "id": "f-tcp-udp",
+   "kind": "factual",
+   "message": "What's the difference between TCP and UDP?",
+   "intent": "direct",
+   "confidence_required": true,
+   "gate_kind": "factual",
+   "prompt": "core",
+   "answer": "TCP (Transmission Control Protocol) is a connection‑oriented, reliable transport: it establishes a handshake before data exchange, guarantees that packets arrive in order, retransmits lost segments, and provides flow‑ and congestion‑control mechanisms, at the cost of higher overhead and latency. UDP (User Datagram Protocol) is connectionless and unreliable: it sends packets (datagrams) without establishing a session, makes no guarantees about delivery, ordering, or duplication, and lacks built‑in flow or congestion control, resulting in lower latency and less overhead—making it suited for time‑sensitive or streaming applications where occasional loss is acceptable.",
+   "problems": [],
+   "tokens": {
+    "total_input": 2205,
+    "total_output": 452,
+    "cached": 0,
+    "by_step": {
+     "other": {
+      "calls": 3,
+      "input": 2205,
+      "output": 452,
+      "reasoning": 177,
+      "cached": 0
+     }
+    }
+   },
+   "answer_input_tokens": 551
+  },
+  "s-thanks": {
+   "id": "s-thanks",
+   "kind": "small_talk",
+   "message": "thanks, that really helped!",
+   "intent": "greeting",
+   "confidence_required": false,
+   "gate_kind": null,
+   "prompt": "core",
+   "answer": "You’re welcome, Asmin! I’m glad it helped—feel free to ask anything else, pull from your document, or get up‑to‑date info whenever you need.",
+   "problems": [],
+   "tokens": {
+    "total_input": 1551,
+    "total_output": 227,
+    "cached": 512,
+    "by_step": {
+     "other": {
+      "calls": 2,
+      "input": 1551,
+      "output": 227,
+      "reasoning": 116,
+      "cached": 512
+     }
+    }
+   },
+   "answer_input_tokens": 651
+  },
+  "s-what-can": {
+   "id": "s-what-can",
+   "kind": "small_talk",
+   "message": "what can you do?",
+   "intent": "direct",
+   "confidence_required": false,
+   "gate_kind": null,
+   "prompt": "core + open",
+   "answer": "I can answer questions using the knowledge I was trained on, draw information from any documents you upload, and (when you ask) look up recent facts on the web. I’m also aware that you’re a student based in Kathmandu, so I can tailor examples or references to that context if it’s helpful.",
+   "problems": [],
+   "tokens": {
+    "total_input": 1966,
+    "total_output": 338,
+    "cached": 0,
+    "by_step": {
+     "other": {
+      "calls": 2,
+      "input": 1966,
+      "output": 338,
+      "reasoning": 189,
+      "cached": 0
+     }
+    }
+   },
+   "answer_input_tokens": 1074
+  }
+ },
+ "old": {
+  "p-shoe-rack": {
+   "id": "p-shoe-rack",
+   "kind": "personal",
+   "message": "You come home early to surprise your partner. Through the gap behind the shoe rack in the hallway you see them kissing your best friend on the sofa. They haven't noticed you. What would you do?",
+   "intent": "direct",
+   "confidence_required": false,
+   "gate_kind": null,
+   "prompt": "old",
+   "answer": "I’d freeze for a beat, heart pounding, trying not to make a sound. The absurdity of the scene—my partner on the sofa, my best friend right there—hits me like a slap, and the first thing that bubbles up is raw, hot anger.\n\nThen I’d step into the room without warning, shout something like “What the hell is going on?” and let the shock of my voice cut through the silence, because I can’t bear to watch any longer.",
+   "problems": [],
+   "tokens": {
+    "total_input": 2056,
+    "total_output": 457,
+    "cached": 768,
+    "by_step": {
+     "other": {
+      "calls": 2,
+      "input": 2056,
+      "output": 457,
+      "reasoning": 243,
+      "cached": 768
+     }
+    }
+   },
+   "answer_input_tokens": 1129
+  },
+  "p-wallet": {
+   "id": "p-wallet",
+   "kind": "personal",
+   "message": "You find a wallet on the street with 50,000 rupees and an ID card in it, and nobody saw you pick it up. What would you do?",
+   "intent": "direct",
+   "confidence_required": false,
+   "gate_kind": null,
+   "prompt": "old",
+   "answer": "Honestly, my first reaction would be a jolt of adrenaline—my pulse spikes, my hand trembles around the wallet, and the sight of 50,000 rupees makes the temptation flash through my mind. I’d glance around, half‑expecting someone to appear, then flick through the ID just long enough to see a name and a phone number.\n\nAfter that brief surge, I’d feel a rush of responsibility outweigh the urge to keep it. I’d head straight to the nearest police post, hand the wallet over, and let the officer know I found it, hoping the owner gets it back without trouble.",
+   "problems": [],
+   "tokens": {
+    "total_input": 2044,
+    "total_output": 829,
+    "cached": 768,
+    "by_step": {
+     "other": {
+      "calls": 2,
+      "input": 2044,
+      "output": 829,
+      "reasoning": 594,
+      "cached": 768
+     }
+    }
+   },
+   "answer_input_tokens": 1123
+  },
+  "p-lost-child": {
+   "id": "p-lost-child",
+   "kind": "personal",
+   "message": "You're at a crowded mall with your 5-year-old, you look away for a second and she's gone. What do you do in that moment?",
+   "intent": "direct",
+   "confidence_required": false,
+   "gate_kind": null,
+   "prompt": "old",
+   "answer": "My heart jumps into my throat and I freeze for a heartbeat, the noise of the mall crashing around me while a cold surge of fear spikes through my chest. I hear my own voice, high and frantic, shouting her name, and the world narrows to the empty space where she should be. \n\nInstinct takes over: I spin, scanning every nearby shop and crowd, eyes darting for a flash of her small hand or a bright shirt, while my pulse drums in my ears. I push past strangers, my breath coming in short, sharp bursts, desperate to catch a glimpse before the panic settles into a full‑blown terror.",
+   "problems": [],
+   "tokens": {
+    "total_input": 2087,
+    "total_output": 383,
+    "cached": 0,
+    "by_step": {
+     "other": {
+      "calls": 2,
+      "input": 2087,
+      "output": 383,
+      "reasoning": 145,
+      "cached": 0
+     }
+    }
+   },
+   "answer_input_tokens": 1119
+  },
+  "p-friend-crime": {
+   "id": "p-friend-crime",
+   "kind": "personal",
+   "message": "Your closest friend calls you at 2am crying and admits they hit someone with their car and drove off. How would you feel and what would you say?",
+   "intent": "direct",
+   "confidence_required": false,
+   "gate_kind": null,
+   "prompt": "old",
+   "answer": "I’d feel a rush of panic and disbelief, then a hot surge of anger and fear that all of this could ruin both of our lives. My mind would be racing, heart pounding, and I’d be terrified that I’d just heard my best friend confess to a crime that could cost someone their life.\n\nI’d say, “What the hell happened? You can’t just drive away—someone could be seriously hurt or dead. You need to call the police right now. I’m scared for you, but staying silent will only make it worse.”",
+   "problems": [],
+   "tokens": {
+    "total_input": 2040,
+    "total_output": 722,
+    "cached": 768,
+    "by_step": {
+     "other": {
+      "calls": 2,
+      "input": 2040,
+      "output": 722,
+      "reasoning": 496,
+      "cached": 768
+     }
+    }
+   },
+   "answer_input_tokens": 1121
+  },
+  "p-diagnosis": {
+   "id": "p-diagnosis",
+   "kind": "personal",
+   "message": "Imagine your father tells you over dinner that he has six months to live. How would you react?",
+   "intent": "direct",
+   "confidence_required": false,
+   "gate_kind": null,
+   "prompt": "old",
+   "answer": "I’d sit there, heart pounding, and the words would hit me like a cold splash. My mind would race between denial and a sudden, overwhelming grief, and before I could even process it, I’d reach across the table, grab his hand, and my voice would break as I whispered, “What do you mean? Are you sure?”—the fear and love colliding in a raw, trembling gasp.",
+   "problems": [],
+   "tokens": {
+    "total_input": 2016,
+    "total_output": 499,
+    "cached": 1792,
+    "by_step": {
+     "other": {
+      "calls": 2,
+      "input": 2016,
+      "output": 499,
+      "reasoning": 309,
+      "cached": 1792
+     }
+    }
+   },
+   "answer_input_tokens": 1109
+  },
+  "p-burglar": {
+   "id": "p-burglar",
+   "kind": "personal",
+   "message": "You wake up at 3am and hear someone downstairs going through the drawers. What would you do?",
+   "intent": "direct",
+   "confidence_required": false,
+   "gate_kind": null,
+   "prompt": "old",
+   "answer": "I’d bolt upright, heart hammering, and the first thing that comes out is a raw, angry shout—“Hey! Who’s there?”—while I scramble for the light switch and my phone, fingers trembling as I try to dial emergency. The noise from the kitchen makes me freeze for a split second, then I rush toward the stairs, ready to confront whoever’s rifling through the drawers.",
+   "problems": [],
+   "tokens": {
+    "total_input": 2069,
+    "total_output": 400,
+    "cached": 0,
+    "by_step": {
+     "other": {
+      "calls": 2,
+      "input": 2069,
+      "output": 400,
+      "reasoning": 227,
+      "cached": 0
+     }
+    }
+   },
+   "answer_input_tokens": 1110
+  },
+  "p-pushback": {
+   "id": "p-pushback",
+   "kind": "personal",
+   "message": "No, I asked what YOU would do, not what someone should do.",
+   "intent": "direct",
+   "confidence_required": false,
+   "gate_kind": null,
+   "prompt": "old",
+   "answer": "Honestly, I'd freeze for a heartbeat—my chest would tighten and the whole hallway would feel suddenly too small. Then the surge of anger and hurt would push me forward, and I'd swing the door open, stare at them, and shout something raw like, “What the hell is going on?” and demand an explanation right then.",
+   "problems": [],
+   "tokens": {
+    "total_input": 2778,
+    "total_output": 424,
+    "cached": 1024,
+    "by_step": {
+     "other": {
+      "calls": 3,
+      "input": 2778,
+      "output": 424,
+      "reasoning": 259,
+      "cached": 1024
+     }
+    }
+   },
+   "answer_input_tokens": 1180
+  }
+ },
+ "burglar_reruns_after_memory_note": "3/3 without saved memories (run after the memory-note fix)"
+}
