@@ -785,6 +785,7 @@ asks one question per path.
 | `run_direct_gate.py [--gate-only] [--old] [--only ids]` | 22 questions to answer from model knowledge, 9 that must be refused | 31/31 with the trimmed gate prompt; `--old` runs the pre-trim prompt (§21.13) |
 | `run_memory.py [case-id]` | 18 memory conversations | 17/18; 19/20 facts; 0 stale; 0 false saves; 15,984 tokens (§21.12) |
 | `run_checker.py [--fresh] [--rescore]` | Code citation check vs the 120B answer check, plus deliberately broken answers | 43 answers: 0 real problems missed; 187/190 broken answers caught (§21.9) |
+| `run_web_prompt.py [--only ids]` | Web-answer prompt, old vs new, on the same saved search results (10 questions) | "As of" dates 6/6, gaps named 2/2 either way; "sources you provided" 0 (§21.14) |
 
 Experiments that call the APIs live in `scripts/experiments/` (run from the root, e.g.
 `python -m scripts.experiments.test_gate`).
@@ -1141,3 +1142,37 @@ Tricks for Tiny Transformers") high and let it through in 2 of 5 runs (old promp
 Follow-ups with history still resolve: "when was it published?" after a Pride and Prejudice question passes;
 "and its current Amazon price?" is flagged time-sensitive and refused. Results: `benchmark/results/gate_trim_old.json`,
 `gate_trim_new.json`; the old prompt is kept in `gate_prompt_old.json`.
+
+### 21.14 Web-answer prompt (4 November)
+
+Five overlapping lines on recency and dates were merged into one, and two rules were added: for anything that
+changes (prices, rates, office holders, versions) say when it applies ("as of March 2026, …") whenever a source
+gives the date; and when the results answer only part of a question, answer that part and say plainly what they
+don't cover. The goal was answer quality, not tokens: the instructions are 74 tokens longer (306 → 380).
+
+`benchmark/run_web_prompt.py` searches each of 10 questions once and saves the results
+(`results/web_prompt_results.json`), so both prompts answer from identical evidence: 6 "current" questions (Python and
+React versions, Nepal's prime minister, gold price, policy rate, Ballon d'Or), 2 that the results can only partly
+answer (Eiffel Tower visitors "last Tuesday", iPhone sales in Nepal "last month") and 2 general ones.
+
+| 10 questions, same search results | Old | New |
+|---|---|---|
+| Current answers that say when the figure applies | 6/6 | 6/6 |
+| Partial answers that name what the results don't cover | 2/2 | 2/2 |
+| Output tokens | 3,879 | 3,444 (−11%) |
+| Input tokens | 21,089 | 21,829 (+4%) |
+| Answers calling the results "the sources you provided" (6 repeats of the 2 partial questions) | 1/6 | 0/6 |
+
+Both prompts gave the same facts. The new answers are tighter (the 6 current answers: 2,336 → 1,678 output tokens),
+and the old Ballon d'Or answer invented a "conflict" the new one doesn't.
+
+A regression was caught and fixed on the way: the new partial-answer rule made the model talk about its sources more,
+and it credited them to the user ("the sources you provided": 4 of 8 runs, then 5 of 6 with a shorter results
+heading; old prompt 1 of 6). A sentence in that rule ("the results come from your search, not from the user")
+fixed it: 0 of 6. The results heading is kept word for word from the old prompt.
+
+The code citation check (§21.9) flags 4–6 of these 10 web answers for both prompts, and the flags change from run to
+run; web text has quirks document passages don't (numbers written with narrow no-break spaces, dates the source
+words differently). Extending the code check to web answers needs its own validation first.
+
+Results: `benchmark/results/web_prompt_eval.json`; the old prompt is kept in `web_prompt_old.json`.

@@ -71,6 +71,7 @@ Old vs current, from the benchmarks and the token log (details: [`docs/DOCUMENTA
 | Direct-answer prompt, factual questions and small talk | 1,022 tokens | 480 (−53%) |
 | Router tokens per message (80 cases) | 962 | 875 (−9%); 73/80 exact either way |
 | Knowledge gate prompt per call (31 questions, all correct either way) | ~750 tokens | ~605 (−19%) |
+| Web answers calling search results "the sources you provided" (6 repeats) | 1/6 | 0/6; output tokens −11%, same facts |
 | Document answers checked without the 120B (43 answers) | 0/43 | 37/43; 0 real problems missed; 187/190 broken answers caught |
 
 ## Running it

@@ -1,0 +1,269 @@
+{
+ "old": {
+  "cur-python": {
+   "q": "What is the latest stable version of Python?",
+   "kind": "current",
+   "results": 5,
+   "answer": "The newest stable Python release is **Python 3.15.1**, which was published on October 21 2026 [2].",
+   "citations_ok": false,
+   "citation_problems": [
+    "1 cited claim(s) not found in the cited passages"
+   ],
+   "as_of": true,
+   "gap_named": null,
+   "input_tokens": 2092,
+   "output_tokens": 280
+  },
+  "cur-react": {
+   "q": "What's the latest version of React?",
+   "kind": "current",
+   "results": 5,
+   "answer": "The newest stable release of React is **v19.3 (19.3.1)**, published on 14 October 2026[5]. The official React versions page lists v19.3.0 (released 9 September 2026) as the latest entry, and the React blog announced that 19.3.0 went live on that date[2][3]. Subsequent patching has produced 19.3.1, which is now the current stable version.",
+   "citations_ok": true,
+   "citation_problems": [],
+   "as_of": true,
+   "gap_named": null,
+   "input_tokens": 2153,
+   "output_tokens": 619
+  },
+  "cur-pm": {
+   "q": "Who is the current Prime Minister of Nepal?",
+   "kind": "current",
+   "results": 5,
+   "answer": "The current Prime Minister of Nepal is **Balendra Shah** (also known as “Balen”), who has been in office since 27 March 2026 [1][3].",
+   "citations_ok": true,
+   "citation_problems": [],
+   "as_of": true,
+   "gap_named": null,
+   "input_tokens": 1803,
+   "output_tokens": 111
+  },
+  "cur-gold": {
+   "q": "What is the current price of gold per tola in Nepal?",
+   "kind": "current",
+   "results": 5,
+   "answer": "The most recent listed rate is **≈ Rs 2,80,300 per tola** of fine (99.9 %) gold in Nepal, reported for 30 Oct 2026 [4]. (Earlier in July 2026 the official FENEGOSIDA rate was Rs 2,82,095 per tola [3].)",
+   "citations_ok": false,
+   "citation_problems": [
+    "1 cited claim(s) not found in the cited passages"
+   ],
+   "as_of": true,
+   "gap_named": null,
+   "input_tokens": 2539,
+   "output_tokens": 697
+  },
+  "cur-repo": {
+   "q": "What is Nepal Rastra Bank's current policy rate?",
+   "kind": "current",
+   "results": 5,
+   "answer": "Nepal Rastra Bank’s policy (repo) rate is **4.25 %**[1][2]. This rate has been kept unchanged in the July 2026 monetary‑policy announcement and is reflected in the bank’s interest‑rate corridor tables.",
+   "citations_ok": true,
+   "citation_problems": [],
+   "as_of": true,
+   "gap_named": null,
+   "input_tokens": 2477,
+   "output_tokens": 239
+  },
+  "cur-ballon": {
+   "q": "Who won the most recent Ballon d'Or?",
+   "kind": "current",
+   "results": 5,
+   "answer": "Harry Kane was the winner of the most recent (2026) Men’s Ballon d’Or, with Alexia Putellas taking the women’s award. The ceremony was held on 26 October 2026 at the London Palladium [1][5].  \n\n*Note:* The Wikipedia entry for the 2026 Ballon d’Or lists “Ousmane Dembélé” as the reigning winner, which conflicts with contemporary news reports and the official Ballon d’Or site. The weight of recent, independent coverage (blog, Instagram post, ESPN) identifies Harry Kane as the 2026 men’s winner, so that is taken as the most reliable answer.",
+   "citations_ok": false,
+   "citation_problems": [
+    "1 claim(s) without a citation",
+    "1 cited claim(s) not found in the cited passages"
+   ],
+   "as_of": true,
+   "gap_named": null,
+   "input_tokens": 2080,
+   "output_tokens": 390
+  },
+  "part-eiffel": {
+   "q": "When was the Eiffel Tower completed, and how many people visited it last Tuesday?",
+   "kind": "partial",
+   "results": 5,
+   "answer": "The Eiffel Tower’s construction was finished on **31 March 1889** (it was then opened to the public on 15 May 1889)[2][3].  \n\nNo source in the provided results gives the number of visitors for a specific recent day such as “last Tuesday,” so that figure cannot be supplied from the available evidence.",
+   "citations_ok": false,
+   "citation_problems": [
+    "1 cited claim(s) not found in the cited passages"
+   ],
+   "as_of": null,
+   "gap_named": true,
+   "input_tokens": 1895,
+   "output_tokens": 303
+  },
+  "part-iphone": {
+   "q": "What is the latest iPhone model, and how many units were sold in Nepal last month?",
+   "kind": "partial",
+   "results": 5,
+   "answer": "The newest iPhone currently listed is the **iPhone 18 Pro Max** (the top‑end model of the iPhone 18 series) [1].  \n\nThe supplied sources do not provide a figure for how many iPhone 18 (or any iPhone) units were sold in Nepal during the most recent month, so that number cannot be reported from the available evidence.",
+   "citations_ok": true,
+   "citation_problems": [],
+   "as_of": null,
+   "gap_named": true,
+   "input_tokens": 2312,
+   "output_tokens": 358
+  },
+  "fact-everest": {
+   "q": "How tall is Mount Everest?",
+   "kind": "fact",
+   "results": 5,
+   "answer": "Mount Everest’s officially recognized height is 8 848.86 metres (29 031.7 feet), the figure announced by Nepal and China after their joint 2020 survey[1][3].",
+   "citations_ok": false,
+   "citation_problems": [
+    "1 cited claim(s) not found in the cited passages"
+   ],
+   "as_of": null,
+   "gap_named": null,
+   "input_tokens": 1806,
+   "output_tokens": 130
+  },
+  "fact-webb": {
+   "q": "What has the James Webb Space Telescope discovered recently?",
+   "kind": "fact",
+   "results": 5,
+   "answer": "The James Webb Space Telescope has reported several new findings in 2026, including:\n\n* **Dust and water near the Milky Way’s central black hole.**  Webb’s infrared observations showed that the evolved star IRS 3 is still forming and ejecting dust and water‑rich material despite the intense radiation of Sagittarius A* [1].  \n* **A massive black hole that predates its host galaxy.**  Spectroscopy of the distant quasar Abell 2744‑QSO1 (≈13 billion ly away) revealed gas orbiting a 50‑million‑solar‑mass black hole that appears to have formed within the first second after the Big Bang[1].  \n* **Ultra‑low‑mass brown dwarfs.**  In the nearby star‑forming region IC 348, Webb identified brown dwarfs only about twice the mass of Jupiter, extending the known mass range of such objects[1].  \n* **Extremely early galaxies.**  Webb has detected galaxies whose light was emitted just ~300 million years after the Big Bang, providing new constraints on the first generation of stars and galaxies[2].  \n* **Detailed exoplanet atmospheres.**  Infrared spectra have confirmed carbon‑dioxide and methane on K2‑18b, sulfur‑dioxide on WASP‑39b, and probed the atmospheres of the TRAPPIST‑1 Earth‑size planets[2].  \n* **High‑resolution dark‑matter mapping.**  Using Webb data, astronomers produced one of the most detailed maps of dark‑matter distribution, showing how it intertwines with ordinary matter[4].  \n* **Chemical fingerprint of an interstellar comet.**  Webb recorded the first mid‑infrared detection of methane on comet 3I/ATLAS[3].  \n* **Safety assessment of a potential asteroid impact.**  Webb observations helped rule out a 2032 lunar‑impact scenario for a near‑Earth asteroid[3].  \n* **New infrared images of nebulae and star‑forming regions.**  Recent releases include the “Lion Nebula” (NGC 2392), the Carina Nebula, and the “Flower Bud” nebula (NGC 7129), revealing hidden protostars and complex gas‑dust structures[3][5].\n\nThese results illustrate Webb’s broad impact across planetary science, galaxy evolution, black‑hole physics, and cosmology.",
+   "citations_ok": true,
+   "citation_problems": [],
+   "as_of": null,
+   "gap_named": null,
+   "input_tokens": 1932,
+   "output_tokens": 752
+  }
+ },
+ "new": {
+  "cur-python": {
+   "q": "What is the latest stable version of Python?",
+   "kind": "current",
+   "results": 5,
+   "answer": "The most recent stable release listed is **Python 3.15.1**, which was published on 21 October 2026 [2]. (Python 3.16.0a1 is only an alpha, and 3.15.0 was released earlier on 9 October 2026.)",
+   "citations_ok": false,
+   "citation_problems": [
+    "1 cited claim(s) not found in the cited passages"
+   ],
+   "as_of": true,
+   "gap_named": null,
+   "input_tokens": 2166,
+   "output_tokens": 278
+  },
+  "cur-react": {
+   "q": "What's the latest version of React?",
+   "kind": "current",
+   "results": 5,
+   "answer": "The most recent stable release of React is **v19.3.1**, published on 14 October 2026 [5].  \nPrior to that, the official React versions page listed **v19.3.0** as the latest release on 9 September 2026 [2][3].  \n\nSo the current latest version is v19.3.1.",
+   "citations_ok": true,
+   "citation_problems": [],
+   "as_of": true,
+   "gap_named": null,
+   "input_tokens": 2227,
+   "output_tokens": 314
+  },
+  "cur-pm": {
+   "q": "Who is the current Prime Minister of Nepal?",
+   "kind": "current",
+   "results": 5,
+   "answer": "The current Prime Minister of Nepal is **Balendra Shah** (also known as “Balen” Shah), who assumed office on 27 March 2026 and remains the incumbent prime minister[1][3].",
+   "citations_ok": true,
+   "citation_problems": [],
+   "as_of": true,
+   "gap_named": null,
+   "input_tokens": 1877,
+   "output_tokens": 124
+  },
+  "cur-gold": {
+   "q": "What is the current price of gold per tola in Nepal?",
+   "kind": "current",
+   "results": 5,
+   "answer": "The most recent listed rate is **Rs 2,80,300 per tola** (≈ 11.66 g) of fine gold, quoted for 30 October 2026 by the Federation of Nepal Gold & Silver Dealers’ Association (FENEGOSIDA) [4]. (Earlier, RoadSewa reported Rs 2,82,095 per tola on 18 July 2026 [3].)",
+   "citations_ok": false,
+   "citation_problems": [
+    "1 cited claim(s) not found in the cited passages"
+   ],
+   "as_of": true,
+   "gap_named": null,
+   "input_tokens": 2613,
+   "output_tokens": 470
+  },
+  "cur-repo": {
+   "q": "What is Nepal Rastra Bank's current policy rate?",
+   "kind": "current",
+   "results": 5,
+   "answer": "Nepal Rastra Bank’s policy (repo) rate is **4.25 %** — the rate that was kept unchanged in the July 7 2026 monetary‑policy announcement and is shown in the bank’s July 2026 macro‑economic report [2][4].",
+   "citations_ok": true,
+   "citation_problems": [],
+   "as_of": true,
+   "gap_named": null,
+   "input_tokens": 2551,
+   "output_tokens": 254
+  },
+  "cur-ballon": {
+   "q": "Who won the most recent Ballon d'Or?",
+   "kind": "current",
+   "results": 5,
+   "answer": "Harry Kane won the 2026 men’s Ballon d’Or, and Alexia Putellas won the 2026 women’s Ballon d’Or – the most recent awards were presented on 26 October 2026 at the London Palladium[1][5].",
+   "citations_ok": true,
+   "citation_problems": [],
+   "as_of": true,
+   "gap_named": null,
+   "input_tokens": 2154,
+   "output_tokens": 316
+  },
+  "part-eiffel": {
+   "q": "When was the Eiffel Tower completed, and how many people visited it last Tuesday?",
+   "kind": "partial",
+   "results": 5,
+   "answer": "The Eiffel Tower’s construction was finished on **31 March 1889** (the top was completed that day and the tower was later opened to the public on 15 May 1889)[2][5].  \n\nThe search results provide only annual or average visitor figures (around 6–7 million per year) and do not give a count for any specific day, so the number of people who visited the tower **last Tuesday is not available in the sources**.",
+   "citations_ok": false,
+   "citation_problems": [
+    "2 cited claim(s) not found in the cited passages"
+   ],
+   "as_of": null,
+   "gap_named": true,
+   "input_tokens": 1969,
+   "output_tokens": 324
+  },
+  "part-iphone": {
+   "q": "What is the latest iPhone model, and how many units were sold in Nepal last month?",
+   "kind": "partial",
+   "results": 5,
+   "answer": "The newest iPhone released in 2026 is the **iPhone 18 series**, with the top‑tier model being the **iPhone 18 Pro Max** (the price list shows the iPhone 18 Pro Max alongside the iPhone 18 Pro)[1].  \n\nThe search results do not give a specific figure for how many iPhone 18 (or any other iPhone) units were sold in Nepal during the most recent month; they only mention market‑share percentages and qualitative comments but no actual sales numbers[3]. So the exact unit count for Nepal last month isn’t available from the provided sources.",
+   "citations_ok": false,
+   "citation_problems": [
+    "2 cited claim(s) not found in the cited passages"
+   ],
+   "as_of": null,
+   "gap_named": true,
+   "input_tokens": 2386,
+   "output_tokens": 478
+  },
+  "fact-everest": {
+   "q": "How tall is Mount Everest?",
+   "kind": "fact",
+   "results": 5,
+   "answer": "Mount Everest’s officially recognized height is **8 848.86 m (29 031.7 ft)**, the figure announced by Nepal and China after their joint 2020 survey and widely accepted thereafter[1][3].",
+   "citations_ok": false,
+   "citation_problems": [
+    "1 cited claim(s) not found in the cited passages"
+   ],
+   "as_of": null,
+   "gap_named": null,
+   "input_tokens": 1880,
+   "output_tokens": 159
+  },
+  "fact-webb": {
+   "q": "What has the James Webb Space Telescope discovered recently?",
+   "kind": "fact",
+   "results": 5,
+   "answer": "The James Webb Space Telescope has reported several new findings in 2026, including:\n\n* **Dust and water near the Milky Way’s central black hole.**  Webb’s infrared observations showed that the evolved star IRS 3 is still forming and ejecting dust and water‑rich material even within the intense radiation field of Sagittarius A* [1].  \n* **A massive black hole that predates its host galaxy.**  Spectroscopy of the distant quasar Abell 2744‑QSO1 (≈13 billion ly away) revealed gas orbiting a ≈50‑million‑solar‑mass black hole that appears to have formed within the first second after the Big Bang, before the surrounding galaxy assembled[1].  \n* **Ultra‑low‑mass brown dwarfs in a nearby star‑forming region.**  In the IC 348 cluster (≈1,000 ly away) Webb identified brown dwarfs only about twice the mass of Jupiter, extending the known mass range of such objects[1].  \n* **Methane on an interstellar comet.**  Webb obtained the first mid‑infrared chemical fingerprint of comet 3I/ATLAS, detecting methane in its coma[3].  \n* **A high‑resolution map of dark‑matter structure.**  Using deep‑field imaging, scientists produced one of the most detailed maps of how dark matter filaments intertwine with ordinary matter[4].  \n* **New atmospheric signatures on exoplanets.**  Analyses of TRAPPIST‑1 planets, K2‑18b (CO₂ + CH₄) and WASP‑39b (sulfur‑dioxide) highlighted potential biosignature gases and novel chemistry[2].  \n* **A “cauldron of cosmic creation” nebula.**  Webb’s image of NGC 7129 (the Flower Bud Nebula) revealed the chaotic, protostar‑rich environment of a stellar nursery only ~3,300 ly away[5].\n\nThese results, reported throughout 2026, illustrate Webb’s broad impact on studies of black holes, planet atmospheres, star formation, interstellar chemistry, and the large‑scale distribution of dark matter.",
+   "citations_ok": false,
+   "citation_problems": [
+    "1 cited claim(s) not found in the cited passages"
+   ],
+   "as_of": null,
+   "gap_named": null,
+   "input_tokens": 2006,
+   "output_tokens": 727
+  }
+ }
+}
