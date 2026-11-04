@@ -280,6 +280,26 @@ class TokenTrims(unittest.TestCase):
             nodes.evaluate_node(dict(state, answer="Nepal has 753 local governments [1].", match_zone="high"))
         ev.assert_called_once()
 
+    def test_web_answers_use_the_code_check_unless_they_admit_a_gap(self):
+        results = [{"content": "Mount Everest is 8,848.86 metres tall, as measured by Nepal and China in 2020."}]
+        verdict = {"sufficient": True, "grounded": True, "score": 5, "missing": ""}
+        base = {"tool": "web_search", "standalone_query": "q", "web_results": results, "sources": [], "notices": []}
+        ok = "Mount Everest is 8 848.86 metres tall, measured by Nepal and China in 2020 [1]."
+        gap = ok + "\n\nThe search results don't give its height in 1950."
+        with mock.patch.object(nodes, "evaluate_answer", return_value=verdict) as ev:
+            out = nodes.evaluate_node(dict(base, answer=ok))
+        ev.assert_not_called()
+        self.assertEqual(out["evaluation"]["checked_by"], "code")
+        for answer in (gap, ok.replace("2020", "2021")):  # partial answer; year not in the result
+            with mock.patch.object(nodes, "evaluate_answer", return_value=verdict) as ev:
+                nodes.evaluate_node(dict(base, answer=answer))
+            ev.assert_called_once()
+
+    def test_checker_reads_month_abbreviations(self):
+        from backend.evaluation import citations
+        r = citations.check("Python 3.15.1 was released on 21 October 2026 [1].", ["Python 3.15.1 - Oct. 21, 2026"])
+        self.assertTrue(r.ok, r.problems)
+
     def test_gate_history_is_capped(self):
         from backend.tools import direct_answer
         long_answer = "word " * 2000

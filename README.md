@@ -1,6 +1,7 @@
 # Agentic RAG
 
-> 📘 Full technical documentation: [`docs/DOCUMENTATION.md`](docs/DOCUMENTATION.md) (architecture, agent workflow, memory, API, configuration).
+> 📘 Full technical documentation: [`docs/DOCUMENTATION.md`](docs/DOCUMENTATION.md) (architecture, agent workflow, memory, API, configuration,
+> and a [guide to every folder and file](docs/DOCUMENTATION.md#6-project-structure-and-file-guide)).
 > `docs/CODE_REFERENCE.md` and `docs/GRAPH_EXPLAINED.md` explain the first version line by line.
 
 A full-stack agentic RAG app. Users log in, upload documents into a per-user vector store, and chat
@@ -44,7 +45,7 @@ START → router ─┬─ greeting (small talk) ──────────�
 - **Grade**: a reranker (Voyage, hosted) scores the candidates. High → answer, mid → one reworded search, low → next source.
   MMR picks diverse passages. If the reranker is unavailable, an LLM relevance check takes over.
 - **Generate**: answers only from the selected passages, with `[n]` citations.
-- **Evaluate**: document answers on strong evidence are checked in code first (every claim cited, every citation
+- **Evaluate**: document answers on strong evidence, and web answers, are checked in code first (every claim cited, every citation
   real, the cited passage contains the claim). If that passes, no model check is needed; otherwise the 120B checks
   that the answer is sufficient and grounded. If the check itself can't run, the answer is kept and marked unverified.
 - **Memory**: facts about the user (name, preferences, …) are stored as key-value rows in SQLite; past exchanges
@@ -73,6 +74,27 @@ Old vs current, from the benchmarks and the token log (details: [`docs/DOCUMENTA
 | Knowledge gate prompt per call (31 questions, all correct either way) | ~750 tokens | ~605 (−19%) |
 | Web answers calling search results "the sources you provided" (6 repeats) | 1/6 | 0/6; output tokens −11%, same facts |
 | Document answers checked without the 120B (43 answers) | 0/43 | 37/43; 0 real problems missed; 187/190 broken answers caught |
+| Web answers checked without the 120B (32 answers) | 0/32 | 17/32; 0 real problems missed; 124/128 broken answers caught |
+
+## Repository layout
+
+| Folder | Holds |
+|---|---|
+| `backend/api/` | HTTP routes (auth, chat + SSE streaming, documents, health), JWT and password security |
+| `backend/config/` | Settings, model clients per role, token accounting |
+| `backend/models/` | SQLite data access and API schemas |
+| `backend/graph/` | The LangGraph agent: state, nodes, edges |
+| `backend/tools/` | Answer writers (direct, documents, web), small talk, memory extraction |
+| `backend/rag/` | Ingestion, Qdrant vector store, hybrid search, reranking |
+| `backend/memory/` | Conversation memory (Voyage embeddings in Qdrant) |
+| `backend/evaluation/` | Code citation check, LLM answer check, decision reviews |
+| `backend/tests/` | Unit tests (no API calls) |
+| `frontend/` | React app: pages, components, API client, chat store |
+| `benchmark/` | Benchmark scripts, question sets, corpus, saved results |
+| `scripts/experiments/` | One-off model experiments |
+| `docs/` | Documentation |
+
+What every file does: [`docs/DOCUMENTATION.md` §6](docs/DOCUMENTATION.md#6-project-structure-and-file-guide).
 
 ## Running it
 
@@ -114,7 +136,8 @@ Create an account on the login screen, upload files on **Documents**, then chat.
 
 Smoke test (backend must be running): `python test_rag_pipeline.py [path/to/file.pdf]`
 
-Unit tests (no API calls): `python -m unittest discover backend/tests -p "test_*.py"` (routing, memory, streaming)
+Unit tests (70, no API calls): `python -m unittest discover backend/tests -p "test_*.py"` (routing, memory, streaming,
+citation check, reranker fallbacks)
 
 Model experiments (they call the APIs) live in `scripts/experiments/`; run them from the project root,
 e.g. `python -m scripts.experiments.test_gate`.
@@ -124,8 +147,10 @@ e.g. `python -m scripts.experiments.test_gate`.
 
 ## Benchmark
 
-Scripts in `benchmark/` measure retrieval, passage selection, end-to-end answers and performance, plus routing
-(`run_router.py`), the knowledge gate (`run_direct_gate.py`) and memory (`run_memory.py`); see each script's docstring.
+Scripts in `benchmark/` measure retrieval, passage selection, reranker calibration, end-to-end answers and
+performance, plus routing (`run_router.py`), the knowledge gate (`run_direct_gate.py`), memory (`run_memory.py`),
+the code citation check (`run_checker.py`, `run_web_checker.py`) and the answer prompts (`run_direct_prompt.py`, `run_web_prompt.py`);
+see each script's docstring.
 Run the retrieval ones with the backend **stopped**; the routing, gate and memory ones don't use Qdrant.
 
 PDFs are git-ignored (third-party documents), so the benchmark's PDF inputs are not in the repo.

@@ -1,6 +1,6 @@
 # Agentic RAG — Project Documentation
 
-> Full technical documentation, updated 2 November 2026. For a quick start, see [`README.md`](../README.md).
+> Full technical documentation, updated 4 November 2026. For a quick start, see [`README.md`](../README.md).
 
 ## Table of contents
 
@@ -9,7 +9,7 @@
 3. [Tech stack and model roles](#3-tech-stack-and-model-roles)
 4. [Getting started](#4-getting-started)
 5. [Configuration reference](#5-configuration-reference)
-6. [Project structure](#6-project-structure)
+6. [Project structure and file guide](#6-project-structure-and-file-guide)
 7. [The agent workflow](#7-the-agent-workflow)
 8. [Memory](#8-memory)
 9. [Ingestion pipeline](#9-ingestion-pipeline)
@@ -49,8 +49,9 @@ What makes it *agentic* rather than a fixed pipeline:
   (opinions, philosophy, hypotheticals) pass; factual ones need high confidence; anything time-sensitive or about the
   user's own files goes to another source.
 - **Query rewriting** — vague or context-dependent questions are rewritten before searching.
-- **Self-checks** — a local cross-encoder judges whether retrieved passages really answer the question, and the large
-  model checks finished answers for sufficiency and groundedness.
+- **Self-checks** — a reranker (Voyage `rerank-2.5`) judges whether retrieved passages really answer the question;
+  finished document and web answers are checked in code (every claim cited and found in its passage), and the large
+  model checks the rest for sufficiency and groundedness.
 - **Honest failure** — when no source has a reliable answer, the user is told so; an answer that couldn't be
   checked is kept but marked as unverified.
 - **Memory** — facts about the user and short summaries of past exchanges are remembered across conversations.
@@ -77,7 +78,7 @@ What makes it *agentic* rather than a fixed pipeline:
 │  conversations,     │                            user_memories (Voyage)       │
 │  messages           ├── Groq: gpt-oss-120b, gpt-oss-20b, qwen3.8-27b          │
 │                     ├── Gemini embeddings (documents) · Voyage (memory)       │
-│                     └── local cross-encoder (MiniLM)                          │
+│                     └── Voyage rerank-2.5 (local MiniLM optional)             │
 └───────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -234,7 +235,7 @@ overridden by an environment variable / `.env` entry with the same name (case-in
 | `WEAK_MATCH_RETRIES` | `1` | Extra reworded searches in the middle zone. |
 | `MIN_RELEVANCE_SCORE` / `RAG_SKIP_SCORE` | `0.45` / `0.52` | Used only when the reranker is unavailable. |
 | `MAX_RETRIEVAL_ATTEMPTS` / `MAX_WEB_ATTEMPTS` | `1` / `2` | Search rounds per source. |
-| `CITATION_PRECHECK` | `True` | Check document answers' citations in code first; skip the 120B check when they hold up and the evidence zone is high. |
+| `CITATION_PRECHECK` | `True` | Check answers' citations in code first; skip the 120B check when they hold up (document answers: only when the evidence zone is high; web answers: only when the answer doesn't say the results miss part of the question). |
 | `VERIFY_DECISIONS` / `MAX_REVIEW_ROUNDS` / `REVIEW_ONLY_UNCERTAIN` | `True` / `2` / `True` | 120B reviews the 20B's uncertain decisions. |
 | `WEB_RESULTS` / `TAVILY_SEARCH_DEPTH` / `WEB_CACHE_TTL_SECONDS` | `5` / `basic` / `3600` | Web search. |
 | `HISTORY_TURNS` | `6` | Past messages passed to the agent. |
@@ -248,70 +249,238 @@ server proxies it to `http://127.0.0.1:8000`.
 
 ---
 
-## 6. Project structure
+## 6. Project structure and file guide
+
+### 6.1 Overview
 
 ```
 day7/
-├── .env                        # secrets (not committed)
-├── README.md                   # quick start
-├── docs/                       # this file, CODE_REFERENCE.md, GRAPH_EXPLAINED.md
-├── requirements.txt
-├── app.py                      # re-exports backend/app.py (uvicorn app:app from the root)
-├── test_rag_pipeline.py        # end-to-end smoke test
-├── scripts/experiments/        # one-off model experiments (call the APIs)
-├── backend/
-│   ├── app.py                  # FastAPI app, lifespan, CORS, router mounting
-│   ├── config/
-│   │   ├── settings.py         # all configuration
-│   │   ├── llm.py              # model clients per role, quota fallback, structured output
-│   │   └── usage.py            # token accounting per model and step
-│   ├── api/
-│   │   ├── security.py, dependencies.py
-│   │   └── routes/             # auth.py, chat.py, documents.py, health.py
-│   ├── models/
-│   │   ├── database.py         # SQLite schema + data access (incl. user_facts)
-│   │   └── schemas.py          # pydantic request/response models
-│   ├── rag/
-│   │   ├── ingestion.py        # load → clean → chunk → embed (dense + BM25) → upsert
-│   │   ├── vectorstore.py      # Qdrant client, embeddings, per-user filters
-│   │   ├── sparse.py           # BM25 sparse vectors
-│   │   ├── embedding_cache.py  # on-disk cache of question embeddings
-│   │   ├── retrieval.py        # hybrid multi-query retrieval + RRF
-│   │   └── rerank.py           # cross-encoder, confidence zones, MMR
-│   ├── tools/
-│   │   ├── __init__.py         # shared helpers (history, date, citation cleanup)
-│   │   ├── greeting.py         # small talk (delegates to direct_answer.converse)
-│   │   ├── direct_answer.py    # knowledge gate + model-knowledge answers + small talk
-│   │   ├── rag.py              # grounded answer generation
-│   │   ├── web_search.py       # search providers + web answer generation
-│   │   └── memory.py           # fact extraction/merge rules + exchange summaries
-│   ├── memory/
-│   │   ├── embeddings.py       # Voyage client
-│   │   └── store.py            # conversation memory in Qdrant
-│   ├── evaluation/
-│   │   ├── evaluator.py        # LLM passage grading (fallback) + answer evaluation
-│   │   ├── citations.py        # answer check in code: cited, citations real, content matches
-│   │   └── reviewer.py         # small model proposes, large model reviews
-│   ├── graph/
-│   │   ├── state.py            # AgentState
-│   │   ├── nodes.py            # every graph node + source order + notices
-│   │   └── workflow.py         # edges, routing functions, run/stream helpers
-│   ├── scripts/migrate_hybrid.py
-│   ├── tests/                  # unit tests (no API calls) + reasoning cases
-│   ├── data/ documents/ vector_db/   # runtime
-├── frontend/
-│   ├── index.html, preview.html, vite.config.js, tailwind.config.js, postcss.config.js, package.json
-│   ├── public/mark.svg
-│   └── src/
-│       ├── main.jsx, App.jsx, index.css
-│       ├── services/api.jsx            # HTTP + SSE client, token storage
-│       ├── state/chatStore.js          # conversations + in-flight answers, outside the pages
-│       ├── lib/route.js, format.js, theme.js
-│       ├── pages/Login.jsx, Chat.jsx, Documents.jsx, Overview.jsx
-│       ├── components/Sidebar.jsx, Message.jsx, InputBox.jsx, Mark.jsx
-│       └── dev/fixtures.js, preview.jsx  # design preview only
-└── benchmark/                  # retrieval, selection, e2e, perf, router, gate and memory benchmarks
+├── app.py, requirements.txt, README.md, test_rag_pipeline.py, claude_wiki.docx
+├── docs/                 documentation (this file and two first-version walkthroughs)
+├── backend/              FastAPI app, LangGraph agent, retrieval, memory, tests
+│   ├── api/              HTTP layer: auth, chat, documents, health
+│   ├── config/           settings, model clients, token accounting
+│   ├── models/           SQLite data access and API schemas
+│   ├── graph/            the agent: state, nodes, edges
+│   ├── tools/            what the agent's nodes call to write answers and save memories
+│   ├── rag/              ingestion, vector store, hybrid search, reranking
+│   ├── memory/           conversation memory (Voyage + Qdrant)
+│   ├── evaluation/       answer checks, LLM grading, decision reviews
+│   ├── scripts/          one-off maintenance scripts
+│   ├── tests/            unit tests (no API calls) and reasoning cases
+│   └── data/ documents/ vector_db/    created at runtime (not committed)
+├── frontend/             React + Vite + Tailwind single-page app
+├── benchmark/            benchmark scripts, question sets, corpus and saved results
+└── scripts/experiments/  one-off model experiments (call the live APIs)
 ```
+
+Most folders (including a few frontend ones) contain an empty `__init__.py`; it only lets Python import the folder
+as a package. The exceptions are `backend/tools/__init__.py` (shared helpers, below) and
+`scripts/experiments/__init__.py` (a docstring on how to run the experiments).
+
+### 6.2 What each folder holds and what each file does
+
+#### Project root
+
+| File | What it does |
+|---|---|
+| `app.py` | Re-exports `backend/app.py`, so `uvicorn app:app --reload` works from the project root. |
+| `requirements.txt` | Python dependencies for the backend, benchmarks and tests. |
+| `README.md` | Quick start, workflow summary, headline measurements, API summary. |
+| `test_rag_pipeline.py` | End-to-end smoke test against a running backend: registers a throwaway user, asks questions before and after uploading a PDF, and checks the source order, notices and review loop. |
+| `claude_wiki.docx` | A Word document in the benchmark corpus (exercises DOCX ingestion). |
+| `.gitignore` | Keeps secrets (`.env`), runtime data, third-party PDFs, `node_modules` and build output out of git. |
+| `.env` | API keys and overrides (not committed; see §4 and §5). |
+
+#### `docs/`
+
+| File | What it does |
+|---|---|
+| `DOCUMENTATION.md` | This file: the current technical documentation. |
+| `CODE_REFERENCE.md` | Function-by-function walkthrough of the **first version** (commit `9f5c527`); kept for history, line numbers no longer match. |
+| `GRAPH_EXPLAINED.md` | Plain-language, line-by-line explanation of `backend/graph/` in the **first version**; same caveat. |
+
+#### `backend/`
+
+| File | What it does |
+|---|---|
+| `app.py` | The FastAPI application: checks required keys at startup, creates the database and Qdrant collections, warms up the local reranker if it's configured, sets CORS and mounts the routers. |
+
+#### `backend/api/` — the HTTP layer
+
+| File | What it does |
+|---|---|
+| `security.py` | Password hashing (SHA-256 pre-hash + bcrypt) and HS256 JWT creation/verification with the standard library; generates the JWT secret if none is set. |
+| `dependencies.py` | `get_current_user`: reads the bearer token on each request and returns the user, or a 401. |
+| `routes/auth.py` | `POST /auth/register`, `POST /auth/login`, `GET /auth/me`. |
+| `routes/chat.py` | `POST /chat` and `POST /chat/stream` (SSE): loads history, facts, past-conversation summaries and document names, runs the agent in its own thread, saves the answer, and queues memory work and token logging in the background. Also lists and deletes conversations and serves `/stats`. |
+| `routes/documents.py` | Lists, uploads (size check, filename cleanup, dedup by hash, ingestion) and deletes documents. |
+| `routes/health.py` | `GET /health`: reports the configured models and web-search providers. |
+
+#### `backend/config/` — settings and model clients
+
+| File | What it does |
+|---|---|
+| `settings.py` | Every setting (keys, models, chunking, retrieval, reranker thresholds, budgets, paths), loaded from `.env`; full list in §5. |
+| `llm.py` | One client per model role (120B writer and judge, 20B router, Qwen memory, 20B backup writer, Nemotron for experiments), the rate-limit fallback to the backup writer, and `structured()` for schema-validated output, including recovery of misnamed tool calls. |
+| `usage.py` | `UsageTracker` counts tokens per model and per step during a request; `record()` writes the request's line to `backend/data/token_usage.jsonl`. |
+
+#### `backend/models/` — data storage and API shapes
+
+| File | What it does |
+|---|---|
+| `database.py` | SQLite schema, migrations and every query: users, facts, documents, conversations, messages and stats, all filtered by user. |
+| `schemas.py` | Pydantic models for requests and responses (`Credentials`, `DocumentOut`, `ChatRequest`, `ChatResponse`, …). |
+
+#### `backend/graph/` — the agent
+
+| File | What it does |
+|---|---|
+| `state.py` | `AgentState`: every field the nodes read and write (§7.6). |
+| `nodes.py` | Every graph node (router, greeting, direct, rewrite, retrieve, grade, generate, web search, evaluate, fallback, finalize), the router and rewrite schemas, the source order per preference, and the fixed notices. |
+| `workflow.py` | Builds the LangGraph graph: the edges and routing functions between nodes, retry budgets, and `run_agent` / `stream_agent`, which run it and turn its progress into stream events. |
+
+#### `backend/tools/` — what the nodes call
+
+| File | What it does |
+|---|---|
+| `__init__.py` | Shared helpers: shortening chat history for prompts, today's date, cleaning stray citation marks, and the shared formatting rules. |
+| `direct_answer.py` | The knowledge gate (can the model answer this from its own knowledge?), the two-part direct-answer prompt, and `converse` for small talk. |
+| `greeting.py` | Small-talk entry point; hands off to `direct_answer.converse` so every reply has the same voice. |
+| `rag.py` | Formats the selected passages as numbered evidence, writes the cited document answer, and turns passages into source cards. |
+| `web_search.py` | Web search through Tavily → DuckDuckGo → Wikipedia (recency handling, one-hour cache), the web-answer prompt, and source cards. |
+| `memory.py` | Saves facts about the user (cheap pre-check, Qwen extraction, merge rules in code) and writes the short summary of each exchange. |
+
+#### `backend/rag/` — documents in, passages out
+
+| File | What it does |
+|---|---|
+| `ingestion.py` | Loads PDF/DOCX/TXT/MD files, cleans and chunks the text, embeds it (paced for the free tier) and stores it in Qdrant (§9). |
+| `vectorstore.py` | Qdrant client (embedded or server), Gemini embeddings, the collection with dense + BM25 vectors, per-user filters, search, delete and count. |
+| `sparse.py` | Tokenizer and BM25 sparse vectors for keyword search (the citation check reuses the tokenizer). |
+| `embedding_cache.py` | SQLite cache of question embeddings, to save Gemini's daily quota. |
+| `retrieval.py` | Multi-query hybrid search (dense + BM25) fused with Reciprocal Rank Fusion, scoped to the user (§10). |
+| `rerank.py` | Scores candidates with Voyage `rerank-2.5` or the local cross-encoder, maps the best score to a confidence zone, and picks diverse passages with MMR. |
+
+#### `backend/memory/` — conversation memory
+
+| File | What it does |
+|---|---|
+| `embeddings.py` | Voyage client and embedding helpers for memory texts and queries. |
+| `store.py` | The `user_memories` Qdrant collection: save an exchange summary, find the closest ones for a new message, delete a conversation's memories. |
+
+#### `backend/evaluation/` — checking answers and decisions
+
+| File | What it does |
+|---|---|
+| `citations.py` | Model-free answer check: every claim cited, every `[n]` real, cited passages contain the claim's key words and numbers (§21.9). |
+| `evaluator.py` | LLM passage grading (used only when no reranker can score) and the 120B answer evaluation (sufficient, grounded, score, missing). |
+| `reviewer.py` | The review loop: the 20B proposes a decision; when it isn't confident, the 120B approves it or sends feedback for another try. |
+
+#### `backend/scripts/`
+
+| File | What it does |
+|---|---|
+| `migrate_hybrid.py` | One-off migration that copied the old dense-only collection into the hybrid (dense + BM25) collection without re-embedding. |
+
+#### `backend/tests/` — unit tests and reasoning cases
+
+| File | What it does |
+|---|---|
+| `test_routing.py` | Source order, retry budgets, partial RAG answers, unchecked answers kept, web query rules, knowledge-gate rules, memory pre-check, tool-call recovery, prompt trims. |
+| `test_memory.py` | Key normalisation, merge rules (replace / collect / forget / corrections), storage, the one-time migration (temporary database). |
+| `test_citations.py` | The code citation check. |
+| `test_rerank.py` | Reranker choice, per-provider thresholds and fallbacks. |
+| `test_stream.py` | The SSE stream ends with `final`, and the answer is saved even if the client disconnects. |
+| `test_reasoning_cases.py` | Not a unit test: a list of direct-answer reasoning cases (opinions, follow-ups, challenges) with the expected behaviour. |
+| `run_reasoning_baseline.py` | Runs those cases through `direct_answer.answer` (calls the API) and saves the answers. |
+| `reasoning_baseline_results*.json` | Saved answers from earlier runs, for comparing prompt versions. |
+
+#### Runtime folders (created automatically, not committed)
+
+| Folder | Contents |
+|---|---|
+| `backend/data/` | `app.db` (SQLite), `embedding_cache.db`, `token_usage.jsonl`, `.jwt_secret`. |
+| `backend/documents/<user_id>/` | Uploaded original files. Only the folder's empty `__init__.py` is committed, so the folder exists. |
+| `backend/vector_db/qdrant_data/` | Embedded Qdrant storage (same note). |
+
+#### `frontend/` — the web app
+
+| File | What it does |
+|---|---|
+| `index.html` | App entry page; applies the saved theme before the first paint and loads `src/main.jsx`. |
+| `preview.html` | Entry page for the design preview (dev server only). |
+| `package.json`, `package-lock.json` | Dependencies (React, react-markdown, lucide-react, Vite, Tailwind) and the `dev` / `build` / `preview` scripts. |
+| `vite.config.js` | Vite setup and the dev proxy from `/api` to `http://127.0.0.1:8000`. |
+| `tailwind.config.js`, `postcss.config.js` | Tailwind theme (colours from CSS variables, type scale, fonts) and the PostCSS pipeline. |
+| `public/mark.svg` | Favicon / logo. |
+
+#### `frontend/src/`
+
+| File | What it does |
+|---|---|
+| `main.jsx` | Mounts `App` into the page. |
+| `App.jsx` | Top-level shell: session restore, health polling, routing between pages, sidebar layout (top bar on phones). |
+| `index.css` | Colour tokens for light and dark themes, component classes and Markdown styles. |
+| `services/api.jsx` | HTTP client: token storage, authenticated requests, error handling (401 → login), and the SSE stream reader. |
+| `state/chatStore.js` | Conversations and in-flight answers kept outside the pages, so an answer keeps streaming when you switch pages or chats. |
+| `lib/route.js` | Hash routes (`#/chat`, `#/chat/<id>`, `#/documents`, `#/overview`). |
+| `lib/format.js` | Formatting helpers: counts, sizes, times, percentages, recency groups, source labels. |
+| `lib/theme.js` | `useTheme()`: System / Light / Dark, saved in `localStorage`. |
+| `pages/Login.jsx` | Sign in / sign up, with an offline notice. |
+| `pages/Chat.jsx` | New-chat screen with suggestions, or the conversation and composer. |
+| `pages/Documents.jsx` | Upload (drop zone, type/size checks, progress), document list and delete. |
+| `pages/Overview.jsx` | Usage numbers, where answers came from, document library. |
+| `components/Sidebar.jsx` | New chat, chats by recency, navigation, theme switch, log out. |
+| `components/Message.jsx` | One message: notices, Markdown with citation marks, provenance line, **Sources** and **Steps**, live progress while answering. |
+| `components/InputBox.jsx` | The message box (Enter sends, Shift/Ctrl+Enter adds a line; drafts kept per chat). |
+| `components/Mark.jsx` | The logo as a React component. |
+| `dev/preview.jsx` | Design preview: runs the real app with the API replaced by sample data. |
+| `dev/fixtures.js` | Sample documents, chats and stats for the preview. |
+
+#### `benchmark/` — measuring the system
+
+Scripts (each has a docstring with usage; the retrieval ones need the backend stopped, see §17):
+
+| File | What it does |
+|---|---|
+| `common.py` | Shared helpers: the benchmark user, indexing the corpus through the real ingestion, relevance matching. |
+| `build_wiki_corpus.py` | Downloads the Wikipedia articles in `corpus/wikipedia/` through Wikipedia's API. |
+| `run_retrieval.py` | Retrieval stages (dense, hybrid, reranked): hit@k, MRR, out-of-scope detection. No Groq calls. |
+| `run_selection.py` | `--collect` saves 20 reranked candidates per question; `--compare` tests passage-selection methods offline. |
+| `calibrate_reranker.py` | Rescores the saved candidates with Voyage vs the local reranker and sets the zone thresholds. |
+| `run_e2e.py` | Full answers through the agent: source used, gold phrase found, evaluator verdict, latency, tokens. |
+| `run_perf.py` | Startup time, memory, reranking / MMR / search latency and concurrency. No API quota. |
+| `run_router.py` | Runs the router on 80 differently worded messages. |
+| `run_direct_gate.py` | Router + knowledge gate on questions that should or shouldn't be answered from model knowledge. |
+| `run_direct_prompt.py` | Checks that the split direct-answer prompt keeps its behaviour, and measures the token saving. |
+| `run_memory.py` | Memory conversations on a temporary database: facts saved, updated, forgotten, no false saves. |
+| `run_checker.py` | Code citation check vs the 120B answer check, plus deliberately broken answers. |
+| `run_web_prompt.py` | Old vs new web-answer prompt on the same saved search results. |
+| `run_web_checker.py` | Code citation check vs the 120B answer check on web answers. |
+
+Data:
+
+| File / folder | What it holds |
+|---|---|
+| `questions.json` | The 74 retrieval questions (67 answerable, 7 out of scope) with their relevant passages and answer shapes. |
+| `router_cases.json` | The 80 router messages, the expected source for each, and the uploaded document names they assume. |
+| `memory_cases.json` | The 18 memory conversations and the facts expected afterwards. |
+| `corpus/wikipedia/*.md` | 18 Wikipedia articles on information retrieval and NLP (CC BY-SA 4.0, source URL in each file). The corpus PDFs are not committed (see the README). |
+| `results/` | Saved output of every benchmark run, named after its script: `retrieval_stage*`, `selection_*` (including the saved candidate pools `selection_pool.json` / `.npz`), `rerank_calibration`, `e2e_stage*`, `perf`, `router_eval*`, `direct_gate_*`, `gate_*`, `direct_prompt_*`, `memory_eval*`, `checker_eval*`, `web_prompt_*`. Files ending in `_before` or `_old` keep the run or prompt from before a change. |
+
+#### `scripts/experiments/` — one-off model experiments
+
+All of these call the live APIs; run them from the project root, e.g. `python -m scripts.experiments.test_gate`.
+
+| File | What it does |
+|---|---|
+| `test_gate.py` | Runs the knowledge gate on five sample questions (easy, borderline, an invented paper) and prints its verdicts. |
+| `promptcaching.py` | Sends the same long routing prompt to Groq several times and prints how many tokens were cached. |
+| `token_usage.py` | Prints Groq's token counts for a long routing prompt and its review follow-ups. |
+| `token_log.py` | Streams one question through the agent and totals the tokens of every model call. |
+| `nemotronsmoketest.py` | One-question smoke test of the Nemotron model through OpenRouter. |
+| `test_model.py` | Asks Nemotron a moral-dilemma question to compare its reasoning style. |
 
 ---
 
@@ -326,7 +495,7 @@ The agent is a LangGraph `StateGraph` defined in `backend/graph/workflow.py`. No
 START → router ─┬─ small talk ──────────────────────────────────────────────► greeting ► END
                 ├─ model knowledge / auto ─► direct ─(gate passes)─► finalize ► END
                 │                               └─(gate refuses)─► fallback
-                ├─ documents ─► [rewrite if vague] ─► retrieve ─► grade (cross-encoder zone)
+                ├─ documents ─► [rewrite if vague] ─► retrieve ─► grade (reranker zone)
                 │        high ─► generate_rag ─► evaluate ─► finalize ► END
                 │        mid  ─► rewrite ─► retrieve (once more)
                 │        low  ─► fallback
@@ -367,7 +536,7 @@ the best candidate seen so far (`finalize`, with a caveat) or `no_results`.
 | `generate_rag` | 120B | Grounded answer with `[n]` citations. The `NO_ANSWER_IN_DOCUMENTS` code word means "nothing" only when it is (almost) the whole reply; a partial answer is kept. |
 | `web_search` | — | Up to 2 queries, deduplicated by URL. |
 | `generate_web` | 120B | Answer from web results with citations. |
-| `evaluate` | code, then 120B | Document answers with a high evidence zone are checked in code first (`evaluation/citations.py`); if every claim is cited and found in its passage, the evaluation is `checked_by: "code"` and the model is not called. Otherwise the 120B returns `sufficient`, `grounded`, `score`, `missing`, checked against only the passages the answer cites (all of them if it cites none); keeps the best candidate. If no model can check the answer, it is kept with `verified: false` in its evaluation and a notice. |
+| `evaluate` | code, then 120B | Document answers with a high evidence zone, and web answers, are checked in code first (`evaluation/citations.py`); a web answer that says the results don't cover part of the question always goes to the 120B. If every claim is cited and found in its passage, the evaluation is `checked_by: "code"` and the model is not called. Otherwise the 120B returns `sufficient`, `grounded`, `score`, `missing`, checked against only the passages the answer cites (all of them if it cites none); keeps the best candidate. If no model can check the answer, it is kept with `verified: false` in its evaluation and a notice. |
 | `fallback` | — | Next source (see 7.2). |
 | `no_results` | — | Honest "couldn't find a reliable answer" message. |
 | `finalize` | — | Returns the answer, the gate-approved direct answer, or the best candidate with a caveat. |
@@ -552,7 +721,8 @@ graph inherits it; calls outside the graph name their step with `usage_step` met
 
 ### `app.py`
 Adds the project root to `sys.path`; `lifespan` checks the required keys, runs `init_db()` (and migrations), opens the
-Qdrant collection, and starts loading the cross-encoder in the background. CORS: `CORS_ORIGINS` plus any localhost port.
+Qdrant collection, and loads the local cross-encoder in the background only when it is configured
+(`RERANKER_PROVIDER=local` or `RERANKER_LOCAL_FALLBACK=true`). CORS: `CORS_ORIGINS` plus any localhost port.
 
 ### `config/llm.py`
 | Function | Description |
@@ -597,7 +767,7 @@ placeholders and filter by `user_id`.
 ### `evaluation/`
 | Function | Returns | Failure behaviour |
 |---|---|---|
-| `grade_documents(query, docs)` | Relevant subset + review steps | Used only without the cross-encoder |
+| `grade_documents(query, docs)` | Relevant subset + review steps | Used only when no reranker can score |
 | `evaluate_answer(query, answer, context=None)` | `{sufficient, grounded, score, missing}` | Raises; `evaluate_node` keeps the answer as unverified |
 | `citations.check(answer, evidence, question="")` | `CitationReport(ok, uncited, invalid, unsupported, support)` | No model, no network; never raises on normal text |
 | `reviewer.verified_decision(...)` | `(decision, review_steps)` | Reviews only uncertain decisions; reviewer failures accept the decision |
@@ -762,13 +932,15 @@ same origin as the API, or set `VITE_API_URL`.
 
 ## 17. Testing and benchmarks
 
-**Unit tests** (no API calls, ~1 s): `python -m unittest discover backend/tests -p "test_*.py"`
+**Unit tests** (70 tests, no API calls, ~1 s): `python -m unittest discover backend/tests -p "test_*.py"`
 
 | File | Covers |
 |---|---|
 | `test_routing.py` | Source orders, documents skipped without uploads, single fallback, auto → model knowledge, retry budgets, partial RAG answers, unchecked answers kept, web recency rules, knowledge-gate rules, memory pre-check |
 | `test_memory.py` | Key normalisation, merge rules (replace / collect / forget / corrections), storage, one-time migration |
 | `test_stream.py` | The stream ends with `final`; the answer is saved after the client disconnects |
+| `test_citations.py` | The code citation check: uncited claims, invalid `[n]`, unsupported claims, numbers, lists under a cited lead-in |
+| `test_rerank.py` | Reranker choice (Voyage / local), per-provider thresholds, fallback to the LLM check when no reranker can score |
 
 **Smoke test** (backend running): `python test_rag_pipeline.py [path/to/file.pdf]` — registers a throwaway user and
 asks one question per path.
@@ -785,7 +957,9 @@ asks one question per path.
 | `run_direct_gate.py [--gate-only] [--old] [--only ids]` | 22 questions to answer from model knowledge, 9 that must be refused | 31/31 with the trimmed gate prompt; `--old` runs the pre-trim prompt (§21.13) |
 | `run_memory.py [case-id]` | 18 memory conversations | 17/18; 19/20 facts; 0 stale; 0 false saves; 15,984 tokens (§21.12) |
 | `run_checker.py [--fresh] [--rescore]` | Code citation check vs the 120B answer check, plus deliberately broken answers | 43 answers: 0 real problems missed; 187/190 broken answers caught (§21.9) |
+| `run_direct_prompt.py` | Direct-answer prompt split: 19 questions through router → gate → answer | 12/12 open questions got the open-question rules; memories kept out of role-play (§21.10) |
 | `run_web_prompt.py [--only ids]` | Web-answer prompt, old vs new, on the same saved search results (10 questions) | "As of" dates 6/6, gaps named 2/2 either way; "sources you provided" 0 (§21.14) |
+| `run_web_checker.py [--fresh] [--rescore]` | Code citation check vs the 120B answer check on web answers, plus deliberately broken answers | 32 answers: 17 skip the 120B, 0 real problems missed (§21.15) |
 
 Experiments that call the APIs live in `scripts/experiments/` (run from the root, e.g.
 `python -m scripts.experiments.test_gate`).
@@ -989,7 +1163,7 @@ Document answers are now checked in code (`backend/evaluation/citations.py`, no 
    search, with plural and stem matching); numbers and names with digits in them (BM25, COVID-19) must appear exactly.
 
 If all three hold and the reranker rated the evidence "high", the answer goes out with no 120B check. Anything the
-code flags, weaker evidence, or web answers still go to the 120B. The code cannot judge completeness or catch a
+code flags or weaker evidence still go to the 120B. Web answers got the same check on 4 November (§21.15). The code cannot judge completeness or catch a
 claim that reuses the passage's words but reverses their meaning; with strong evidence that risk was not seen.
 
 `benchmark/run_checker.py`: the 120B writes and checks each answer exactly as the app does, then the code checks
@@ -1173,6 +1347,52 @@ fixed it: 0 of 6. The results heading is kept word for word from the old prompt.
 
 The code citation check (§21.9) flags 4–6 of these 10 web answers for both prompts, and the flags change from run to
 run; web text has quirks document passages don't (numbers written with narrow no-break spaces, dates the source
-words differently). Extending the code check to web answers needs its own validation first.
+words differently). These were fixed, and the code check validated for web answers, in §21.15.
 
 Results: `benchmark/results/web_prompt_eval.json`; the old prompt is kept in `web_prompt_old.json`.
+
+### 21.15 Web answers: code check first (4 November)
+
+Web answers now go through the same code citation check as document answers (§21.9). If every claim is cited and
+found in the result it cites, the 120B check is skipped. One extra rule: a web answer that says the results don't
+cover part of the question always goes to the 120B, because only the model judges whether a partial answer is
+enough (it can send the question on to another source).
+
+Web text needed four checker fixes, none of which changed a verdict on the 43 document answers:
+
+- numbers grouped with narrow or no-break spaces ("8 848.86") are read as one number;
+- month abbreviations match full names ("Oct." ~ "October");
+- version numbers ("Python 3.15.1", "v19.3") must appear in a cited result; a changed version used to pass,
+  which matters most on "latest version" questions;
+- sentences about the results ("the search results don't give…") are recognised as notes about the evidence,
+  not claims, and reported as gaps.
+
+`benchmark/run_web_checker.py` compares the code's verdict with the 120B's, which is given what the app gives it
+(the cited results, 1,200 characters each), and breaks each answer five ways. The rules were fixed on the 20
+answers from §21.14, then tested on 12 new questions searched and answered for this test (`--fresh`).
+
+| | Tuning set (20) | New questions (12) |
+|---|---|---|
+| 120B check skipped (code passes) | 11 (incl. the one only the 120B flagged) | 6 |
+| Real problems the code missed | 0 | 0 |
+| Flagged only by the 120B | 1 (the 120B was wrong: every claim it named is in the results it was shown) | 0 |
+| Flagged by both | 5 | 1 |
+| Flagged only by the code (sent on to the 120B) | 4 | 5 |
+| Broken answers caught: invented, uncited, invalid citation, changed number | 78/80 | 46/48 |
+| Broken answers caught: citations moved to another result | 12/18 | 9/12 |
+
+Moved citations are caught less often than on documents because several search results usually report the same
+fact, so the moved citation still supports the claim. The changed numbers that got through were changed to a
+number that also appears elsewhere in the cited result.
+
+What the code flags on its own is mostly real: numbers the cited result doesn't contain (a converted 13,170 miles,
+"99.9%" purity, a year from the model's own knowledge). On one new question (US dollar to rupee) the code caught
+two exchange rates that appear in none of the results, which the 120B had passed.
+
+| | Old | New |
+|---|---|---|
+| Web answers checked by the 120B (32 answers) | 32/32 | 15/32 |
+| 120B tokens per skipped check | ~1,400–2,000 | 0 |
+| Real problems missed | — | 0/32 |
+
+Results: `benchmark/results/web_checker_eval.json` and `web_checker_eval_fresh.json`.

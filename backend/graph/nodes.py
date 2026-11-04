@@ -1089,16 +1089,26 @@ def _cited(items: list, answer: str) -> list[tuple[int, dict]]:
 
 
 def _code_check(state: AgentState) -> dict | None:
-    """The answer check without a model, for document answers on strong evidence. Returns a passing evaluation
-    if the citations hold up, or None when the large model should check the answer (code flagged something,
-    the evidence was weak, or this isn't a document answer)."""
-    if not settings.citation_precheck or state.get("tool") != "rag" or state.get("match_zone") != "high":
+    """The answer check without a model, for document answers on strong evidence and for web answers. Returns a
+    passing evaluation if the citations hold up, or None when the large model should check the answer (code
+    flagged something, the evidence was weak, a web answer says the results miss part of the question, or this
+    isn't a document or web answer)."""
+    tool = state.get("tool")
+    if not settings.citation_precheck:
         return None
-    docs = state.get("documents", [])
-    report = citations.check(state.get("answer", ""), [d.get("content", "") for d in docs],
-                             question=state.get("standalone_query", ""))
+    if tool == "rag" and state.get("match_zone") == "high":
+        evidence = [d.get("content", "") for d in state.get("documents", [])]
+    elif tool == "web_search":
+        evidence = [r.get("content", "") for r in state.get("web_results", [])]
+    else:
+        return None
+    report = citations.check(state.get("answer", ""), evidence, question=state.get("standalone_query", ""))
     if not report.ok:
         log.info("Code citation check flagged the answer (%s); asking the model", "; ".join(report.problems))
+        return None
+    # Whether a partial answer is enough is the model's call (it may send the question to another source).
+    if tool == "web_search" and report.gaps:
+        log.info("Web answer says the results miss part of the question; asking the model")
         return None
     return {"sufficient": True, "grounded": True, "score": 4, "missing": "", "checked_by": "code",
             "citation_support": report.support}

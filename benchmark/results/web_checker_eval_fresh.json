@@ -1,0 +1,677 @@
+{
+ "answers": {
+  "fresh-01": {
+   "question": "What is the latest LTS version of Node.js?",
+   "answer": "The most recent Long‑Term Support (LTS) release of Node.js is **Node.js v24**, which is the current Active LTS version — support for earlier LTS releases such as v22 and v18 has already been dropped in recent tooling updates[3].",
+   "results": [
+    {
+     "title": "NodeSource Company Overview, Contact Details & Competitors | LeadIQ",
+     "url": "https://leadiq.com/c/nodesource/5a1d9d5223000054008d2ad5",
+     "content": "In partnership with the OpenJS Foundation, NodeSource is launching a Node.js LTS Upgrade & Modernization program to provide companies with a secure and streamlined path to migrate business-critical applications off legacy and End-of-Life (EOL) Node.js versions and onto the latest Long-Term Support (LTS) releases.\n\nMar 09, 2026 | nodesource.com\n\nMedia icon\n\n### NodeSource launched NodeSource Certified Modules v3 on Aug 5th '25. [...] In partnership with the OpenJS Foundation, NodeSource is launching a Node.js LTS Upgrade & Modernization program to provide companies with a secure and streamlined path to migrate business-critical applications off legacy and End-of-Life (EOL) Node.js versions and onto the latest Long-Term Support (LTS) releases.\n\nMar 09, 2026 | nodesource.com\n\nMedia icon\n\n### NodeSource launches Node.js LTS Upgrade & Modernization program. [...] Based in Seattle, Washington, the company operates as a small-to-mid-sized software firm in the software development industry. Its customers are developers and organizations seeking a secure, dependable Node.js runtime and production support. In March 2026, NodeSource announced a partnership with the OpenJS Foundation to launch an LTS Upgrade and Modernization program to help migrate to current Node.js LTS releases.\n```\n\nLinkedIn logo\nCrunchbase logo\n\n## Section iconCompany Overview",
+     "score": 0.7969415
+    },
+    {
+     "title": "LTS - 2026 Company Profile & Competitors - Tracxn",
+     "url": "https://tracxn.com/d/companies/lts/__80zf5DtbS9xObxUXRBIGgntD0ggiItSSxFyeVIQKdQI",
+     "content": "As of Sep 30, 2026, the latest employee count at LTS is 17.\n\nLTS's top competitors include Samsara, Motive and WorkJam. Among them, Motive secured the most recent funding round in September, 2026.\n\nExplore our recently published companies\n\n Bobsyeruncle - 1999 founded, Unfunded company\n Judyannejackson - Unfunded company\n Flyhii - Hyderabad based, 2022 founded, Unfunded company [...] LTS ranks 1350th amongst 6610 active competitors, of which 274 are funded. It stands 11th in terms of total funding among its competitors. The most recent competitors to raise funding was Motive, which secured $1.3B in Sep, 2026. [...] lockGet insights and benchmarks for competitors of 2M+ companies! Sign up today!\n\nLooking for more details on LTS's competitors? Click here to see the top ones\n\n## LTS's Investments and acquisitions\n\nLTS has made no investments or acquisitions yet.\n\n## Reports related to LTS\n\nHere is the latest report on LTS's sector:\n\nAn image depicting Logistics Tech - Sector Report\n\nFree\n\nLogistics Tech - Sector Report\n\nEdition: September, 2026 (90 Pages)\n\nView all reports related to LTS",
+     "score": 0.5925965
+    },
+    {
+     "title": "Edge Microgateway release notes | Apigee Edge | Apigee Docs",
+     "url": "https://docs.apigee.com/release/notes/edge-microgateway-release-notes-0",
+     "content": "| Issue ID | Type | Description |\n --- \n| 430058436 | Feature | Edge Microgateway (EMG) now supports Node.js version 24, aligning with the current Node.js Active LTS and Maintenance LTS releases. Node.js version 18 is no longer supported. | [...] | 188492065 | Change | End of Node.js 8 support Starting with release 3.2.2, Node.js 8 will no longer be supported. For more information, see Supported software and supported versions: Edge Microgateway. | [...] | Issue ID | Type | Description |\n --- \n| 383024578 | Feature | Support for Node.js version 22 has been added, and support for version 16 has been removed. If you are on Node.js v18, Edge Microgateway prints the following error message on startup:   ``` current nodejs version is 18.x.x Note, v18.x.x will be out of support soon, see  ```   If you are running an earlier version of Node.js, you will see this error message:   ``` You are using a version of NodeJS that is not supported ``` |",
+     "score": 0.27841663
+    },
+    {
+     "title": "Honold LTS Logistik GmbH - 2026 Company Profile - Tracxn",
+     "url": "https://tracxn.com/d/legal-entities/germany/honold-lts-logistik-gmbh/__NXG4fKE_ICVVthIUZNd2uMrYqLTIoFkdXuRSo9EjevI",
+     "content": "## FAQs about Honold LTS Logistik GmbH\n\nAccel Partners\nPartech\nIN-Q-TEL - US\nFujitsu\nTenity\nStanford [...] JavaScript is disabled in your browser. enable it to enjoy the full features of Tracxn.\n\nTracxn.com\nAndroid\nApple\nChrome Web Store\nFirefox Extension\nTracxn AI Suite\n\nAI-powered market intelligence across companies, investors, and sectors.\n\n# Honold LTS Logistik GmbH - Company Profile\n\n## About Honold LTS Logistik GmbH\n\n## Contact Details for Honold LTS Logistik GmbH\n\n## Financials of Honold LTS Logistik GmbH\n\n## Latest cap tables and shareholding of Honold LTS Logistik GmbH",
+     "score": 0.12230314
+    },
+    {
+     "title": "The Qt Company Introduces Latest Version of its Framework for the Creation of Cutting-Edge Software and Devices",
+     "url": "https://finance.yahoo.com/news/qt-company-introduces-latest-version-150000043.html",
+     "content": "Long-Term Support (LTS): Qt 5.9 is long-term supported, which will result in a highly stable development timeline that will deliver a high degree of continuous user support. As such, Qt will use a phased approach to content in patch level releases for Qt 5.9, and you can learn more about the patch schedule here. This is notable as not only will Qt 5.9 be equipped with a range of new features, but its LTS designation underscores the value of users upgrading from Qt's most recent LTS release, Qt [...] LTS release, Qt 5.6 -- as users' existing applications will be faster, more secure and more stable on Qt 5.9. Due to Qt 5.9 being the release in which all new Qt projects will be delivered, we highly recommend that all users of Qt 5.6 upgrade to Qt 5.9 at their earliest convenience. [...] HELSINKI, FINLAND and SANTA CLARA, CA--(Marketwired - May 31, 2017) - The Qt Company today introduced Qt 5.9, the latest version of its cross-platform software development framework that enables organizations to create the cutting-edge user experiences their products deserve and their customers require. Fully leveraging the power of the C++11 programming language, Qt 5.9 offers higher performance and stability than ever before, in addition to long-term support (LTS). Qt's technology is",
+     "score": 0.10199143
+    }
+   ],
+   "verdict": {
+    "sufficient": true,
+    "grounded": true,
+    "score": 5,
+    "missing": ""
+   },
+   "code": {
+    "pass": true,
+    "problems": [],
+    "gaps": [],
+    "unsupported": [],
+    "uncited": []
+   }
+  },
+  "fresh-02": {
+   "question": "Who is the current Secretary-General of the United Nations?",
+   "answer": "António Guterres is the Secretary‑General of the United Nations – he remains the incumbent in 2026, with his term scheduled to end at the close of 2026 before a successor takes office on 1 January 2027[2][4].",
+   "results": [
+    {
+     "title": "António Guterres (UN Secretary-General) on the United Nations Day 2026 | UN Web TV",
+     "url": "https://webtv.un.org/en/asset/k11/k11yx6gg8p",
+     "content": "## António Guterres (UN Secretary-General) on the United Nations Day 2026\n\nCategories\n\nNews & Features / Messages\n\nProduction Date\n\nVideo Length\n\n00:01:41\n\nAsset Language\n\nEnglish\n\nOriginal\n\nBroadcasting UN Entity\n\nDEPARTMENT OF GLOBAL COMMUNICATIONS - DGC\n\nSubject Topical\n\nUNITED NATIONS ORGANIZATION\n\nINTERNATIONAL DAYS\n\nSpeaker Name\n\nANTONIO GUTERRES\n\nSpeaker Role\n\nSecretary-General\n\nSpeaker Affiliation\n\nSECRETARIAT\n\nSummary [...] Summary\n\nVideo Message by António Guterres, United Nations Secretary-General, on the United Nations Day, 24 October 2026.\n\nView moreView less\n\nDescription [...] News & Features\n  + Audiovisual Library of International Law\n  + Features\n  + Goals Lounge\n  + Hungry Planet Series (IFAD) about the most pressing issues our planet faces today.\")\n  + Interviews\n  + Messages\n  + News Stories\n  + SDG Studio\n  + UN Dag Hammarskjöld Library\n\n  UN Officials\n  + Secretary-General\n  + Deputy Secretary-General\n\n  All categories\n Live Schedule\n Contact Us\n\n##### Messages\n\n# António Guterres (UN Secretary-General) on the…",
+     "score": 0.8571119
+    },
+    {
+     "title": "Secretary-General | United Nations",
+     "url": "https://www.un.org/sg/en",
+     "content": "### Guterres urges faster action and financing to stop biodiversity loss\n\n16 October 2026 — The United Nations Secretary-General appealed on Friday for governments, businesses and communities to accelerate efforts to protect biodiversity for future generations and all life on Earth.\n\n View more news stories\n\nAntónio Guterres and Amina Mohammed entering a building followed by the Stéphane Dujarric and their security details.\n\n### Latest Statements [...] ## [Note to Correspondents: on Ukraine and the Russian Federation](/sg/en/content/sg/notes-correspondents/2026-10-29/note-correspondents-ukraine-and-the-russian-federation)\n\nNew York\n\nNote to Correspondents: on Ukraine and the Russian Federation\n\nAll statements\n\n## Leadership\n\n### António Guterres\n\nUnited Nations Secretary-General\n\nOfficial portrait of Amina J. Mohammed\n\n### Amina J. Mohammed\n\nUnited Nations Deputy Secretary-General\n\nMeet the leadership team\n\n## Did you know?\n\n9 [...] ## News stories\n\nUN Secretary-General Antonio Guterres speaks at a podium during an official press conference in Egypt, with an Egyptian official standing at a second podium beside him. \n\n### In Egypt, Guterres warns against Iran-US escalation\n\n26 October 2026 — UN Secretary-General António Guterres called for dialogue and diplomacy to end the war between Iran and the United States in remarks on Monday to journalists in Cairo, Egypt.",
+     "score": 0.85624856
+    },
+    {
+     "title": "UN Secretary-General Addresses General Debate, 81st Session | UN Web TV",
+     "url": "https://webtv.un.org/en/asset/k12/k12yf6cvkj",
+     "content": "Summary\n\nAntónio Guterres, Secretary-General of the United Nations, addresses the General Debate of the 81st Session of the General Assembly of the United Nations (New York, 22-26 and 28 September 2026).\n\nView moreView less\n\n## Download\n\nTranscript\n\n6 items available\n\nCaption\n\n6 items available\n\nRelated Sites and Documents\n\nGeneral Debate website\n\nFollow the Live blog of the General Debate\n\n## Share\n\nFacebookTwitterCopy link",
+     "score": 0.83225065
+    },
+    {
+     "title": "Secretary-General of the United Nations",
+     "url": "https://en.wikipedia.org/wiki/Secretary-General_of_the_United_Nations",
+     "content": "| 9 | Image 49Portugal | Guterres, AntónioAntónio Guterres | 30 April 1949 | 67 years, 246 days 1 January 2017 | 9 years, 303 days | _(incumbent)_ | 2026-10-31 _(living)_ | _77 years, 184 days_ | [...] 27.   ↑\"An Historical Overview on the Selection of United Nations Secretaries-General\". UNA-USA. February 2006. Archived from the original on 13 November 2007. Retrieved 7 February 2026.\n28.   ↑\"Kurt Waldheim\". _United Nations Secretary General_. Retrieved 2 December 2023.\n29.   ↑Nossiter, Bernard D. (29 October 1981). \"China Continues to Bar Waldheim Renomination\". _The New York Times_. ISSN \"ISSN (identifier)\")0362-4331. Retrieved 14 February 2019. [...] |  Secretary-General: António Guterres  Deputy Secretary-General: Amina J. Mohammed  General Assembly President: Annalena Baerbock |",
+     "score": 0.81489426
+    },
+    {
+     "title": "The UN Faces its Future: The Next Secretary-General - The Soufan Center",
+     "url": "https://thesoufancenter.org/intelbrief-2026-october-13",
+     "content": "On January 1, 2027, the tenth Secretary-General of the United Nations (UN) will take the oath of office. António Guterres will be stepping down after a ten-year term, leaving the 81-year-old institution at a time when its role is being re-evaluated both from within and without. The process for selecting his successor is now in its final weeks. [...] On January 1, 2027, the tenth Secretary-General of the UN will take the oath of office as António Guterres steps down following a ten-year term, leaving the 81-year-old institution at a time when its role is being re-evaluated both from within and without.\n The gap between the UN’s founding mission and the current moment has not gone without notice, earning critiques of its “impotence” and “irrelevance.” [...] The Soufan Center\n\n## INTELBRIEF\n\nIntelbrief /  The UN Faces its Future: The Next Secretary-General\n\nOctober 13, 2026\n\nSHARE |    \n\n# The UN Faces its Future: The Next Secretary-General\n\n(AP Photo/Yuki Iwamura)\n\nBottom Line Up Front",
+     "score": 0.77650476
+    }
+   ],
+   "verdict": {
+    "sufficient": true,
+    "grounded": true,
+    "score": 5,
+    "missing": ""
+   },
+   "code": {
+    "pass": false,
+    "problems": [
+     "1 cited claim(s) not found in the cited passages"
+    ],
+    "gaps": [],
+    "unsupported": [
+     [
+      "António Guterres is the Secretary‑General of the United Nations – he remains the incumbent in 2026, with his term scheduled to end at the close of 2026 before a",
+      0.67,
+      [
+       "2027"
+      ]
+     ]
+    ],
+    "uncited": []
+   }
+  },
+  "fresh-03": {
+   "question": "What is the US dollar to Nepali rupee exchange rate today?",
+   "answer": "As of the most recent data in the search results, 1 U.S. dollar is worth about **151.71 Nepalese rupees** (mid‑market rate) — this figure comes from Instarem’s live converter, dated 24 October 2026 (3:13 pm UTC) [2].  \n\nOther providers show very similar rates (e.g., Xe 152.09 NPR on 17 Oct 2026 [1]; Revolut 151.93 NPR on 16 Oct 2026 [3]), confirming that the USD‑NPR rate is currently in the 151‑152 NPR per USD range.",
+   "results": [
+    {
+     "title": "1 USD to NPR - US Dollars to Nepalese Rupees Exchange Rate",
+     "url": "https://www.xe.com/currencyconverter/convert?Amount=1&From=USD&To=NPR",
+     "content": "Send with Xe\n\nNationwide\n\nExchange rate\n:   1.303400\n\nTransfer fee\n:   15.00 GBP\n\nRecipient gets\n:   26,048.44 USD-233.55 USD\n\nRates obtained as of 10/17/2026 [...] See your 1 USD in motion. Our live USD to NPR chart tracks 12 months of real-time, mid-market rates and shows exactly how much your money was worth at any point in time. Want to know when the rate moves in your favor? Set a rate alert and we’ll let you know when it hits your target.\n\nView full chart\n\n1 USD = 152.091 NPR\n\nOct 17, 2026, 19:41 UTC\n\n## Compare and save [...] 1 USD equals 152.09 NPR using the current mid-market exchange rate of ₨152.09. If you're looking to send 1 USD to NPR, check if Xe could save you money on your transfer. Get a live quote on our send money page and see the full price upfront.\n\nTo convert currencies, visit the top our Currency Converter, select your preferred currency pair, enter your amount, and view the live mid-market rate.",
+     "score": 0.942385
+    },
+    {
+     "title": "USD to NPR Exchange Rate – Convert US Dollar to Nepalese Rupee | Instarem USA",
+     "url": "https://www.instarem.com/en-us/currency-conversion/usd-to-npr",
+     "content": "All currencies\n\nNPR flag image\n\nunited states of america\n\nUSD\n\nswap-currency-icon\n\nPlease enter amount\n\nAll currencies\n\nNPR flag image\n\nNPR\n\n## 1.0000 USD = 151.7097 NPR\n\n## \n\nMid-market exchange rate at October 24, 2026, 3:13 pm (UTC)\n\nSend Money\n\nExchange rates here are informational, reflecting mid-market rates which fluctuate regularly. For an estimation of the rates offered by Instarem, please check our currency conversion calculator at the time of transfer.\n\n## How to convert USD to NPR [...] #### Convert US Dollar to Nepalese Rupee | unitedstatesofamerica flag USD | nepal flag NPR |  --- | | 1 USD | | | 3 USD | | | 5 USD | | | 8 USD | | | 10 USD | | | 13 USD | | | 14 USD | | | 20 USD | | | 25 USD | | | 29 USD | | | 30 USD | | | 36 USD | | | 37 USD | | | 38 USD | | | 50 USD | | | 85 USD | | | 95 USD | | | 100 USD | | | 190 USD | | | 200 USD | | | 500 USD | | | 1,000 USD | | | 5,000 USD | | | 8,000 USD | | | 10,000 USD | | | 25,000 USD | | | 60,000 USD | | [...] #### Convert Nepalese Rupee to US Dollar | nepal flag NPR | unitedstatesofamerica flag USD |  --- | | 1 NPR | | | 3 NPR | | | 5 NPR | | | 8 NPR | | | 10 NPR | | | 13 NPR | | | 14 NPR | | | 20 NPR | | | 25 NPR | | | 29 NPR | | | 30 NPR | | | 36 NPR | | | 37 NPR | | | 38 NPR | | | 50 NPR | | | 85 NPR | | | 95 NPR | | | 100 NPR | | | 190 NPR | | | 200 NPR | | | 500 NPR | | | 1,000 NPR | | | 5,000 NPR | | | 8,000 NPR | | | 10,000 NPR | | | 25,000 NPR | | | 60,000 NPR | |",
+     "score": 0.93425745
+    },
+    {
+     "title": "Convert USD to NPR | US Dollars to Nepalese Rupees Exchange Rates",
+     "url": "https://www.revolut.com/en-US/currency-converter/convert-usd-to-npr-exchange-rate",
+     "content": "Get startedExchange rates are dynamic. Always remember to check the applicable rate in-app before carrying out your exchange\n\nExchange and transfer fees, fair usage limits, and Terms and Conditions apply.\n\n   140+ countries and regions supported\n   80+ million global customers and counting\n   Trusted with $15+ billion in deposits\n\nHow much is USD worth in NPR?\n\n## USD to NPR live exchange rates\n\n## 1 USD = 151.9320 NPR\n\n₨11.24 X 7.99 %\n\nOct 20, 2025 Feb 17, 2026 Jun 18, 2026 Oct 16, 2026 [...] 1d 1w 1m 3m 6m 1y 5y All\n\n## US Dollars to Nepalese Rupees: exchange rates today\n\n| Image 4: USUSD | Image 5NPR |\n --- |\n| 1 USD | 150.16 NPR |\n| 10 USD | 1,501.67 NPR |\n| 20 USD | 3,003.34 NPR |\n| 50 USD | 7,508.36 NPR |\n| 100 USD | 15,016.73 NPR |\n| 250 USD | 37,541.84 NPR |\n| 300 USD | 45,050.21 NPR |\n| 500 USD | 75,083.69 NPR |\n| 1,000 USD | 150,167.38 NPR |\n| 2,000 USD | 300,334.77 NPR |\n| 5,000 USD | 750,836.92 NPR |\n| 10,000 USD | 1,502,417.56 NPR | [...] | Image 6NPR | Image 7: USUSD |\n --- |\n| 1 NPR | 0.00 USD |\n| 10 NPR | 0.06 USD |\n| 20 NPR | 0.13 USD |\n| 50 NPR | 0.32 USD |\n| 100 NPR | 0.65 USD |\n| 250 NPR | 1.62 USD |\n| 300 NPR | 1.95 USD |\n| 500 NPR | 3.25 USD |\n| 1,000 NPR | 6.50 USD |\n| 2,000 NPR | 13.01 USD |\n| 5,000 NPR | 32.52 USD |\n| 10,000 NPR | 65.05 USD |\n\nAlthough we update our data continuously, exchange rates are always changing due to market fluctuations. Check the current rate in-app before you convert or send.",
+     "score": 0.91490877
+    },
+    {
+     "title": "USD to NPR Exchange Rates - Convert US dollars to Nepalese rupees | Remitly",
+     "url": "https://www.remitly.com/us/en/currency-converter/usd-to-npr-rate",
+     "content": "Welcome offer\n\n# USD to NPR\n\n## Remitly offers dependable exchange rates for USD to NPR with no hidden fees. Join today and get a promotional rate of 151.94 NPR to 1 USD on your first money transfer.\n\nOr select an amount\n\nNPNPR\n\nNo fees on your first transfer\n\n-\n\n-\n\nTotal\n\n-\n\nGet this rate\n\neSewa\n\nGlobal IME Bank\n\nNepalRemit\n\nand more [...] | Delivery method | Below $500 | $500 or more |\n --- \n| Bank deposit | $1.99 | $0 |\n| Cash pickup | $3.99 | $3.99 |\n| Mobile wallet | $1.99 | $0 |\n\nNo fees on your first transfer with Remitly. New customers only. One per customer. Limited time offer. See Terms and Conditions⁠ (opens in new window) for details.\n\n## What affects the exchange rate for US dollars to Nepalese rupees?\n\nMany factors can determine exchange rates, including:\n\n### Central banks [...] ### The 2026 U.S. Federal Remittance Tax Guide: What We Know So Far, and Why There’s No Tax on Remitly Transfers\n\nRead more⁠ (opens in new window)\n\nU.S. dollars and Indian rupee banknotes arranged together.\n\n### Remitly vs. Wise for India: Compare Fees, Exchange Rates, and INR Delivered From the US \n\nRead more⁠ (opens in new window)\n\nHow Do I Change the Address for My Green Card?\n\n### How Do I Change the Address for My Green Card?\n\nRead more⁠ (opens in new window)",
+     "score": 0.78846955
+    },
+    {
+     "title": "US dollars to Nepalese rupees Exchange Rate. Convert USD/NPR - Wise",
+     "url": "https://wise.com/gb/currency-converter/usd-to-npr-rate",
+     "content": "## Resources\n\n   News and blog\n   Research privacy policy\n   Currency converter\n   International stock ticker\n   Swift/BIC codes\n   IBAN codes\n   Rate alerts\n   Compare exchange rates\n   Incorporate your company\n   Invoice generator\n   Business Calculators\n\n## Follow us\n\n   [](\n   [](\n   [](\n   [](\n\n  \n\n[](\n\nLegal\n\nPrivacy policy\n\nCookie Policy\n\nComplaints\n\nCountry site map\n\nModern slavery statement\n\nIntellectual property\n\n© Wise Payments Limited 2026 [...] Skip to main content\n\n, euros (EUR), pound sterling (GPB), Indian rupees (INR), Canadian dollars (CAD), Australian dollars (AUD), Swiss francs (CHF) and Mexican pesos (MXN) are among the most popular. Click here to browse all currencies.\n\n## Top currency pairings for US dollar\n\nImage 12Image 13 USD to KRWImage 14Image 15 USD to INRImage 16Image 17 USD to JPYImage 18Image 19 USD to CADImage 20Image 21 USD to EURImage 22Image 23 USD to GBPImage 24Image 25 USD to CNYImage 26Image 27 USD to MXN [...] Image 46Polish Zloty\n\nImage 47Romanian Leu\n\nImage 48Singapore Dollar\n\nImage 49Swedish Krona\n\nImage 50Swiss Franc\n\nImage 51Turkish Lira\n\nImage 52US Dollar\n\n[](\n\nShow more\n\n## Popular USD amounts\n\nJump to other amounts\n\n   900 USD\n   1,000 USD\n   1,100 USD\n   1,200 USD\n   1,300 USD\n   1,400 USD\n   1,500 USD\n   1,600 USD\n   1,700 USD\n   1,800 USD",
+     "score": 0.7418428
+    }
+   ],
+   "verdict": {
+    "sufficient": true,
+    "grounded": true,
+    "score": 5,
+    "missing": ""
+   },
+   "code": {
+    "pass": false,
+    "problems": [
+     "2 cited claim(s) not found in the cited passages"
+    ],
+    "gaps": [],
+    "unsupported": [
+     [
+      "As of the most recent data in the search results, 1 U.S. dollar is worth about **151.71 Nepalese rupees** (mid‑market rate) — this figure comes from Instarem’s ",
+      0.57,
+      [
+       "151.71"
+      ]
+     ],
+     [
+      "Other providers show very similar rates (e.g., Xe 152.09 NPR on 17 Oct 2026 [1]; Revolut 151.93 NPR on 16 Oct 2026 [3]), confirming that the USD‑NPR rate is cur",
+      0.65,
+      [
+       "151.93",
+       "151"
+      ]
+     ]
+    ],
+    "uncited": []
+   }
+  },
+  "fresh-04": {
+   "question": "Who won the 2026 FIFA World Cup?",
+   "answer": "Spain won the 2026 FIFA Men’s World Cup, defeating Argentina 1–0 after extra time in the final on 19 July 2026 [1][4][5].",
+   "results": [
+    {
+     "title": "Who won the last World Cup? | Britannica",
+     "url": "https://www.britannica.com/question/Who-won-the-last-World-Cup",
+     "content": "On July 19, 2026, Spain beat Argentina 1–0 after extra time to win the 2026 FIFA World Cup. Spanish forward Ferran Torres scored the winning goal in extra time after coming on as a substitute during the match. Argentina won the previous FIFA World Cup, which was held in Qatar in 2022. In a stunning high-scoring final match—in which Kylian Mbappé of France became the first player since 1966 to score three goals in a final—Argentina beat out France in the World Cup’s third shoot-out victory in",
+     "score": 0.9403148
+    },
+    {
+     "title": "Spain Wins 2026 FIFA World Cup Over Lionel Messi, Argentina | FOX Sports",
+     "url": "https://www.foxsports.com/stories/soccer/world-cup-spain-wins-argentina-lamine-yamal-lionel-messi",
+     "content": "POPULAR SEARCHES\n\nBROWSE BY\n\nDatabricks\nSpain Wins 2026 FIFA World Cup Over Lionel Messi, Argentina\nGoogle Icon\n\n# Spain Wins 2026 FIFA World Cup Over Lionel Messi, Argentina\n\nshare on facebook\nshare on x\nshare on reddit\nshare on link\n\nSpain has won the 2026 FIFA World Cup over Argentina, knocking off Lionel Messi and the reigning champions and capping off a memorable tournament where La Roja only gave up one goal during its eight-game run. [...] Ferran Torres scored the game's only goal in added extra time for the victory, rifling a shot into the top of the net past Argentina keeper Emiliano Martínez in the 106th minute of the match.\n\n### Spain Is Crowned 2026 FIFA World Cup™ Champions 🏆 Full Trophy Ceremony\n\nSpain Is Crowned 2026 FIFA World Cup™ Champions 🏆 Full Trophy Ceremony",
+     "score": 0.9125066
+    },
+    {
+     "title": "Who were the 2026 World Cup winners and losers? - Edinburgh Impact",
+     "url": "https://impact.ed.ac.uk/opinion/who-were-the-2026-world-cup-winners-and-losers",
+     "content": "1. Silverman, A (2026). Spain wins World Cup, capping wildly successful North American tournament. Sports Business Journal, 19 July 2026. ↩︎\n2. Hughes, M (2026). Spain win the World Cup after Ferran Torres dethrones 10-man Argentina in extra time. The Guardian, 19 July 2026. ↩︎\n3. Bouaichi, C (2026). Morocco Rewrites History at 2026 World Cup with Record-Breaking Campaign. Morocco World News, 10 July 2026. ↩︎ [...] Saying who the winners of the FIFA 2026 Men’s World Cup were is, at one level, an easy question to answer: Spain. The reigning European football champions defeated Argentina on 19 July at the MetLife stadium in New Jersey. [...] Opinion: the views expressed in this section are those of the contributors and do not necessarily represent those of the University.\n\n# Who were the 2026 World Cup winners and losers?\n\n6\n\nminutes reading time\n\nJuly 31, 2026\n\nOpinion\n\nSpain may have won the FIFA 2026 Men’s World Cup outright, but there were arguably several winners, and losers, on and off the pitch.",
+     "score": 0.91156644
+    },
+    {
+     "title": "FIFA World Cup winners list by year as Spain claims 2026 title – NBC New York",
+     "url": "https://www.nbcnewyork.com/world-cup/fifa-world-cup-winners-list-year-by-year/6526459",
+     "content": "The Spaniards won their second World Cup Sunday, taking down reigning champion Argentina 1-0 in extra time of the 2026 final at New York New Jersey Stadium in East Rutherford, New Jersey. [...] 2022: Argentina (4-2 win vs. France in penalty shootout to break 3-3 draw)\n 2026: Spain (1-0 win vs. Argentina in extra time) [...] Spain celebrated its second World Cup title after winning the final for the second time in two appearances. La Roja also extended its European-record unbeaten streak to 38 matches, while 19-year-old Lamine Yamal completed a historic Euro and World Cup double.\n\n \n\nSpain has doubled its number of FIFA men's World Cup titles.",
+     "score": 0.9037116
+    },
+    {
+     "title": "2026 FIFA World Cup final - Wikipedia",
+     "url": "https://en.wikipedia.org/wiki/2026_FIFA_World_Cup_final",
+     "content": "Spain became the first country to simultaneously hold both the men's and women's World Cup titles, having won the Women's World Cup in 2023. Spain also became the second European nation to win a World Cup held in the Americas, following Germany in 2014. Messi became the second player in history to play in three World Cup finals, after Cafu of Brazil. The 2026 final featured 11 saves by Argentina goalkeeper Emiliano Martínez, the most ever recorded in a World Cup final. [...] Argentina earned its World Cup berth by placing first in South American qualifiers \"2026 FIFA World Cup qualification (CONMEBOL)\"), and entered the tournament also as one of the favorites to win. Argentina was drawn into Group J, alongside Algeria, Austria, and Jordan. In its first match against Algeria at Arrowhead Stadium in Kansas City on June 16, Argentina won 3–0 through a hat trick by Lionel Messi. Their second match was against Austria at AT&T Stadium on June 22. Argentina took the lead [...] Spain and Argentina had played each other fourteen times since 1952, with each team winning six matches. They had played one World Cup match before, in the group stage of the 1966 tournament, with Argentina winning 2–1. Their most recent meeting before the 2026 World Cup was a friendly match in Madrid on March 27, 2018, which Spain won 6–1. Spain and Argentina, respective winners of the UEFA European Championship and Copa América in 2024, were scheduled to contest the 2026 Finalissima in Qatar",
+     "score": 0.8978479
+    }
+   ],
+   "verdict": {
+    "sufficient": true,
+    "grounded": true,
+    "score": 5,
+    "missing": ""
+   },
+   "code": {
+    "pass": true,
+    "problems": [],
+    "gaps": [],
+    "unsupported": [],
+    "uncited": []
+   }
+  },
+  "fresh-05": {
+   "question": "What is the population of Kathmandu?",
+   "answer": "The most recent estimates give Kathmandu a population of roughly 800 thousand people. World Population Review projects the city‑proper population at **799,560 in 2026** [1]. The latest official census (2021) recorded **845,767 residents** in the city [2].  \n\nSo, depending on whether you use the 2026 projection or the 2021 census, Kathmandu’s population is about **0.8 million** (projected) or **0.85 million** (census).",
+   "results": [
+    {
+     "title": "Kathmandu Population 2026",
+     "url": "https://worldpopulationreview.com/cities/nepal/kathmandu",
+     "content": "Kathmandu Flag\n\n# Kathmandu\n\nCountry:\n:   Nepal\n\nContinent:\n:   Asia\n\nKathmandu's 2026 population is now estimated at 799,560.In 2001, the population of Kathmandu was 671,846.Kathmandu experienced a decrease of -12,190 residents over the past year, marking an annual decline of -1.5%.These population values and projections come from Nepal city census series 2001-2021 via CityPopulation official attribution and World Population Review Internal Projections.\n\n799.6K\n\nTotal Population\n\n-12.2K -1.5% [...] The city proper has a population density of 20,288 people per square kilometer (52,550 residents per square mile). This great population density is made possible by the rather small surface area the city has available, which comes to a total of approximately 50 square kilometers (19 square miles).\n\n## Kathmandu Demographics [...] |  | 2026 Pop.↓ | Growth |\n --- \n| Kathmandu | 799,560 | -1.5% |\n| Pokhara | 571,940 | 2.18% |\n| Bharatpur | 420,206 | 2.62% |\n| Lalitpur | 294,725 | 0.04% |\n| Birgunj | 287,737 | 1.1% |\n| Biratnagar | 257,714 | 1.11% |\n| Itahari | 231,013 | 3.21% |\n| Dhangadhi | 228,990 | 2.87% |\n| Butwal | 227,936 | 3.24% |\n| Ghorahi | 225,465 | 2.37% |\n| Budhanilkantha | 223,282 | 4.69% |\n| Hetauda | 216,565 | 2.27% |\n| Janakpur | 212,659 | 1.8% |\n| Tulsipur | 201,629 | 2.32% |",
+     "score": 0.94401723
+    },
+    {
+     "title": "Kathmandu - Wikipedia",
+     "url": "https://en.wikipedia.org/wiki/Kathmandu",
+     "content": "Kathmandu is the capital and largest city of Nepal, situated in the central part of the country within the Kathmandu Valley. The city is in Kathmandu District. Kathmandu is the main governmental, financial, industrial, and cultural centre of Nepal. As per the 2021 Nepal census, it has a population of 845,767 residing in 105,649 households, with approximately 4 million people in the surrounding metropolitan area. The city stands at an elevation of 1,324 metres (4,344 ft) above sea level. From [...] | • Metro | 899 km2 (347 sq mi) |\n| Elevation | 1,400 m (4,600 ft) |\n| Population (2021) |\n| • Capital and metropolitan city | 856,767 |\n| • Rank | 1st |\n| • Density | 17,103/km2 (44,300/sq mi) |\n| • Metro | Approximately 4 million |\n| • Metro rank | 1st |\n| Time zone | UTC+05:45 (NPT) |\n| Postal Code | 44600 |\n| Area code | 01 |\n| International airport | Tribhuwan International Airport |\n| Website | www.kathmandu.gov.np | [...] | Ward No | Administrative Ward | Population (2021 Census) |\n --- \n| 1 | Naxal\") | 8,008 |\n| 2 | Lazimpat | 13,448 |\n| 3 | Maharajgunj\") | 34,866 |\n| 4 | Baluwatar | 47,362 |\n| 5 | Hadigaun\") | 18,320 |\n| 6 | Boudha\") | 60,344 |\n| 7 | Mitrapark\") | 51,581 |\n| 8 | Jayabageshwori\") | 10,738 |\n| 9 | Gaushala\") | 40,371 |\n| 10 | Baneshwor | 39,820 |\n| 11 | Bag Durbar\") | 17,765 |\n| 12 | Teku\") | 13,262 |\n| 13 | Kalimati\") | 40,456 |\n| 14 | Kalanki\") | 58,495 |\n| 15 | Dallu\") | 54,476 |",
+     "score": 0.9421299
+    },
+    {
+     "title": "About Kathmandu · Global Voices Summit 2024",
+     "url": "https://summit2024.globalvoices.org/about-kathmandu",
+     "content": "Kathmandu is the capital and most populous city in Nepal (population 1.4 million approx.), and one of the oldest continuously inhabited places in the world. The city is located in the Kathmandu Valley in central Nepal at an altitude of about 1,400 m (4,600 ft). Nepal's economic and cultural centre, Kathmandu is a vibrant city with a multi-ethnic population and a rich heritage of art and architecture dating back centuries. Numerous religious and cultural festivals are celebrated throughout the [...] #### Nepal at a glance\n\nTime zone: UTC + 5:45  \n Currency: Nepalese Rupee (NPR)  \n Population: 29,651,054 est.  \n Official languages: Nepali is the official language, but several other languages hold semi-official or indigenous status, including Newar, Tharu, Kurukh and Santali, as does English, which is widely spoken in Kathmandu.\n\n### Getting to Kathmandu\n\nVisitors arriving in Kathmandu by air will arrive at Tribhuvan International Airport (TIA), located about 7km from the city centre.",
+     "score": 0.90810597
+    },
+    {
+     "title": "Kathmandu | Rivers, History, Population, Elevation, & Map | Britannica",
+     "url": "https://www.britannica.com/place/Kathmandu",
+     "content": "Kathmandu's historic valley was recognized as a UNESCO World Heritage site in 1979. The city was severely damaged by an earthquake in April 2015. As of 2011, the population of Kathmandu was 1,003,285.\n\n  4 Britannica Sources\n\n  1. history of Nepal: Prehistory and early history of Nepal\n  2. Definition of Kathmandu\n  3. Nepal: Climate of Nepal\n  4. Kathmandu [...] Quick Facts\n\nFlag of Nepal consisting of two stacked triangular pennants in red with a blue border and featuring a white crescent moon above a white sun symbol.\n\nSee article: flag of Nepal\n\nAudio File:\nNational anthem of Nepal\n\nHead Of Government:\n:   Prime Minister: Balendra Shah\n\nCapital:\n:   Kathmandu\n\nPopulation:\n:   (2026 est.) 30,425,000\n\nCurrency Exchange Rate:\n:   1 USD equals 151.954 Nepalese rupee\n\nHead Of State:\n:   President: Ram Chandra Poudel [...] Form Of Government:\n:   federal multiparty republic with two legislative houses (National Assembly  and House of Representatives )1\n\nOfficial Language:\n:   Nepali\n\nOfficial Religion:\n:   none\n\nOfficial Name:\n:   Sanghiya Loktantrik Ganatantra Nepal (Federal Democratic Republic of Nepal)\n\nTotal Area (Sq Km):\n:   147,181\n\nTotal Area (Sq Mi):\n:   56,827\n\nMonetary Unit:\n:   Nepalese rupee (NRs)\n\nPopulation Rank:\n:   (2026) 52\n\nPopulation Projection 2030:\n:   32,719,000",
+     "score": 0.89324445
+    },
+    {
+     "title": "Kathmandu Valley - Wikipedia",
+     "url": "https://en.wikipedia.org/wiki/Kathmandu_Valley",
+     "content": "## Demographics\n\n[edit]\n\nKathmandu Valley has total population of 2,996,341.\n\n## Kathmandu (National Capital Area)\n\n[edit\")]\n\nProposed Territory in Kathmandu, Nepal\n\n| Kathmandu (NCT)  काठमाण्डौ (राष्ट्रिय राजधानी क्षेत्र) | [...] The Kathmandu Valley is the most developed and the largest urban agglomeration in Nepal with a population of about 5 million people. The urban agglomeration of Kathmandu Valley includes the cities of Kathmandu, Lalitpur, Bhaktapur, Changunarayan, Budhanilkantha, Tarakeshwar, Gokarneshwar, Suryabinayak, Tokha, Kirtipur, Madhyapur Thimi, and others. The majority of offices and headquarters are located in the valley, making it the economic hub of Nepal. It is popular with tourists for its unique [...] | Name | District | Population (2021) | Area (km2) | Density (/km2) |\n ---  --- \n| Kathmandu | Kathmandu District | 845,767 | 49.45 | 17,103 |\n| Lalitpur | Lalitpur District | 299,843 | 36.12 | 8,301 |\n| Budhanilkantha | Kathmandu District | 179,688 | 34.8 | 5,163 |\n| Tarakeshwar | Kathmandu District | 151,508 | 54.95 | 2,757 |\n| Gokarneshwar | Kathmandu District | 151,200 | 58.5 | 2,585 |\n| Suryabinayak Municipality | Bhaktapur District | 137,971 | 42.45 | 3,250 |",
+     "score": 0.80735475
+    }
+   ],
+   "verdict": {
+    "sufficient": true,
+    "grounded": true,
+    "score": 5,
+    "missing": ""
+   },
+   "code": {
+    "pass": false,
+    "problems": [
+     "1 cited claim(s) not found in the cited passages"
+    ],
+    "gaps": [],
+    "unsupported": [
+     [
+      "The most recent estimates give Kathmandu a population of roughly 800 thousand people.",
+      0.5,
+      [
+       "800"
+      ]
+     ]
+    ],
+    "uncited": []
+   }
+  },
+  "fresh-06": {
+   "question": "When is the next total solar eclipse visible from Europe?",
+   "answer": "The next total solar eclipse that will be visible from Europe occurs on **12 August 2026**. The path of totality passes over Greenland, Iceland, northern Spain and Portugal (and parts of Russia), so observers in those European locations will experience totality [2][3].",
+   "results": [
+    {
+     "title": "Total solar eclipse 2026: Coming to Europe (Official ESA broadcast)",
+     "url": "https://www.youtube.com/watch?v=DRDx2xDR8NA",
+     "content": "### Description\n1,481,797 views\nPosted: 2026-08-12\nWatch live with us as a total solar eclipse becomes visible across parts of Europe on 12 August 2026.\n \nThe path of totality will sweep across Greenland, Iceland, Spain and a small area of northeastern Portugal, while much of Europe will experience a partial eclipse.\n \nA total solar eclipse occurs when the Moon passes directly between Earth and the Sun, completely blocking the face of the Sun. [...] [48:49] That's right. you said at the beginning since 1912 on the Aberian Peninsula. And of course um we're going to be very lucky in Spain over the next two years\n[48:56] because actually we will also have a total solar eclipse next August 2027.\n[49:01] It'll be longer. It will last for about six minutes of totality. I'm coming back. Yeah, I think I think we'll all make a date on that one. It's just just [...] [49:08] traveling across the s southern tip of Spain, north of Africa. And then the following year we'll also have an annular eclipse. So, it won't be a full\n[49:15] total eclipse, but we'll see the bright rings of fire, but three all together. It's pretty special because they all come along at once and then we have to wait till I think\n[49:24] 203 before Spain gets its next total eclipse. So, we should make the most of the next three years.",
+     "score": 0.921929
+    },
+    {
+     "title": "Europe’s Eclipses Trilogy from 2026 to 2028: A three‑year sequence of spectacular solar events – European Physical Society",
+     "url": "https://eps.org/europes-eclipses-trilogy-from-2026-to-2028-a-three-year-sequence-of-spectacular-solar-events",
+     "content": "Each event offers unique viewing opportunities across the continent, from totality over Spain to an annular “ring of fire” visible from Portugal and beyond.\n\nTotal Solar Eclipse on 12th August 2026\n\nThis is the first of the trio. The totality will be visible from Greenland, Iceland, northern Spain, and parts of Russia. Much of Europe will see a partial eclipse. [...] Just one year later, Europe experiences another total eclipse, an extremely rare occurrence. The total solar eclipse will be visible from Spain, northern Africa, and the Middle East, with partial visibility across most of Europe.\n\nThis eclipse, named “the eclipse of the century”, will be one of the longest of the 21st century, with over 6 minutes of totality in parts of Egypt.\n\nAnnular Solar Eclipse on 26th January 2028 [...] The European Space Agency (ESA) highlights Spain as one of the prime viewing locations, with the path of totality crossing the country in the evening.\n\nYou can follow the total solar eclipse with the European Space Agency (ESA), in person or online here.\n\nTotal Solar Eclipse on 2nd August 2027",
+     "score": 0.9041187
+    },
+    {
+     "title": "ESA - European solar eclipses",
+     "url": "https://www.esa.int/Science_Exploration/Space_Science/European_solar_eclipses",
+     "content": "12 August 2026 – total solar eclipse in Greenland, Iceland, Spain & Portugal.   \n 2 August 2027 – total solar eclipse in Spain.   \n 26 January 2028 – annular solar eclipse in Portugal & Spain.   \nOther parts of Europe will experience partial solar eclipses.\n\nThe European Space Agency (ESA) is covering these three European eclipses. Follow this page to keep up to date with our activities!\n\nQuick links for the 2026 total solar eclipse: [...] Total solar eclipse 12 August 2026 – Map of totality in Spain\n Solar eclipse: coming to Europe \n\n  Solar eclipse: coming to Europe\n\nThank you for liking\n\nYou have already liked this page, you can only like it once!\n\n## Related Links\n\nVideo 01:10:42\n\nPlay\n \nScience & Exploration\n\n### Total solar eclipse 2026 (Official ESA broadcast)\n\n17/08/2026 2035 views 40 likes\n\nPlay\n\nStory\n\n \nScience & Exploration\n\n### A look back at the 2026 total solar eclipse\n\n14/08/2026 16595 views 59 likes\n\nRead [...] ### A total solar eclipse is coming to Europe\n\n11/08/2026 7244 views 77 likes\n\nPlay\n\nStory\n\nArtificial solar eclipse by Proba-3 mission \nEnabling & Support\n\n### How ESA mimics and models the 2026 total solar eclipse\n\n10/08/2026 26638 views 32 likes\n\nRead\n\nFocus on\n\nViewing the Sun through eclipse glasses \nScience & Exploration\n\n### How to safely observe a solar eclipse\n\nLook directly at the Sun only through certified solar filters, or use indirect methods.\n\nOpen\n\nVideo 00:01:44",
+     "score": 0.88420963
+    },
+    {
+     "title": "Solar and Lunar Eclipses in Europe – Next 10 Years",
+     "url": "https://www.timeanddate.com/eclipse/list.html?region=europe",
+     "content": "Find all solar and lunar eclipses in Europe. When is the next eclipse in your city?\n\nEclipses in 2027\n\nFeb 20–21 Lunar Eclipse (Penumbral)Europe, Asia, North/West Australia, Africa, Much of North America, South America, Pacific, Atlantic, Indian Ocean, Arctic, AntarcticaImage 3\n\nJul 18–19 Lunar Eclipse (Almost)Image 5\n\nAug 2 Solar Eclipse (Total)Europe, South/West Asia, Africa, East in North America, Atlantic, Indian OceanImage 7 [...] Eclipses in 2036\n\nFeb 11–12 Lunar Eclipse (Total)Europe, Asia, Australia, Africa, North America, South America, Pacific, Atlantic, Indian Ocean, Arctic, AntarcticaImage 61\n\nAug 6–7 Lunar Eclipse (Total)Europe, Much of Asia, Africa, North America, South America, Pacific, Atlantic, Indian Ocean, AntarcticaImage 63\n\nAug 21 Solar Eclipse (Partial)Europe, North in Asia, North/West Africa, Much of North America, Pacific, Atlantic, ArcticImage 65\n\nAdvertising  \n\n### Next eclipse begins in [...] Eclipses in 2034\n\nMar 20 Solar Eclipse (Total)Europe, Asia, Africa, North/East South America, Atlantic, Indian OceanImage 49\n\nApr 3–4 Lunar Eclipse (Penumbral)Europe, Asia, Australia, Africa, East in South America, Pacific, Atlantic, Indian Ocean, Arctic, AntarcticaImage 51\n\nSep 27–28 Lunar Eclipse (Partial)Europe, Much of Asia, Africa, North America, South America, Pacific, Atlantic, Indian Ocean, Arctic, AntarcticaImage 53\n\nEclipses in 2035",
+     "score": 0.85624856
+    },
+    {
+     "title": "Future Eclipses - NASA Science",
+     "url": "https://science.nasa.gov/eclipses/future-eclipses",
+     "content": "| Aug. 2, 2027 | Total | A total solar eclipse will be visible in southern Spain, North Africa (including Morocco, Algeria, Tunisia, Libya, and Egypt), Saudi Arabia, and Yemen. A partial eclipse will be visible in most of Europe, much of Africa, the Middle East, Southeast Asia, eastern Canada, northern Maine in the U.S., as well as the Atlantic and Indian oceans. | [...] Learn about different types of solar eclipses (total, partial, annular, and hybrid) here.\n\n## Lunar Eclipses\n\n| Date | Lunar Eclipse Type | Geographic Region of Visibility |\n --- \n| Feb. 20-21, 2027 | Penumbral | Americas, Europe, Africa, Asia, Australia, Antarctica |\n| Aug. 16-17, 2027 | Penumbral | Americas, Antarctica, West Africa, New Zealand, parts of Western Europe, Australia, Eastern Russia, Southeast Asia, Pacific and Atlantic Oceans |",
+     "score": 0.8386933
+    }
+   ],
+   "verdict": {
+    "sufficient": true,
+    "grounded": true,
+    "score": 5,
+    "missing": ""
+   },
+   "code": {
+    "pass": true,
+    "problems": [],
+    "gaps": [],
+    "unsupported": [],
+    "uncited": []
+   }
+  },
+  "fresh-07": {
+   "question": "What's new in the latest Android version?",
+   "answer": "The newest release is **Android 17**, which began rolling out to Pixel phones in mid‑June 2026 [1]. It adds a suite of productivity, entertainment and security upgrades:\n\n* **Multitasking “Bubbles”** that let you keep conversations and apps floating on‑screen while you work on something else [1].  \n* **Gemini Intelligence** (coming later in the summer to select high‑end devices) that uses generative AI to anticipate tasks and help you finish them [1].  \n* **Security hardening** – Live Threat Detection blocks more malicious apps, Advanced Protection mode is stronger, and the system now limits PIN‑guess attempts and adds longer lock‑out periods after failures [1].  \n* **Creator‑tool enhancements** for video, photo and audio editing (mentioned in the Android 17 overview) [1].\n\nSubsequent system‑update drops in 2026 have layered additional features on top of Android 17:\n\n* **June 2026 drop** – lock‑screen display of emergency contacts, automatic car‑crash detection that contacts emergency services, a “Safety Check” for teens and real‑time location sharing with trusted contacts [3].  \n* **September 2026 drop** – visual refinements and hidden quality‑of‑life tweaks (shown in the video walkthrough) [5].  \n* **October 2026 update** – a new Android WebView API that lets apps selectively enable cross‑origin isolated features such as SharedArrayBuffer via an allowlist, support for pairing Android XR glasses, and silent background pairing of true‑wireless earbuds [2]. Google Play services v26.41 also adds broader device‑connectivity APIs for developers [2].\n\nTogether, these changes make Android 17 the most AI‑assisted, security‑focused, and safety‑oriented Android version released to date.",
+   "results": [
+    {
+     "title": "Android 17 has new features for productivity, gaming and security",
+     "url": "https://blog.google/products-and-platforms/platforms/android/android-17-features",
+     "content": "Breadcrumb\n\n1. Home\n2. Products & Platforms\n3. Platforms\n4. Android\n\n# Check out what's new in Android 17\n\nJun 16, 2026\n\n|\n\n x.com\n Facebook\n LinkedIn\n Mail\n\nExplore the latest features in Android 17, including faster multitasking, improved creator tools and security enhancements.\n\nSeang Chau\n\nVP and GM of Android Platform\n\nShare \n\n x.com\n Facebook\n LinkedIn\n Mail\n\nAndroid 17 hero image\n\nListen to article \n\n minutes\n\nThis content is generated by Google AI. Generative AI is experimental [...] Android 17 is here, bringing a suite of features designed to enhance your productivity, entertainment, security and safety. It’s rolling out first to Pixel today, followed by other eligible Android devices throughout 2026. Select advanced devices will get Gemini Intelligence later this summer, helping you stay a step ahead and work proactively to get things done throughout your day.\n\nHere are some of the noteworthy features.\n\n## Multitask better with Bubbles\n\nBubbles in Android 17 rendering [...] This update boosts your security, too. Improvements to Live Threat Detection block more suspicious apps and scams, and enhanced Advanced Protection mode helps keep you safe from sophisticated threats. To stop a thief who's trying to guess their way into your phone, we also reduced the number of times someone can guess your PIN and added longer wait times between failed attempts.\n\n## Look for even more updates and improvements",
+     "score": 0.8795718
+    },
+    {
+     "title": "What’s new in Android's October 2026 Google System Updates [U]",
+     "url": "https://9to5google.com/2026/10/26/october-2026-google-system-updates",
+     "content": "Introduced a new Android WebView API that enables developers to selectively allow cross-origin isolated features, such as SharedArrayBuffer, for trusted origins using a configurable allowlist.\n Improvements to security and privacy and updates for bug fixes.\n New developer features for Google & 3rd party app developers to support functionality related to displaying web content in their apps.\n\nImportant: Some features may be experimental and available to certain users. [...] [Phone] You can now connect Android XR glasses to your phone.\n [Phone] You can now pair true wireless stereo earbuds silently in the background without changes to notifications, audio, or vibration.\n [Phone] Bug fixes for Device Connections related services.\n [Phone] New developer features for Google and third party app developers to support Device Connectivity related processes in their apps.\n\nSafety & Emergency [...] Improvements to security and privacy and updates for bug fixes.\n New developer features for Google & 3rd party app developers to support functionality related to displaying web content in their apps.\n\nImportant: Some features may be experimental and available to certain users.\n\n### Google Play services v26.41 (2026-10-19)\n\nDevice Connectivity",
+     "score": 0.86928266
+    },
+    {
+     "title": "June 2026 Android Feature Drop: All New Features Explained!",
+     "url": "https://www.youtube.com/watch?v=ScjC2wsIM9w",
+     "content": "This video covers:\n\nAll new features in the June 2026 Android Drop\nAndroid phone and wearable improvements\nAI-powered features and productivity tools\nSecurity, accessibility, and usability enhancements\nHidden features and quality-of-life updates\n\nIf you want to stay up to date with the latest Android features and Google ecosystem improvements, this complete breakdown covers everything you need to know about the June 2026 Android Drop. [...] 📱 June 2026 Android Drop\n✨ New Android Features\n🤖 Google AI Improvements\n⌚ Android & Wear OS Updates\n\nWallpapers by IDTR (Channel's exclusive wallpapers app on the Play Store):\n\nJune Android Drop: New personalization and safety features are here:\n\nRelated Videos Playlist:\n   • Android 17  \n\nFollow me on:\nFacebook:   / in-depth-tech-reviews-254187101927126  \nTwitter:   / idtechreviews  \nInstagram:   / indepthtechreviews [...] [4:32] information and emergency contacts to be displayed directly on the lock screen.\n[4:37] Additionally, kids will be able to use car crash detection which automatically contacts emergency services and notifies\n[4:44] emergency contacts if a serious accident is detected. Teenagers are also getting access to safety check and real-time\n[4:51] location sharing with emergency contacts. I think this is one of the most meaningful additions in this entire update because it focuses on realworld",
+     "score": 0.82117355
+    },
+    {
+     "title": "Android latest updates | Latest updates | Android Developers",
+     "url": "https://developer.android.com/latest-updates",
+     "content": "| Maven Group ID | Latest Update | Stable Release | Release Candidate | Beta Release | Alpha Release |\n ---  ---  --- |\n| compose.animation | October 07, 2026 | 1.12.1  1.13.0-beta01 \n| compose.compiler | August 7, 2024 | 1.5.15  - \n| compose.foundation | October 07, 2026 | 1.12.1  1.13.0-beta01 \n| compose.material | October 07, 2026 | 1.12.1  1.13.0-beta01 \n| compose.material3 | October 07, 2026 | 1.4.0  1.5.0-beta01 \n| compose.runtime | October 07, 2026 | 1.12.1  1.13.0-beta01 [...] | Maven Group ID | Latest Update | Stable Release | Release Candidate | Beta Release | Alpha Release |\n ---  ---  --- |\n| compose.animation | October 07, 2026 | 1.12.1  1.13.0-beta01 \n| compose.compiler | August 7, 2024 | 1.5.15  - \n| compose.foundation | October 07, 2026 | 1.12.1  1.13.0-beta01 \n| compose.material | October 07, 2026 | 1.12.1  1.13.0-beta01 \n| compose.material3 | October 07, 2026 | 1.4.0  1.5.0-beta01 \n| compose.runtime | October 07, 2026 | 1.12.1  1.13.0-beta01 [...] | compose.ui | October 07, 2026 | 1.12.1  1.13.0-beta01",
+     "score": 0.7827459
+    },
+    {
+     "title": "September 2026 Android Drop – ALL New Features in Action!",
+     "url": "https://www.youtube.com/watch?v=2bIwZntp38w",
+     "content": "🔥 In this video, I cover:\n📱 All new features in the September 2026 Android Drop\n👀 New and hidden changes you might have missed\n⚙️ How the new features work in action\n✨ New UI and visual changes\n🚀 New quality-of-life improvements\n🔍 Useful features and settings\n📲 Pixel and Android-specific changes\n💡 Features that can improve your everyday Android experience\n\nThis is your complete September 2026 Android Drop walkthrough, with every major feature demonstrated rather than just shown in screenshots. [...] Instead of simply listing what's new, this video gives you a hands-on look at the September 2026 Android Drop, demonstrating the new features, improvements, UI changes, and useful additions so you can see exactly what has changed. [...] # September 2026 Android Drop – ALL New Features in Action!\n## Channel: In Depth Tech Reviews (verified)\n203K subscribers\n912 likes\n\n### Description\n63,189 views\nPosted: 2026-09-11\nThe September 2026 Android Drop is here! In this video, I take a closer look at all the new Android features included in the latest update and, more importantly, show you how they actually work in real-world use.",
+     "score": 0.74807674
+    }
+   ],
+   "verdict": {
+    "sufficient": true,
+    "grounded": true,
+    "score": 5,
+    "missing": ""
+   },
+   "code": {
+    "pass": true,
+    "problems": [],
+    "gaps": [],
+    "unsupported": [],
+    "uncited": []
+   }
+  },
+  "fresh-08": {
+   "question": "What did the most recent IPCC report conclude?",
+   "answer": "The latest IPCC assessment – the Sixth Assessment Report (AR 6) synthesis completed in March 2023 – concluded that **human influence on the climate system is now unprecedented and is already causing widespread, rapid and intensifying changes across the whole planet**.  Observed changes are “unprecedented in thousands, if not hundreds of thousands of years,” and many of them (e.g., sea‑level rise) are irreversible on centuries‑to‑millennia timescales[5].  \n\nThe report warns that **the window to keep global warming to 1.5 °C is rapidly closing**; without immediate, rapid and large‑scale reductions in greenhouse‑gas emissions, limiting warming to close to 1.5 °C – and even 2 °C – will be beyond reach[5].  It also stresses that the world is “on a razor’s edge” with respect to breaching major tipping points, and that urgent, far‑reaching climate action is required to avoid permanent and, in some cases, irreversible damage[1].  \n\nFinally, the synthesis highlighted the need for **conserving roughly 30 %–50 % of Earth’s land, freshwater and ocean areas** (including near‑natural ecosystems) to maintain biodiversity and ecosystem‑service resilience[4].",
+   "results": [
+    {
+     "title": "IPCC Sixth Assessment Report (AR6) - Climate Action Network",
+     "url": "https://climatenetwork.org/ipcc_6ar",
+     "content": "Know more\n\nRead the CAN press release on expectations from the IPCC Synthesis Report\n\nRead CAN’s letter to Governmental IPCC Focal Points\n\nCivil Society representatives react to the IPCC Synthesis Report\n\n## Latest updates\n\n 21 October 2026\n\n  ### UNEP Emissions Gap Report: Governments must act urgently as world heads towards 1.5°C overshoot\n\n  Read more\n 16 October 2026\n\n  ### IPCC AR7 Session suspended, deeply disappointing says CAN\n\n  Read more\n 8 October 2026 [...] The physical processes within the Arctic region are key components of the global climate system. However, the entire region is subject to the most rapid and extreme climate change worldwide. \n\nThis briefing will summarise some of the observed and projected impacts on the physical, biological, and human dimensions as outlined by the most recent IPCC reports. It will also take a look at different possible responses and link to the latest research beyond the IPCC assessment. [...] The report states with certainty that unprecedented human influence is wrecking the climate system, causing permanent and, in some instances, irreversible damage. Without urgent and far-reaching climate action, the world is on a razor’s edge with regards to breaching major tipping points. The window of time to stop warming beyond 1.5°C is rapidly closing in.\n\nSome key findings from the report:",
+     "score": 0.7144891
+    },
+    {
+     "title": "Key Findings of IPCC’s 6th Assessment Report: Recent Developments and Outlook for the 7th Cycle",
+     "url": "https://www.youtube.com/watch?v=oeX7liLSDzg",
+     "content": "[1:02:16] mitigation adaptation and indeed disaster risk reduction at the local level I now hand the FL back to Kate to\n[1:02:26] wrap up with her take on the AR7 thank you thank you Joy and I just want\n[1:02:34] [Applause]\n[1:02:39] to just to conclude I want to emphasize something that I think you've probably heard from most of us on this panel that we're really looking forward to more [...] [9:24] and hopefully the new chemicals and uh waste panel again we made a start in the last cycle but we aim to do more while\n[9:32] operating within our own distinct mandate my final theme was inclusivity and this covers issues of\n[9:41] gender Regional balance and Country representation and just to say that gender balance in ipcc has improved over\n[9:49] the years but we can do better uh the in the last cycle about 30% of participants [...] [52:00] continuation and implementation of ndc's through 2030 before reaching um going towards lower warming levels beyond that\n[52:08] period I will note that this assessment was based on ndc's announced prior to cop 26 we are now at cop 28 so just to\n[52:16] keep that in mind that that is what was considered there and this has to do with the timing of the publication of the working group 3 report as well as the",
+     "score": 0.657297
+    },
+    {
+     "title": "Sixth Assessment Report — IPCC",
+     "url": "https://www.ipcc.ch/assessment-report/ar6",
+     "content": "###### October 2026\n\nExplore\n\n##### Vacancies\n\n#### Communication Officer in the IPCC WGI Technical Support Unit\n\nWorking Group I of the Intergovernmental Panel on Climate Change is filling the position of Communication Officer in the Technical …\n\n###### October 2026\n\nExplore\n\nView all\n\nMenu[](\n   Reports\n   Synthesis Report\n   Working Groups\n   Activities\n   News\n   Calendar\n\nTop [...] #### IPCC Invites Experts to Review Draft Methodology Report on Carbon Dioxide Removal Technologies, Carbon Capture, Utilization and Storage\n\nGENEVA, Oct 30– The Intergovernmental Panel on Climate Change (IPCC) has opened registration for experts to review the First Order Draft …\n\n###### October 2026\n\nExplore\n\n##### Media Advisory\n\n#### IPCC’s Sixty-Fifth Session\n\nGENEVA, Oct 29 – The Intergovernmental Panel on Climate Change (IPCC) will resume its Sixty-Fifth Session (IPCC-65) from 1 to … [...] 2027 IPCC Methodology Report on Inventories for Short-lived Climate Forcers\n   Special Report on Climate Change and Cities\n   2027 IPCC Methodology Report on Carbon Dioxide Removal Technologies, Carbon Capture, Utilization, and Storage for National Greenhouse Gas Inventories (Additional guidance)\n\nView all\n\n##### Working Group I\n\n   About\n   Reports\n   Resources\n   Activities\n   News\n   Co-Chairs\n   Vice Chairs\n   TSU Staff\n   Contact\n\n##### Working Group II",
+     "score": 0.49553296
+    },
+    {
+     "title": "IPCC Sixth Assessment Report - Wikipedia",
+     "url": "https://en.wikipedia.org/wiki/IPCC_Sixth_Assessment_Report",
+     "content": "| IPCC Assessment Reports   First (1990)  1992 supplementary report  Second (1995)  Third (2001)  Fourth (2007)  Fifth (2014)  Sixth (2022) |\n| IPCC Special Reports   Emissions Scenarios (2000)  Renewable energy sources (2012)  Extreme events and disasters (2012) \"Special Report on managing the risks of extreme events and disasters to advance climate change adaptation (SREX)\")  Global Warming of 1.5 °C (2018)  Climate Change & Land (2019)  Ocean & Cryosphere (2019) |\n|  UNFCCC  WMO  UNEP | [...] 2022, and the third in April 2022. The final synthesis report was finished in March 2023. It served as the scientific foundation for the first Global Stocktake at the 2023 United Nations Climate Change Conference (COP28) and remains the primary baseline for international climate policy and the 2025–2026 revision of Nationally Determined Contributions. [...] The report further highlighted the need for conservation in order to maintain biodiversity, and mitigate the effects of climate change. The report reads, \"Recent analyses, drawing on a range of lines of evidence, suggest that maintaining the resilience of biodiversity and ecosystem services at a global scale depends on effective and equitable conservation of approximately 30% to 50% of Earth's land, freshwater and ocean areas, including currently near-natural ecosystems.\" The report was",
+     "score": 0.47154015
+    },
+    {
+     "title": "Climate change widespread, rapid, and intensifying – IPCC — IPCC",
+     "url": "https://www.ipcc.ch/2021/08/09/ar6-wg1-20210809-pr",
+     "content": "Faster warming\n\nThe report provides new estimates of the chances of crossing the global warming level of 1.5°C in the next decades, and finds that unless there are immediate, rapid and large-scale reductions in greenhouse gas emissions, limiting warming to close to 1.5°C or even 2°C will be beyond reach. [...] The Working Group I report addresses the most updated physical understanding of the climate system and climate change, bringing together the latest advances in climate science, and combining multiple lines of evidence from paleoclimate, observations, process understanding, global and regional climate simulations. It shows how and why climate has changed to date, and the improved understanding of human influence on a wider range of climate characteristics, including extreme events. There will be [...] GENEVA, Aug 9 – Scientists are observing changes in the Earth’s climate in every region and across the whole climate system, according to the latest Intergovernmental Panel on Climate Change (IPCC) Report, released today. Many of the changes observed in the climate are unprecedented in thousands, if not hundreds of thousands of years, and some of the changes already set in motion—such as continued sea level rise—are irreversible over hundreds to thousands of years.",
+     "score": 0.28792346
+    }
+   ],
+   "verdict": {
+    "sufficient": true,
+    "grounded": true,
+    "score": 5,
+    "missing": ""
+   },
+   "code": {
+    "pass": false,
+    "problems": [
+     "1 cited claim(s) not found in the cited passages"
+    ],
+    "gaps": [],
+    "unsupported": [
+     [
+      "The latest IPCC assessment – the Sixth Assessment Report (AR 6) synthesis completed in March 2023 – concluded that **human influence on the climate system is no",
+      0.52,
+      [
+       "2023"
+      ]
+     ]
+    ],
+    "uncited": []
+   }
+  },
+  "fresh-09": {
+   "question": "How much does a Tesla Model 3 cost in the US?",
+   "answer": "The base‑price Tesla Model 3 in the United States varies by trim and model year, but the most recent figures (2026 model year) are:\n\n* **Standard Rear‑Wheel‑Drive (base) Model 3:** $38,630 (including the mandatory $1,390 delivery charge and $250 order fee)[2].  \n* **Premium Rear‑Wheel‑Drive Model 3:** $44,130 (same fees included)[2].  \n\nTesla’s own website lists the current “base” Model 3 at **$40,240** before any incentives, which can be reduced by the $7,500 federal tax credit to an effective price of **$32,740**[1].  \n\nSo, depending on the trim and whether the federal credit is applied, the Model 3 costs roughly **$38 k–$44 k** (pre‑credit) in the U.S. as of 2026.",
+   "results": [
+    {
+     "title": "How Much Is a Tesla Model 3? Cost History, Price Drops, Fluctuations - Business Insider",
+     "url": "https://www.businessinsider.com/how-much-is-a-tesla-model-3",
+     "content": "Tesla price ranges are constantly changing for the carmaker's electric vehicle fleet.\n\nTesla Model 3, the cheapest Tesla model, is currently listed for $40,240 on Tesla's website. It's also eligible for the new federal tax credit of $7,500, bringing down the effective price to $32,740.\n\nThe introduction of the credit comes after Tesla lowered the price of the entry-level Model 3 by $1,000 in April. [...] The Model 3 Long Range, which comes with two motors and all-wheel drive, costs $47,240 and has a range of 333 miles. The Model 3 Performance, with a dual-motor range of 315 miles, costs $53,240.\n\nTesla's dealer-free model and healthier-than-average profit margins have provided Elon Musk with more freedom than his competitors to set prices in real time. [...] \"The desire for people to own a Tesla is extremely high. The limiting factor is their ability to pay for a Tesla,\" Tesla CEO Elon Musk said at Tesla's investor day in March 2023.\n\nWhen Musk made the Model 3 announcement in March 2016, he teased a price of $35,000. The current price of the sedan — when factoring in the tax credit — is even lower than that. This lowest-cost Model 3 option has a range of 272 miles, the shortest of any Tesla vehicle.",
+     "score": 0.86981434
+    },
+    {
+     "title": "How Much Does A Tesla Cost? Model By Model Price Breakdown",
+     "url": "https://insideevs.com/features/534430/tesla-car-cost",
+     "content": "Photo by: Tesla\n\nThis is currently the cheapest new Tesla money can buy in the U.S., but it comes with a few drawbacks compared to the more expensive trim levels. The base model does without FM radio, lane centering, power-adjustable side-mirrors and heated rear seats. The maximum charging power is also lower than on the rest of the lineup.\n\n Range: 321 miles\n Drivetrain: RWD\n Charging Speed: 225 kW\n Acceleration: 0-60 in 5.8 seconds\n\n### 2026 Tesla Model 3 Premium Rear-Wheel Drive: $44,130 [...] This article was originally published in 2023 and is frequently updated with new information. All listed prices factor in the mandatory $1,390 delivery charge ($1,995 for the Cybertruck) and $250 order fee.\n\n### 2026 Tesla Model 3 Standard Rear-Wheel Drive: $38,630\n\n2026 Tesla Model 3 Standard \n\nPhoto by: Tesla [...] Range: 346 miles\n Drivetrain: AWD\n Charging Speed: 250 kW\n Acceleration: 0-60 in 4.2 seconds\n\n### 2026 Tesla Model 3 Performance: $56,630\n\nTesla Model 3 Performance \n\nPhoto by: Tesla\n\nThe fastest Model 3 kicks things up a notch with more power, a fancier suspension setup and some extra goodies in the cabin. With 510 hp on tap, the go-fast electric sedan can sprint from zero to 60 mph in 2.9 seconds, and on to a top speed of 163 mph.",
+     "score": 0.8266142
+    },
+    {
+     "title": "Tesla Model 3 Price Trends and Pricing Insights",
+     "url": "https://www.cargurus.com/research/price-trends/Tesla-Model-3-d2475",
+     "content": "|  | YearModel Year | Avg PriceAvg Price | 30 daysLast 30 days | 90 daysLast 90 days | YoYYear over Year |\n ---  ---  --- |\n|  | CarGurus Index | $28,468 | -1.26% | -2.31% | +1.38% |\n|  | Model 3 | $26,138 | +2.63% | -0.41% | +12.78% |\n|  | | | | | |\n|  | 2018 Model 3 | $19,878 | +0.9% | +1.3% | +1.43% |\n|  | 2019 Model 3 | $20,874 | +1.26% | +0.3% | +3.63% |\n|  | 2020 Model 3 | $22,466 | +0.48% | +0.76% | +2.49% |\n|  | 2021 Model 3 | $23,543 | +1.27% | -0.02% | +4.19% | [...] |  | 2022 Model 3 | $25,859 | +2.27% | +1.41% | +7.03% |\n|  | 2023 Model 3 | $28,438 | +2.19% | +3.17% | +10.33% |\n|  | 2024 Model 3 | $37,450 | +3.8% | +4.5% | +6.71% |\n|  | 2025 Model 3 | $38,918 | +3.1% | +3.28% | +3.77% |\n|  | 2026 Model 3 | $44,736 | +1.48% | +3.93% | 0% | [...] ### Search in your own words\n\n# Used Tesla Model 3 pricing trends\n\n## Prices jumped 2.63% over the past 30 days to$25,469\n\n2023 Tesla Model 3\nheart\n2023 Tesla Model 3\nheart\n2022 Tesla Model 3\nheart\n2021 Tesla Model 3\nheart\n\n## It’s a great time to sell! Do it in 3 steps.\n\n### Enter a few details, get our best offer, and leave pickup to us.\n\nGreat time image\n\n## Pre-owned Tesla Model 3 price guide\n\n#### Update chart\n\nStart date (optional)\n\nEnd date (optional)",
+     "score": 0.80844593
+    },
+    {
+     "title": "Tesla’s NEW Budget Model 3 - Full Comparison & Pricing",
+     "url": "https://www.youtube.com/watch?v=6vCgxRBCmFA",
+     "content": "[0:34] If you're looking for the look for less, well, this is it. This is the brand new standard Model 3, and it almost looks\n[0:41] identical to the Highland Model 3, except for that Highland is now the premium. And of course, we also have the performance Model 3. But this is the\n[0:50] cheapest Tesla that you can buy right now. It starts at only $37,000. [...] [10:41] efficiency of the tires and also the 18-in wheel setup. So, with that, Tesla's been able to actually make it more efficient than the premium trim.\n[10:49] So, when it comes to price, Model Y standard starts at $40,000. Model 3 standard starts right around $37,000.\n[10:55] But the delta between the premium models on this vehicle is $5,000 difference. $5,000 cheaper than the premium model. [...] [11:03] This is about $6,000 cheaper than the premium model. But I'm here to tell you this car gets a significant better bang\n[11:10] for your buck than the Model Y does. And here's why. Now, take a look at something here. Because Tesla's done something very unique with this. They've kept glass on top. A lot of people\n[11:18] thought we'd get a metal roof associated with the new Model Y. Well, guess what?",
+     "score": 0.70726365
+    },
+    {
+     "title": "2027 Tesla Model 3 Review, Pricing, and Specs",
+     "url": "https://www.caranddriver.com/tesla/model-3",
+     "content": "Specs panel icon\n\n#### Specifications\n\nSpecifications\n\n2026 Tesla Model 3 Base  \n Vehicle Type: rear-motor, rear-wheel-drive, 5-passenger, 4-door sedan\n\nPRICE Base/As Tested: $38,380/$39,380  \n Options: Pearl White Multi-Coat paint, $1000\n\nPOWERTRAIN Motor: permanent-magnet synchronous AC  \n Power: 286 hp  \n Torque: 322 lb-ft  \n Battery Pack: liquid-cooled lithium-ion, 70 kWh  \n Peak Charge Rate, AC/DC: 11.5/225 kW  \n Transmission: direct-drive [...] Expert Tip: If you find the Model 3 appealing but the heavy reliance on the single touchscreen puts you off, take a look at the Kia EV4, or even the BMW i4.\n\nVideo poster\n\n## Where This Vehicle Ranks\n\n#1 in Best Electric Sedans and HatchbacksChevron Down Icon\n\nTesla Model 3\n\n1\n\n### Tesla Model 3 10/10\n\nSTARTING AT: $38,630\n\n[SHOP Model 3](/tesla/model-3)Mercedes-Benz CLA-Class EV\n\n2\n\n### Mercedes-Benz CLA-Class EV 8.5/10\n\nSTARTING AT: $49,400 [...] C/D FUEL ECONOMY AND CHARGINGObserved: 109 MPGe  \n75-mph Highway Range: 270 mi  \n Average DC Fast-Charge Rate, 10–90%: 79 kW  \n DC Fast-Charge Time, 10–90%: 44 min\n\nEPA FUEL ECONOMY Combined/City/Highway: 139/147/130 MPGe  \n Range: 321 mi\n\n2024 Tesla Model 3 Performance  \nVehicle Type: front- and rear-motor, all-wheel-drive, 5-passenger, 4-door sedan\n\nPRICE Base/As Tested: $56,630/$66,630",
+     "score": 0.6633424
+    }
+   ],
+   "verdict": {
+    "sufficient": true,
+    "grounded": true,
+    "score": 5,
+    "missing": ""
+   },
+   "code": {
+    "pass": true,
+    "problems": [],
+    "gaps": [],
+    "unsupported": [],
+    "uncited": []
+   }
+  },
+  "fresh-10": {
+   "question": "What is Nepal's current inflation rate?",
+   "answer": "Nepal’s annual consumer‑price inflation was **6.34 %** in September 2026, the most recent month for which data are available [1].",
+   "results": [
+    {
+     "title": "Nepal Inflation Rate",
+     "url": "https://tradingeconomics.com/nepal/inflation-cpi",
+     "content": "##### Members\n\n##### \n\n# Nepal Inflation Rate\n\n## The annual inflation rate in Nepal rose 6.34% in September 2026 from 5.96% in the previous month, reaching the highest level since October 2023. Inflation Rate in Nepal averaged 7.84 percent from 1964 until 2026, reaching an all time high of 30.42 percent in May of 1966 and a record low of -11.54 percent in May of 1967. source: Nepal Rastra Bank\n\n## [...] | Related | Last | Previous | Unit | Reference |\n ---  --- \n| Consumer Price Index CPI | 112.50 | 111.20 | points | Sep 2026 |\n| Export Prices | 109.70 | 108.70 | points | Sep 2026 |\n| Food Inflation | 7.54 | 6.77 | percent | Sep 2026 |\n| Import Prices | 112.20 | 110.40 | points | Sep 2026 |\n| Inflation Rate | 6.34 | 5.96 | percent | Sep 2026 | [...] ## \n\n### Inflation Rate in Nepal is expected to be 5.10 percent by the end of this quarter, according to Trading Economics global macro models and analysts expectations. In the long-term, the Nepal Inflation Rate is projected to trend around 2.80 percent in 2027 and 3.40 percent in 2028, according to our econometric models.",
+     "score": 0.9521889
+    },
+    {
+     "title": "Nepal inflation rate 2026 | Statista",
+     "url": "https://www.statista.com/statistics/422594/inflation-rate-in-nepal",
+     "content": "In 2025, the inflation rate in Nepal was at \n4.1 \npercent, a drop compared to the previous year. The inflation rate is calculated using the price increase of a defined product basket. This product basket contains products and services on which the average consumer spends money throughout the year. They include expenses for groceries, clothes, rent, power, telecommunications, recreational activities, and raw materials (e.g. gas, oil), as well as federal fees and taxes. [...] JavaScript is required for full site navigation.\n\nStatista Data\n\nInsights by industry\n\nPopular statistics\n\nPopular topics\n\nPopular reports\n\nConsumer Insights products\n\nMarket Insights\n\nAPI & MCP\n\nAI assistants\n\nServices & solutions\n\nBy function\n\nBy use case\n\nBy industry\n\nStatista+ services\n\nGet started & learn\n\nPlans & access\n\nLanguage & Database\n\n# Inflation rate in Nepal from 1987 to 2031\n\nInflation rate in Nepal 1980-2031\n\nLast update: Jun 8, 2026\n\nRegion: Nepal [...] The Nepalese economy is heavily influenced by the country’s political situation. It has made only slow progress in connecting with the global economy and improving the standard of living for its inhabitants but is now finally picking up speed. Nepal’s economy is not stable yet: Inflation is decreasing but all over the place – usually a sure sign of a struggling economy – and GDP growth is also not steady and forecast to decrease again in the future. Additionally, Nepal’s trade deficit seems to",
+     "score": 0.8974172
+    },
+    {
+     "title": "Inflation Report",
+     "url": "https://www.nrb.org.np/contents/uploads/2024/07/0.Inflation_Report_2079_80_FINAL.pdf",
+     "content": "broad money growth results in a 0.13 percent increase in inflation in Nepal. Table 8: Determinants of Nepalese Inflation Dependent variable: Inflation Variables Coefficients Inflation (-1) 0.179 (0.095) Indian Inflation 0.724 (0.158) M2 0.135 (0.07) EXC -0.047 (0.05) RGDP 0.193 (0.107) C 0.05 (1.112) R-squared: 0.503 F-statistics: 7.298 Notes: Inflation connotes inflation in Nepal, Inflation (-1) represents lagged inflation of Nepal, M2 denotes broad money supply, EXC is nominal exchange rate [...] that Indian inflation exerts a significant impact on Nepal’s inflation. Specifically, a one percent increase in India’s inflation translates to a 0.72 percent increase in Nepal’s inflation. Furthermore, inflation persistence is observed with a coefficient of 0.179 suggesting that past inflation levels influence current inflation rates.In contrast, the impact of broad money on inflation is limited, with an elasticity coefficient of 0.13.This mean that a 1 percent increase in broad money growth [...] Nepal experienced an average annual inflation rate of 7.41 percent. This comprised 8.60 percent for food and beverage inflation and 6.39 percent for non-food and services inflation. Despite this, the period witnessed several notable spikes in inflation. The highest rate, 12.63 percent, occurred in 2008-09. The surge was primarily driven by supply- side factors such as power cuts, strikes, labor issues and suspected cartel activities. Another notable peak occurred in 2015-16, with inflati",
+     "score": 0.57408494
+    },
+    {
+     "title": "Nepal Development Update",
+     "url": "https://www.worldbank.org/en/country/nepal/publication/nepaldevelopmentupdate",
+     "content": "The pace and strength of the recovery will depend on the speed and scale of reconstruction and restoration efforts. Inflation is projected to remain broadly contained and within the Nepal Rastra Bank’s medium-term target of around 5 percent. However, localized crop losses and transport disruptions could generate price pressures in FY27, disproportionately affecting poorer households. Improved paddy production, easing global commodity prices, and moderating inflation in India could help contain [...] Inflation declined to a record low of 3.1 percent, well below the central bank’s 5 percent ceiling. This was largely due to lower food inflation, which supported household purchasing power. Non-food inflation increased marginally, partly reflecting higher fuel and transportation prices amid the Middle East conflict. [...] The August 2026 flood is expected to have a material negative impact on Nepal’s economic prospects in the short term, with real GDP growth projected to slow to 3.7 percent in FY27, reflecting disruptions to industry and services. Industry is expected to be the main drag on growth, reflecting extensive damage to hydropower, solar energy, electricity transmission, and transport infrastructure, which will constrain electricity generation, production, and the movement of goods. Services are",
+     "score": 0.5510187
+    },
+    {
+     "title": "Inflation, consumer prices (annual %) - Nepal | Data",
+     "url": "https://data.worldbank.org/indicator/FP.CPI.TOTL.ZG?locations=NP",
+     "content": "Legal\n Privacy Notice\n Access to Information\n Jobs\n Contact\n\n© 2026The World Bank Group, All Rights Reserved.\n\nREPORT FRAUD OR CORRUPTION\n\nThis site uses cookies to optimize functionality and give you the best possible experience. If you continue to navigate this website beyond this page, cookies will be placed on your browser. To learn more about cookies, click here. [...] DATA & RESOURCES\n\nABOUT\n\n# Inflation, consumer prices (annual %) - Nepal\n\nInternational Financial Statistics database, International Monetary Fund ( IMF )\n\nLicense  : CC BY-4.0\n\nLineBarMap\n\n None\n Aggregates\n Same region\n Similar values\n Highest values\n Lowest values\n\n## Selected Countries and Economies\n\nCountry\n\nMost Recent Year\n\nMost Recent Value\n\n## All Countries and Economies\n\nCountry\n\nMost Recent Year\n\nMost Recent Value\n\nHelp us improve this site\n\n IBRD\n IDA\n IFC\n MIGA\n ICSID",
+     "score": 0.33398145
+    }
+   ],
+   "verdict": {
+    "sufficient": true,
+    "grounded": true,
+    "score": 5,
+    "missing": ""
+   },
+   "code": {
+    "pass": true,
+    "problems": [],
+    "gaps": [],
+    "unsupported": [],
+    "uncited": []
+   }
+  },
+  "fresh-11": {
+   "question": "Who is the CEO of OpenAI?",
+   "answer": "Sam Altman is the chief executive officer of OpenAI – a role he has held since 2019 and continues to hold in 2026[2][1].",
+   "results": [
+    {
+     "title": "Sam Altman - Wikipedia",
+     "url": "https://en.wikipedia.org/wiki/Sam_Altman",
+     "content": "Samuel Harris Altman (born April 22, 1985) is an American entrepreneur and investor who has been the chief executive officer (CEO) of the artificial intelligence company OpenAI since 2019. [...] In March 2019, Altman left Y Combinator and began focusing full-time as CEO of OpenAI. Through 2017, Brockman and Sutskever oversaw the day to day business and Altman touched base approximately once a week. Sutskever opposed Altman moving to an AI role because Altman's motivation were unclear and it opened the possibility of an \"AI dictator\". The three leaders made an informal agreement that Altman would step down if the other two requested. OpenAI planned to spend $1 billion \"within five [...] 92. ↑ \"OpenAI CEO discusses AI collaboration and regulatory challenges\". South China Morning Post. February 2025. Archived from the original on February 16, 2025. Retrieved February 17, 2025.\n93. ↑ Peters, Jay (November 17, 2023). \"Sam Altman fired as CEO of OpenAI\". The Verge. Archived from the original on November 17, 2023. Retrieved November 17, 2023.",
+     "score": 0.9345448
+    },
+    {
+     "title": "Who is the CEO of OpenAI in 2026? Sam Altman's Bio | Clay",
+     "url": "https://www.clay.com/dossier/openai-ceo",
+     "content": "sam@openai.com\n\nSam Altman is an influential entrepreneur and investor, currently serving as the CEO of OpenAI, a leading artificial intelligence research organization. With a background that includes founding Loopt and holding the position of president at Y Combinator, Altman has played a significant role in shaping the AI industry.\n\nResearch any company or contact with Clay\n\nGet verified emails, company info, funding data and more with Clay\n\nTry for free\n\nSam Altman\n\nopenai.com [...] openai.com\n\nUse Clay to find other emails\n\nsam@openai.com\n\nStatus\n\nVerified\n\nUse Clay's email finder to get anyone's work email in seconds.\n\n## Who is the CEO of OpenAI?\n\nSamuel Harris Altman, born in Chicago and raised in St. Louis, is an American entrepreneur and investor who has made significant contributions to the tech industry. He dropped out of Stanford University to found Loopt, a social mapping company, which was later sold for $43 million. [...] Sam Altman co-founded OpenAI in 2015, an organization dedicated to ensuring that artificial general intelligence benefits all of humanity. He initially served as co-chairman before transitioning to the role of CEO in 2019. As of 2023, Altman has been involved with OpenAI for over eight years, playing a crucial role in advancing AI technology in a safe and beneficial direction.\n\n‍\n\n## Index\n\nTOC Heading\n\n## Share Article\n\n Post on LinkedIn\n Post on X",
+     "score": 0.9325087
+    },
+    {
+     "title": "Who Is Sam Altman? A Guide to the OpenAI CEO’s Career | Built In",
+     "url": "https://builtin.com/articles/sam-altman",
+     "content": "## Who Is Sam Altman?\n\nSam Altman is the CEO of OpenAI and one of the most influential figures in artificial intelligence. After dropping out of Stanford to launch startup Loopt, he became president of Y Combinator before leading OpenAI and bringing generative AI into the mainstream with ChatGPT. [...] OpenAI CEO Sam Altman has become one of the AI industry’s most influential figures since bringing the technology into the mainstream with the launch of ChatGPT in 2022. In much the same way that ChatGPT became shorthand for AI chatbots, Altman is the public face of artificial intelligence itself. With his casual dress and sociable demeanor, he has appeared on countless media outlets, conference stages and legislative hearings to promote his optimistic vision for the ways AI can usher in a new [...] Summary:  OpenAI CEO Sam Altman helped bring generative AI into the mainstream with ChatGPT after careers as a startup founder and Y Combinator president. This guide explores his rise in Silicon Valley, OpenAI's evolution, his major investments and his plans for the future. more   OpenAI CEO Sam Altman helped bring generative AI into the mainstream with ChatGPT after careers as a startup founder and Y Combinator president. This guide explores his rise in Silicon Valley, OpenAI's evolution, his",
+     "score": 0.92604345
+    },
+    {
+     "title": "Sam Altman | Biography, OpenAI, ChatGPT, & Microsoft | Britannica Money",
+     "url": "https://www.britannica.com/money/Sam-Altman",
+     "content": "Sam Altman is CEO of OpenAI, which partnered with Microsoft. Microsoft invested in OpenAI, provided cloud computing through its Azure platform, and integrated OpenAI’s technology into its products.\n\nSam Altman sits on stage in a suit, gesturing with both hands while speaking at the APEC CEO Summit in San Francisco, with a blue geometric backdrop behind him.\n\nOpen full sized image\n\nSam Altman is CEO of OpenAI, the artificial intelligence company that developed ChatGPT. [...] Sam Altman was president of the start-up accelerator Y Combinator from 2014 to 2019 and became CEO of OpenAI in 2019.\n\n### What led to the split between Sam Altman and Elon Musk at OpenAI? [...] © Justin Sullivan/Getty Images\n\nSam Altman is an American entrepreneur who was president of the start-up accelerator Y Combinator from 2014 to 2019 and chief executive officer of the artificial intelligence company OpenAI since 2019. He has been compared to tech visionaries, including Steve Jobs and Bill Gates, and is known for his belief that artificial general intelligence (AGI) could match or surpass human capabilities.\n\n## Early life",
+     "score": 0.9240941
+    },
+    {
+     "title": "Today, everybody knows Sam Altman as the CEO of OpenAI. But when I worked with him, he had different plans. Back in 2017, times were different for Sam. It was hot off of the 2016 election, where… | Jenny Stojkovic | 187 comments",
+     "url": "https://www.linkedin.com/posts/jenniferstojkovic_today-everybody-knows-sam-altman-as-the-activity-7440421831989342208-mAry",
+     "content": "Today, everybody knows Sam Altman as the CEO of OpenAI. But when I worked with him, he had different plans. Back in 2017, times were different for Sam. It was hot off of the 2016 election, where Silicon Valley was grappling with the loss of Hillary Clinton's presidential bid. Nobody had ever expected Donald Trump to win. Sam was still President of Y Combinator, a long-time board member of mine. He was also co-founder of a little nonprofit known as OpenAI, along with other early leaders like [...] Silicon Valley's leading lobbyist for folks like Sam and Y Combinator, Google, Meta, Microsoft, and many more. Sam wasn't the only tech CEO who considered the role. Mark Zuckerberg thought about throwing his hat in the ring for a while, too. Meanwhile, Marc Benioff was long considered to be a potential Mayor candidate for San Francisco. Ultimately, Sam didn't choose to run and ended up building what would become the $800 billion startup we know today, OpenAI. His lesson? \"Stay in your lane.\" [...] bc it's smarter than me.",
+     "score": 0.92005306
+    }
+   ],
+   "verdict": {
+    "sufficient": true,
+    "grounded": false,
+    "score": 3,
+    "missing": "The answer asserts that Sam Altman continues to be CEO in 2026, but the provided context indicates he was fired as CEO in November 2023, so this claim is unsupported."
+   },
+   "code": {
+    "pass": false,
+    "problems": [
+     "1 cited claim(s) not found in the cited passages"
+    ],
+    "gaps": [],
+    "unsupported": [
+     [
+      "Sam Altman is the chief executive officer of OpenAI – a role he has held since 2019 and continues to hold in 2026[2][1].",
+      0.73,
+      [
+       "2026"
+      ]
+     ]
+    ],
+    "uncited": []
+   }
+  },
+  "fresh-12": {
+   "question": "How long is the Great Wall of China?",
+   "answer": "The Great Wall of China measures about **21,196 kilometres (≈13,170 miles)** in total length, including all wall sections, trenches, and natural barriers that have been identified across its historic network[3][5]. (The best‑preserved Ming‑era portion alone is roughly 8,850 km or 5,500 miles.)",
+   "results": [
+    {
+     "title": "How long is the Great Wall of China? Total Length 21,196km",
+     "url": "https://www.travelchinaguide.com/china_great_wall/facts/how-long.htm",
+     "content": "The total length of the Great Wall of China is 21,196.18 kilometers (13,170.70 miles), approximately half the length of the Earth's equator. This architectural marvel encompasses a staggering 43,721 relics, including 10,051 sections of wall, 1,764 sections of moat, 29,510 towers, 2,211 passes and forts, and 185 other remnants. [...] ## Great Wall of China Length for Famous Sections in Beijing\n\nSome of the most renowned sections of the Great Wall in Beijing also have distinct lengths:  \n\n| Section | Length (kilometers) | Length (miles) |\n --- \n| Badaling | 3.7 km | 2.3 mi |\n| Mutianyu | 5.4 km | 3.4 mi |\n| Simatai | 5.4 km | 3.4 mi |\n| Jinshanling | 10.5 km | 6.5 mi |\n| Jiankou | >20 km | >12.4 mi |\n| Huanghuacheng | 12.4 km | 7.7 mi |\n| Juyongguan | 4.1 km | 2.6 mi |\n\n|\n|  |\n| Mutianyu Great Wall in Beijing | [...] Among all the historical iterations of the Great Wall, the Ming Great Wall (1368 - 1644) stands out as the best-preserved. Stretching from Hushan in Liaoning Province to Jiayuguan Great Wall in Gansu Province, it spans 8,851.8 kilometers (5,500.3 miles), with around 526 kilometers (327 miles) located within Beijing.",
+     "score": 0.96057266
+    },
+    {
+     "title": "How long is the Great Wall of China? Total Length 21,196km",
+     "url": "https://travelchinaguide.com/china_great_wall/facts/how-long.htm",
+     "content": "The total length of the Great Wall of China is 21,196.18 kilometers (13,170.70 miles), approximately half the length of the Earth's equator. This architectural marvel encompasses a staggering 43,721 relics, including 10,051 sections of wall, 1,764 sections of moat, 29,510 towers, 2,211 passes and forts, and 185 other remnants. [...] ## Great Wall of China Length for Famous Sections in Beijing\n\nSome of the most renowned sections of the Great Wall in Beijing also have distinct lengths:  \n\n| Section | Length (kilometers) | Length (miles) |\n --- \n| Badaling | 3.7 km | 2.3 mi |\n| Mutianyu | 5.4 km | 3.4 mi |\n| Simatai | 5.4 km | 3.4 mi |\n| Jinshanling | 10.5 km | 6.5 mi |\n| Jiankou | >20 km | >12.4 mi |\n| Huanghuacheng | 12.4 km | 7.7 mi |\n| Juyongguan | 4.1 km | 2.6 mi |\n\n|\n|  |\n| Mutianyu Great Wall in Beijing | [...] Among all the historical iterations of the Great Wall, the Ming Great Wall (1368 - 1644) stands out as the best-preserved. Stretching from Hushan in Liaoning Province to Jiayuguan Great Wall in Gansu Province, it spans 8,851.8 kilometers (5,500.3 miles), with around 526 kilometers (327 miles) located within Beijing.",
+     "score": 0.96057266
+    },
+    {
+     "title": "Great Wall of China - Wikipedia",
+     "url": "https://en.wikipedia.org/wiki/Great_Wall_of_China",
+     "content": "mi). This consists of 6,259 km (3,889 mi) of wall sections, 359 km (223 mi) of trenches and 2,232 km (1,387 mi) of natural defensive barriers such as hills and rivers. In addition, Qin, Han and earlier Great Wall sites are 3,080 km (1,914 mi) long in total; Jin dynasty (1115–1234) \"Jin dynasty (1115–1234)\") border fortifications#Jin_Great_Wall \"Jin dynasty (1115–1234)\") are 4,010 km (2,492 mi) in length; the remainder date back to Northern Wei, Northern Qi, Sui, Tang, the Five Dynasties, Song, [...] The collective fortifications constituting the Great Wall stretch from Liaodong in the east to Lop Lake in the west, and from the present-day Sino-Russian border in the north to Tao River in the south: an arc that roughly delineates the edge of the Mongolian steppe, spanning 21,196.18 km (13,170.70 mi) in total. It is a UNESCO World Heritage Site, and was voted one of the New 7 Wonders of the World in 2007. Today, the defensive system of the Great Wall is recognized as one of the most [...] In 2012, based on existing research and the results of a comprehensive mapping survey, the National Cultural Heritage Administration of China concluded that the remaining Great Wall associated sites include 10,051 wall sections, 1,764 ramparts or trenches, 29,510 individual buildings, and 2,211 fortifications or passes, with the walls and trenches spanning a total length of 21,196.18 km (13,170.70 mi). It was further concluded that the Ming Great Wall measures 8,850 km (5,500 mi). This consists",
+     "score": 0.92392945
+    },
+    {
+     "title": "Great Wall of China - Length, Map & Facts | HISTORY",
+     "url": "https://www.history.com/articles/great-wall-of-china",
+     "content": "The Great Wall of China is an ancient series of walls and fortifications, totaling more than 13,000 miles in length, located in northern China. Perhaps the most recognizable symbol of China and its long and vivid history, the Great Wall was originally conceived by Emperor Qin Shi Huang in the third century B.C. as a means of preventing incursions from barbarian nomads. The best-known and best-preserved section of the Great Wall was built in the 14th through 17th centuries A.D., during the Ming [...] Made mostly of earth and stone, the wall stretched from the China Sea port of Shanhaiguan over 3,000 miles west into Gansu province. In some strategic areas, sections of the wall overlapped for maximum security (including the Badaling stretch, north of Beijing, that was later restored during the Ming Dynasty).\n\nFrom a base of 15 to 50 feet, the Great Wall rose some 15-30 feet high and was topped by ramparts 12 feet or higher; guard towers were distributed at intervals along it. [...] The Bei Qi kingdom (550–577) built or repaired more than 900 miles of wall, and the short-lived but effective Sui Dynasty (581–618) repaired and extended the Great Wall of China a number of times.\n\nWith the fall of the Sui and the rise of the Tang Dynasty, the Great Wall lost its importance as a fortification, as China had defeated the Tujue tribe to the north and expanded past the original frontier protected by the wall.",
+     "score": 0.921929
+    },
+    {
+     "title": "Great Wall of China | Definition, History, Length, Map, Location, & Facts",
+     "url": "https://www.britannica.com/topic/Great-Wall-of-China",
+     "content": "The total length of all sections of the Great Wall of China ever built adds up to about 21,196 kilometers (13,171 miles), including overlapping sections that were rebuilt. The wall constructed during the Ming dynasty, the most well-preserved section, is about 8,850 kilometers (5,499 miles) long.\n\n### How old is the Great Wall of China? [...] and other secondary sections—was thought to extend for some 4,160 miles (6,700 km). However, government-sponsored investigations that began in the 1990s revealed sections of wall in Liaoning, and aerial and satellite surveillance eventually proved that this wall stretched continuously through much of the province. The greater total length of the Ming wall was announced in 2009. [...] Great Wall of China, extensive bulwark erected in ancient China, one of the largest building-construction projects ever undertaken. The Great Wall actually consists of numerous walls—many of them parallel to each other—built over some two millennia across northern China and southern Mongolia. The most extensive and best-preserved version of the wall dates from the Ming dynasty (1368–1644) and runs for some 5,500 miles (8,850 km) east to west from Mount Hu near Dandong, southeastern Liaoning",
+     "score": 0.9195344
+    }
+   ],
+   "verdict": {
+    "sufficient": true,
+    "grounded": true,
+    "score": 5,
+    "missing": ""
+   },
+   "code": {
+    "pass": false,
+    "problems": [
+     "1 cited claim(s) not found in the cited passages"
+    ],
+    "gaps": [],
+    "unsupported": [
+     [
+      "The Great Wall of China measures about **21,196 kilometres (≈13,170 miles)** in total length, including all wall sections, trenches, and natural barriers that h",
+      0.83,
+      [
+       "13170"
+      ]
+     ]
+    ],
+    "uncited": []
+   }
+  }
+ },
+ "summary": {
+  "answers": 12,
+  "agreement": {
+   "both_ok": 6,
+   "both_flag": 1,
+   "code_only_flags": 5,
+   "model_only_flags": 0
+  },
+  "model_check_skipped": "6/12",
+  "catch_rate": {
+   "wrong_citation": "9/12",
+   "invented_claim": "12/12",
+   "uncited_claim": "12/12",
+   "changed_number": "10/12",
+   "invalid_citation": "12/12"
+  }
+ }
+}

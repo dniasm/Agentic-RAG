@@ -44,9 +44,20 @@ _SUBSCRIPT = re.compile(r"[₀-₉]")  # chemical formulas (CO₂) are written m
 _ANY_NUMBER = re.compile(r"\d+(?:,\d{3})*(?:\.\d+)?")
 _SUMMARY = re.compile(r"^\W*(?:thus|so|overall|together|therefore|hence|in (?:short|summary|sum|conclusion)|"
                       r"in other words|taken together|altogether|all in all)\b", re.I)
-# Sentences that talk about the evidence instead of making a claim from it.
-_META = re.compile(r"\b(documents?|excerpts?|sources?|passages?|provided (text|material))\b.*\b(do not|don't|does not|doesn't|"
-                   r"not (cover|mention|say|include|contain|specify|state)|no (information|mention|details?))\b", re.I)
+# Sentences that talk about the evidence instead of making a claim from it ("the search results don't give…").
+_META = re.compile(r"\b(documents?|excerpts?|sources?|passages?|results?|provided (text|material))\b.*\b(do not|don['’]t|"
+                   r"does not|doesn['’]t|cannot|can['’]t|not (cover|mention|say|include|contain|specify|state|give|"
+                   r"provide|report|list)|no (information|mention|details?|figures?|data))\b|"
+                   r"^\W*no (?:source|result|document|passage|excerpt)s?\b", re.I)
+# Digit groups joined by a narrow or no-break space are one number ("8 848.86" = 8,848.86); web pages and the model
+# write numbers that way.
+_GROUPED = re.compile(r"(?<![\d.,])(\d{1,3})((?:[   ]\d{3})+)(?![\d,]|\.\d{3})")
+_MONTHS = {m[:3]: m for m in ("january", "february", "march", "april", "may", "june", "july", "august",
+                              "september", "october", "november", "december")}
+_MONTHS["sept"] = "september"
+# Version numbers ("3.15.1", "v19.3") must appear in a cited passage: the number check skips them, and a wrong
+# version is the typical mistake on a "latest version" question.
+_VERSION = re.compile(r"(?<![\w.])(?:v(\d+(?:\.\d+)+)|(\d+(?:\.\d+){2,}))(?![\w]|\.\d)", re.I)
 
 
 @dataclass
@@ -65,6 +76,7 @@ class CitationReport:
     invalid: list[int]                  # [n] with no passage n
     unsupported: list[Sentence]         # cited, but the cited passages don't contain the claim
     support: float                      # mean support over cited claims (1.0 = every key word found)
+    gaps: list[str] = field(default_factory=list)  # sentences saying the evidence doesn't cover something
 
     @property
     def problems(self) -> list[str]:
@@ -92,9 +104,20 @@ def _numbers(text: str) -> list[str]:
     return [n.replace(",", "").replace(" ", "") for n in _NUMBER.findall(body) if len(n.replace(",", "")) >= 2]
 
 
+def _versions(text: str) -> list[str]:
+    return [a or b for a, b in _VERSION.findall(CITATION.sub(" ", text))]
+
+
+def _ungroup(text: str) -> str:
+    return _GROUPED.sub(lambda m: m.group(1) + re.sub(r"\D", "", m.group(2)), text)
+
+
 def _found(token: str, words: set[str], stems: set[str]) -> bool:
     if token in words or (len(token) >= STEM and token[:STEM] in stems):
         return True
+    month = _MONTHS.get(token) or (token if token in _MONTHS.values() else None)
+    if month and (month in words or any(a in words for a, m in _MONTHS.items() if m == month)):
+        return True  # "Oct." ~ "October"
     if token + "s" in words or (token.endswith("s") and token[:-1] in words):  # "hour" ~ "hours"
         return True
     # a joined compound ("72hour" from "72-hour") is found if its parts are ("72 hours")
@@ -135,6 +158,7 @@ def check(answer: str, evidence: list[str], threshold: float = SUPPORT_THRESHOLD
     """evidence[i] is the text of passage [i + 1]. The question is optional: names it mentions ("BM25") don't have
     to appear in every passage cited for a detail about them."""
     asked = set(tokenize(question))
+    answer, evidence = _ungroup(answer), [_ungroup(text) for text in evidence]
     passage_words = [set(tokenize(text)) for text in evidence]
     passage_numbers = [set(n.replace(",", "") for n in _ANY_NUMBER.findall(text)) | {
         n.replace(" ", "") for n in re.findall(r"\d{1,3}(?: \d{3})+", text)} for text in evidence]
@@ -154,13 +178,16 @@ def check(answer: str, evidence: list[str], threshold: float = SUPPORT_THRESHOLD
             by_block[b] = _cited(prev)
 
     all_cited = sorted({n for ns in by_paragraph.values() for n in ns})
-    claims, uncited, invalid, unsupported, supports = 0, [], [], [], []
+    claims, uncited, invalid, unsupported, supports, gaps = 0, [], [], [], [], []
     for p, s in sentences:
         own = _cited(s)
         invalid += [n for n in own if not 1 <= n <= len(evidence)]
         keywords = _keywords(s)
+        if _META.search(s):
+            gaps.append(s)
+            continue
         # Short sentences ("Yes.") need no citation, unless they state a number or a name with digits in it.
-        if (len(keywords) < MIN_CONTENT_TOKENS and not _numbers(s) and not _identifiers(s, asked)) or _META.search(s):
+        if len(keywords) < MIN_CONTENT_TOKENS and not _numbers(s) and not _identifiers(s, asked):
             continue
         if _SUMMARY.match(s) or _FORMULA.search(s) or (not own and (_LEAD_IN.search(s) or _HEADING.match(s))):
             continue  # a closing summary, formula, lead-in or heading: no claim of its own to check
@@ -183,6 +210,8 @@ def check(answer: str, evidence: list[str], threshold: float = SUPPORT_THRESHOLD
         missing = [n for n in _numbers(s) if n not in numbers]
         # Names with digits in them (BM25, COVID-19, GPT-4, ISO 27001) must appear exactly, like numbers.
         missing += [t for t in _identifiers(s, asked) if t not in words]
+        missing += [v for v in _versions(s)
+                    if not any(re.search(rf"(?<![\d.]){re.escape(v)}(?!\d)", evidence[n - 1]) for n in cites)]
         supports.append(support)
         if support < threshold or missing:
             unsupported.append(Sentence(s, cites, round(support, 2), missing))
@@ -194,4 +223,5 @@ def check(answer: str, evidence: list[str], threshold: float = SUPPORT_THRESHOLD
         invalid=invalid,
         unsupported=unsupported,
         support=round(sum(supports) / len(supports), 3) if supports else 1.0,
+        gaps=gaps,
     )
