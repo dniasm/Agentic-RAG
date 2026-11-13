@@ -198,12 +198,11 @@ def test_the_original_of_an_edited_document_is_a_duplicate(library_docs, tmp_pat
     assert len(catalog.list_documents()) == 4
 
 
-def test_the_upload_endpoint_says_edited_since(library_docs):
-    from fastapi.testclient import TestClient
-    from renamer import api, editing
-    doc = library_docs["svm.txt"]
+def test_the_upload_endpoint_says_edited_since(library_docs, signed_in):
+    from renamer import editing
+    doc = catalog.get_document(library_docs["svm.txt"]["id"])   # now the signed-in user's
     original = (config.LIBRARY_DIR / doc["file_name"]).read_bytes()
-    client = TestClient(api.app)
+    client = signed_in
     same = client.post("/api/documents/upload", files={"files": ("svm.txt", original)}).json()[0]
     assert same["status"] == "duplicate" and same["edited_since"] is False
     editing.edit(doc["id"], "append", text="An extra line.")

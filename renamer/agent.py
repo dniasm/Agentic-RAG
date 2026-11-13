@@ -100,6 +100,7 @@ class Guard:
         self.pending: list = state.get("pending", [])         # renames waiting for confirmation
         self.turn = turn
         self.session_id = ""     # set by chat(); not saved
+        self.owner = config.OWNER   # whose library the tools work in: set by chat(), never by the model
         self.in_batch = False    # True while a queued task runs: tasks can't queue more tasks
 
     def state(self) -> dict:
@@ -157,14 +158,14 @@ def run_tool(name: str, args: dict, guard: Guard, actions: list) -> dict:
         description = (args.get("description") or "").strip()
         if not description:
             return {"error": "Give a description of the document."}
-        result = library.find(description)
+        result = library.find(description, guard.owner)
         guard.saw_find(result)
         if result["decision"] in FIND_NEXT:   # what to do, only in the results that need it (not in every prompt)
             result = {**result, "next": FIND_NEXT[result["decision"]]}
         return result
 
     if name == "document_details":
-        doc = catalog.get_document(args.get("doc_id", ""))
+        doc = _own(args.get("doc_id", ""), guard)
         if not doc:
             return {"error": "No document with that doc_id."}
         out = {"doc_id": doc["id"], "title": doc["title"], "original_name": doc["original_name"],
@@ -194,15 +195,21 @@ def run_tool(name: str, args: dict, guard: Guard, actions: list) -> dict:
 
     if name == "queue_status":
         from renamer import batch
-        return batch.summary()
+        return batch.summary(guard.owner)
 
     return {"error": f"Unknown tool {name}."}
+
+
+def _own(doc_id: str, guard: Guard) -> dict | None:
+    """The document, if it is in this user's library. Another user's doc_id reads as no document at all."""
+    doc = catalog.get_document(doc_id or "")
+    return doc if doc and doc["owner"] == guard.owner else None
 
 
 def _list(guard: Guard) -> dict:
     """Titles only, newest first, at most LIST_MAX_DOCUMENTS: about 20 tokens a document. With summaries a list cost
     76 tokens a document, so about 100 documents filled Groq's whole minute and "list my documents" failed."""
-    docs = list(reversed(catalog.list_documents()))
+    docs = list(reversed(catalog.list_documents(owner=guard.owner)))
     shown = docs[: config.LIST_MAX_DOCUMENTS]
     guard.saw_list([d["id"] for d in shown if d["status"] == "indexed"])
     out = {"total": len(docs), "documents": [
@@ -216,7 +223,7 @@ def _list(guard: Guard) -> dict:
 
 def _edit(args: dict, guard: Guard, actions: list) -> dict:
     doc_id = args.get("doc_id", "")
-    doc = catalog.get_document(doc_id)
+    doc = _own(doc_id, guard)
     if not doc:
         return {"status": "error", "error": "No document with that doc_id. Use find_documents."}
     problem = guard.identification_problem(doc_id)
@@ -300,7 +307,7 @@ def _queue(args: dict, guard: Guard, actions: list) -> dict:
     if problems:
         return {"status": "error", "error": "Nothing was queued. Fix these and call queue_tasks again.",
                 "problems": problems[:20]}
-    indexed = catalog.list_documents(status="indexed")
+    indexed = catalog.list_documents(status="indexed", owner=guard.owner)
     for c in changes:   # pin each change to its document now, so titles changed earlier in the batch don't lose it
         named = [d for d in indexed if naming.same_name(d["title"], c["document"])]
         if len(named) == 1:
@@ -313,7 +320,7 @@ def _queue(args: dict, guard: Guard, actions: list) -> dict:
     if any(len(t) > config.BATCH_TASK_MAX_CHARS for t in tasks):
         return {"status": "error", "error": f"Keep each instruction under {config.BATCH_TASK_MAX_CHARS} characters."}
     from renamer import batch  # imported here: batch uses this module
-    created = catalog.add_batch(guard.session_id, items)
+    created = catalog.add_batch(guard.session_id, items, owner=guard.owner)
     batch.wake()
     event("queued", batch=created["id"], tasks=len(items), structured=len(changes), free_text=len(tasks))
     actions.append({"type": "queue", "batch_id": created["id"], "tasks": len(items)})
@@ -323,7 +330,7 @@ def _queue(args: dict, guard: Guard, actions: list) -> dict:
 
 def _undo(args: dict, guard: Guard, actions: list) -> dict:
     doc_id = args.get("doc_id", "")
-    doc = catalog.get_document(doc_id)
+    doc = _own(doc_id, guard)
     if not doc:
         return {"status": "error", "error": "No document with that doc_id. Use find_documents."}
     problem = guard.identification_problem(doc_id)
@@ -339,7 +346,7 @@ def _undo(args: dict, guard: Guard, actions: list) -> dict:
 
 def _rename(args: dict, guard: Guard, actions: list) -> dict:
     doc_id = args.get("doc_id", "")
-    doc = catalog.get_document(doc_id)
+    doc = _own(doc_id, guard)
     if not doc:
         return {"status": "error", "error": "No document with that doc_id. Use find_documents."}
     if doc["status"] != "indexed":
@@ -582,13 +589,17 @@ def default_model() -> "GroqAgentModel":
     return _default_model
 
 
-def chat(session_id: str, message: str, model=None, batch: bool = False) -> dict:
+def chat(session_id: str, message: str, model=None, batch: bool = False, owner: str = config.OWNER) -> dict:
     """One user message in. Returns {"reply", "actions", "tokens"}; the session is saved."""
     model = model or default_model()
 
     session = catalog.load_session(session_id)
     session["turn"] += 1
+    if session["owner"] not in (None, owner):
+        raise PermissionError("This chat belongs to another user.")
+    session["owner"] = owner
     guard = Guard(session["guard"], session["turn"])
+    guard.owner = owner
     guard.session_id, guard.in_batch = session_id, batch
     tokens, failed = 0, False
     event("chat", session=session_id[:8], turn=session["turn"], chars=len(message), queued_task=batch)

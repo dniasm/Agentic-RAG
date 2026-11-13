@@ -3,7 +3,6 @@ import io
 
 import docx
 import pytest
-from fastapi.testclient import TestClient
 from pypdf import PdfReader
 
 from renamer import config, editing, export, library
@@ -38,9 +37,8 @@ def md_doc(tmp_path):
 
 
 @pytest.fixture
-def client():
-    from renamer import api
-    return TestClient(api.app)
+def client(signed_in):
+    return signed_in
 
 
 def test_markdown_becomes_a_tidy_pdf(md_doc):
@@ -64,6 +62,7 @@ def test_text_and_word_documents_too(library_docs, tmp_path):
 
 
 def test_the_download_endpoint(md_doc, client):
+    md_doc = editing.catalog.get_document(md_doc["id"])
     r = client.get(f"/api/documents/{md_doc['id']}/pdf")
     assert r.status_code == 200 and r.headers["content-type"] == "application/pdf"
     assert r.content.startswith(b"%PDF") and ".pdf" in r.headers["content-disposition"]

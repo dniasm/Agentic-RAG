@@ -62,21 +62,22 @@ class PacedModel:
         return getattr(self.inner, name)
 
 
-def _resolve(change: dict) -> tuple[dict | None, str]:
-    """The document a change is about: the one it was pinned to when queued, else named exactly or found uniquely.
-    Returns (document, "") or (None, why not)."""
+def _resolve(change: dict, owner: str = config.OWNER) -> tuple[dict | None, str]:
+    """The document a change is about, in the owner's library: the one it was pinned to when queued, else named
+    exactly or found uniquely. Returns (document, "") or (None, why not)."""
     if change.get("doc_id"):
         doc = catalog.get_document(change["doc_id"])
-        if doc is None:
+        if doc is None or doc["owner"] != owner:
             return None, f'"{change["document"]}" was removed from the library.'
         if doc["status"] == "indexed":
             return doc, ""
-    named =[d for d in catalog.list_documents(status="indexed") if naming.same_name(d["title"], change["document"])]
+    named = [d for d in catalog.list_documents(status="indexed", owner=owner)
+             if naming.same_name(d["title"], change["document"])]
     if len(named) > 1:
         return None, f'{len(named)} documents are called "{change["document"]}". Say which one.'
     if named:
         return named[0], ""
-    found = library.find(change["document"])
+    found = library.find(change["document"], owner)
     if found["decision"] != "unique":
         options = ", ".join(f'"{c["title"]}"' for c in found.get("candidates", [])[:4])
         return None, (f'Could not tell which document "{change["document"]}" is ({found["decision"]})'
@@ -84,17 +85,19 @@ def _resolve(change: dict) -> tuple[dict | None, str]:
     return catalog.get_document(found["candidates"][0]["doc_id"]), ""
 
 
-def run_change(change: dict, before_applying=None, giving_up_names: frozenset = frozenset()) -> tuple[str, str, list]:
+def run_change(change: dict, before_applying=None, giving_up_names: frozenset = frozenset(),
+               owner: str = config.OWNER) -> tuple[str, str, list]:
     """A structured change, done in code with the agent's own rules and no model call: (status, reply, actions).
     The document must be named exactly or found uniquely; anything doubtful is left for the user, not guessed.
     before_applying(doc) runs once the document is known, just before anything changes. giving_up_names: ids of
     documents that later changes in the same batch rename away, whose current names a rename may take now."""
-    doc, problem = _resolve(change)
+    doc, problem = _resolve(change, owner)
     if doc is None:
         return "not_done", problem, []
     if before_applying:
         before_applying(doc)
     guard = agent.Guard({}, 1)
+    guard.owner = owner
     guard.resolved[doc["id"]] = {"turn": 1, "by": "name"}
     actions: list = []
     if change["action"] == "rename":
@@ -133,12 +136,13 @@ def _renamed_later(task: dict) -> frozenset:
                      and t["payload"]["action"] == "rename" and t["payload"].get("doc_id"))
 
 
-def _refresh_expected(change: dict) -> bool:
+def _refresh_expected(change: dict, owner: str = config.OWNER) -> bool:
     """Whether a queued change will need room for a summary refresh. A rename never does; a small edit doesn't.
     When the document can't be named exactly here, assume it will (on the safe side)."""
     if change["action"] == "rename":
         return False
-    named = [d for d in catalog.list_documents(status="indexed") if naming.same_name(d["title"], change["document"])]
+    named = [d for d in catalog.list_documents(status="indexed", owner=owner)
+             if naming.same_name(d["title"], change["document"])]
     if len(named) != 1:
         return True
     try:
@@ -152,8 +156,9 @@ def _refresh_expected(change: dict) -> bool:
 
 
 def run_task(task: dict, sleep=_sleep, model=None) -> None:
+    owner = (catalog.get_batch(task["batch_id"]) or {}).get("owner") or config.OWNER   # every task runs as its user
     if task.get("payload"):   # a structured change: no agent call; only larger edits cost tokens (the summary refresh)
-        if _refresh_expected(task["payload"]):
+        if _refresh_expected(task["payload"], owner):
             wait_for_room(limits.WINDOW.limit - config.EDIT_REFRESH_TOKENS, "waiting for room for the summary refresh", sleep)
         current = catalog.get_task(task["id"])
         if _stop.is_set() or not current or current["status"] != "queued":
@@ -164,7 +169,7 @@ def run_task(task: dict, sleep=_sleep, model=None) -> None:
             catalog.update_task(task["id"], checkpoint={"doc_id": doc["id"], "sha256": doc["sha256"], "title": doc["title"]})
         try:
             status, reply, actions = run_change(task["payload"], before_applying=checkpoint,
-                                                giving_up_names=_renamed_later(task))
+                                                giving_up_names=_renamed_later(task), owner=owner)
         except Exception as e:
             log.exception("Queued change %s failed", task["id"])
             status, reply, actions = "failed", f"{type(e).__name__}: {str(e)[:200]}", []
@@ -182,7 +187,7 @@ def run_task(task: dict, sleep=_sleep, model=None) -> None:
     STATE["running_task"] = task["id"]
     try:
         result = agent.chat(f"batch-{task['batch_id']}-{task['id']}", task["instruction"],
-                            model=PacedModel(model or agent.default_model(), sleep), batch=True)
+                            model=PacedModel(model or agent.default_model(), sleep), batch=True, owner=owner)
         status = "failed" if result["failed"] else "done" if result["actions"] else "not_done"
         catalog.update_task(task["id"], status=status, reply=result["reply"], actions=result["actions"],
                             tokens=result["tokens"], finished_at=catalog.now())
@@ -265,16 +270,16 @@ def _wait_seconds() -> float:
     return round(max(0.0, waiting - time.time()), 1) if waiting else 0
 
 
-def status_light() -> dict:
+def status_light(owner: str | None = None) -> dict:
     """The live numbers only (no task lists): cheap enough to poll every second."""
     return {**limits.WINDOW.snapshot(), "backup_used": limits.BACKUP_WINDOW.used(), "wait_seconds": _wait_seconds(),
-            "reason": STATE["reason"], "running_task": STATE["running_task"], "queued": catalog.count_queued_tasks()}
+            "reason": STATE["reason"], "running_task": STATE["running_task"], "queued": catalog.count_queued_tasks(owner)}
 
 
-def summary() -> dict:
+def summary(owner: str | None = None) -> dict:
     """What the agent tells the user when asked how the queue is going."""
     out = []
-    for b in catalog.list_batches(3):
+    for b in catalog.list_batches(3, owner=owner):
         counts: dict = {}
         for t in b["tasks"]:
             counts[t["status"]] = counts.get(t["status"], 0) + 1
@@ -284,7 +289,7 @@ def summary() -> dict:
     return {"batches": out, "tokens": limits.WINDOW.snapshot()}
 
 
-def status() -> dict:
+def status(owner: str | None = None) -> dict:
     """The queue panel: batches still running or queued in the last hour, with their tasks (polled every few
     seconds while anything runs; the meter reads status_light)."""
-    return {"batches": catalog.active_or_recent_batches()}
+    return {"batches": catalog.active_or_recent_batches(owner=owner)}

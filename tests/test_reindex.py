@@ -51,7 +51,7 @@ def test_the_index_matches_a_full_ingest(long_doc, embedded, monkeypatch):
     doc = catalog.get_document(long_doc["id"])
     ingestion.ingest_file(config.LIBRARY_DIR / doc["file_name"], user_id=config.OWNER, doc_id=doc["id"],
                           filename=doc["title"])                      # day7's own full re-ingest, for comparison
-    library._set_chunk_fields(doc["id"], title=doc["title"], file_name=doc["file_name"])
+    library._set_chunk_fields(doc["id"], doc["owner"], title=doc["title"], file_name=doc["file_name"])
     full = stored_points(long_doc["id"])
     assert partial.keys() == full.keys()
     for pid in full:

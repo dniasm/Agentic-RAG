@@ -18,7 +18,7 @@ from pathlib import Path
 
 from qdrant_client import models
 
-from renamer import catalog, config, library, naming, titles
+from renamer import catalog, config, library, titles
 from renamer.logs import event
 from renamer.day7 import ingestion, settings as day7_settings, sparse, vectorstore
 
@@ -185,14 +185,14 @@ def _apply(doc: dict, op: str, pattern: re.Pattern | None, text: str, replace_al
 
 
 # ---------------------------------------------------------------- re-index
-def _stored_vectors(doc_id: str) -> dict[str, list[float]]:
+def _stored_vectors(doc_id: str, owner: str) -> dict[str, list[float]]:
     """The dense vector of each chunk the document has in the index now, by the chunk's text."""
     client = vectorstore.get_client()
     vectors, offset = {}, None
     with vectorstore._lock:
         while True:
             points, offset = client.scroll(day7_settings.collection_name,
-                                           scroll_filter=vectorstore.user_filter(config.OWNER, doc_id),
+                                           scroll_filter=vectorstore.user_filter(owner, doc_id),
                                            limit=256, offset=offset, with_payload=["page_content"],
                                            with_vectors=[vectorstore.DENSE])
             for p in points:
@@ -214,7 +214,7 @@ def _reindex(doc: dict) -> dict:
     if not pages:
         raise ingestion.IngestionError("No extractable text found.")
     chunks = ingestion.split_documents(pages)
-    vectors = _stored_vectors(doc["id"])
+    vectors = _stored_vectors(doc["id"], doc["owner"])
     new_texts = list(dict.fromkeys(c.page_content for c in chunks if c.page_content not in vectors))
     if new_texts:
         vectors.update(zip(new_texts, ingestion.embed_paced(new_texts, doc["title"])))
@@ -223,16 +223,16 @@ def _reindex(doc: dict) -> dict:
         id=str(uuid.uuid5(uuid.NAMESPACE_URL, f"{doc['id']}:{idx}")),
         vector={vectorstore.DENSE: vectors[c.page_content], vectorstore.SPARSE: sparse.document_vector(c.page_content)},
         payload={"page_content": c.page_content, "metadata": {
-            "user_id": config.OWNER, "doc_id": doc["id"], "source": doc["title"], "page": c.metadata.get("page"),
+            "user_id": doc["owner"], "doc_id": doc["id"], "source": doc["title"], "page": c.metadata.get("page"),
             "chunk_index": idx, "start_index": c.metadata.get("start_index")}},
     ) for idx, c in enumerate(chunks)]
     vectorstore.upsert(points)
     client = vectorstore.get_client()
     with vectorstore._lock:  # drop old chunks beyond the new end (chunk ids are doc_id:index, so the rest were overwritten)
-        stale = vectorstore.user_filter(config.OWNER, doc["id"])
+        stale = vectorstore.user_filter(doc["owner"], doc["id"])
         stale.must.append(models.FieldCondition(key="metadata.chunk_index", range=models.Range(gte=len(points))))
         client.delete(day7_settings.collection_name, points_selector=models.FilterSelector(filter=stale), wait=True)
-    library._set_chunk_fields(doc["id"], title=doc["title"], file_name=doc["file_name"])
+    library._set_chunk_fields(doc["id"], doc["owner"], title=doc["title"], file_name=doc["file_name"])
     return {"pages": page_count, "chunks": len(points), "embedded": len(new_texts)}
 
 
@@ -295,7 +295,8 @@ def _finish(doc: dict, reloaded: dict, before: str | None = None) -> bool:
     try:
         text = _plain_text(path)
         if before is None or changed_share(before, text) >= config.SUMMARY_REFRESH_SHARE:
-            others = [d["title"] for d in catalog.list_documents() if d["id"] != doc["id"] and d["status"] != "failed"]
+            others = [d["title"] for d in catalog.list_documents(owner=doc["owner"])
+                      if d["id"] != doc["id"] and d["status"] != "failed"]
             profile, refreshed = titles.profile_document(doc["original_name"], text[: config.TITLE_SOURCE_CHARS], others)
             if refreshed:
                 fields.update(summary=profile.summary, keywords=profile.keywords)
@@ -321,7 +322,7 @@ def undo(doc_id: str) -> dict:
     if not backup.exists() or not path.exists():
         raise EditError("The saved earlier version is missing, so the edit can't be undone.")
     if backup.suffix != doc["ext"]:   # the edit converted the file (PDF to Markdown): the original comes back
-        new_name = naming.file_name_for(doc["title"], backup.suffix, library.taken_file_names(exclude_doc=doc))
+        new_name = library.stored_name(doc["owner"], doc["title"], backup.suffix, exclude_doc=doc)
         doc = {**doc, "ext": backup.suffix, "file_name": new_name}
     target = config.LIBRARY_DIR / doc["file_name"]
     before = _plain_text(path)
@@ -357,7 +358,7 @@ def _pdf_to_markdown(doc: dict) -> dict:
     pages, _ = ingestion.load_file(config.LIBRARY_DIR / doc["file_name"])
     if not pages:
         raise EditError("This PDF has no extractable text (it is probably scanned images), so it can't be converted.")
-    name = naming.file_name_for(doc["title"], ".md", library.taken_file_names(exclude_doc=doc))
+    name = library.stored_name(doc["owner"], doc["title"], ".md", exclude_doc=doc)
     (config.LIBRARY_DIR / name).write_text("\n\n".join(p.page_content for p in pages), encoding="utf-8")
     return {**doc, "ext": ".md", "file_name": name}
 

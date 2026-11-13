@@ -13,7 +13,8 @@ LIBRARY_DIR = DATA_DIR / "library"        # the stored files, named after their 
 CATALOG_PATH = DATA_DIR / "catalog.db"    # documents, rename history, chat sessions
 QDRANT_PATH = DATA_DIR / "qdrant"         # this project's own embedded vector store
 COLLECTION_NAME = "renamer_docs"
-OWNER = "library"                         # every chunk is stored under this one day7 "user"
+OWNER = "library"   # the owner of documents from before accounts existed (and of tests); users are their own ids
+SIGNUP_CODE = os.environ.get("RENAMER_SIGNUP_CODE", "")   # needed for every sign-up after the first; empty: closed
 
 MAX_UPLOAD_MB = 20
 TITLE_SOURCE_CHARS = 6000   # opening text the title writer reads

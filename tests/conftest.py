@@ -16,7 +16,7 @@ import pytest
 DATA = Path(tempfile.mkdtemp(prefix="renamer_test_"))
 os.environ["RENAMER_DATA_DIR"] = str(DATA)  # before anything from renamer is imported
 
-from renamer import catalog, library, titles  # noqa: E402
+from renamer import catalog, config, library, titles  # noqa: E402
 from renamer.day7 import ingestion, rerank, retrieval, sparse, vectorstore  # noqa: E402,F401
 
 
@@ -59,6 +59,25 @@ def fakes(monkeypatch):
         c.execute("DELETE FROM renames")
         c.execute("DELETE FROM batches")
         c.execute("DELETE FROM batch_tasks")
+        c.execute("DELETE FROM users")
+        c.execute("DELETE FROM auth_tokens")
+    for folder in config.LIBRARY_DIR.iterdir() if config.LIBRARY_DIR.exists() else []:
+        if folder.is_dir():   # users' own folders
+            shutil.rmtree(folder, ignore_errors=True)
+    from renamer import auth
+    auth._failures.clear()
+
+
+@pytest.fixture
+def signed_in():
+    """A browser signed in as the first account (which takes any documents made before it, like the real owner's)."""
+    from fastapi.testclient import TestClient
+    from renamer import api
+    client = TestClient(api.app)
+    r = client.post("/api/auth/signup", json={"username": "tester", "password": "correct horse"})
+    assert r.status_code == 200, r.text
+    client.user = r.json()["user"]
+    return client
 
 
 def pytest_sessionfinish(session, exitstatus):

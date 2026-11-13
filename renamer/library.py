@@ -44,28 +44,41 @@ def _path(doc: dict) -> Path:
     return config.LIBRARY_DIR / doc["file_name"]
 
 
-def _set_chunk_fields(doc_id: str, **fields) -> None:
-    """Update metadata fields on every chunk of a document (no re-embedding)."""
+def _set_chunk_fields(doc_id: str, owner: str, **fields) -> None:
+    """Update metadata fields on every chunk of a document (no re-embedding). Chunks are found under their owner:
+    each user's chunks carry their own user_id, which every search filters on."""
     client = vectorstore.get_client()
     with vectorstore._lock:
         client.set_payload(
             day7_settings.collection_name, payload=fields, key="metadata", wait=True,
-            points=models.FilterSelector(filter=vectorstore.user_filter(config.OWNER, doc_id)),
+            points=models.FilterSelector(filter=vectorstore.user_filter(owner, doc_id)),
         )
 
 
-def taken_file_names(exclude_doc: dict | None = None) -> set[str]:
-    """File names a new or renamed file must not use (lower case): every document's in the catalog, and every file
-    actually in the library folder (a leftover or half-finished file is never overwritten), except the excluded
-    document's own. Call it under WRITE_LOCK, with the move that follows, so two files can't pick the same name."""
-    own = (exclude_doc or {}).get("file_name", "").lower()
-    on_disk = {p.name.lower() for p in config.LIBRARY_DIR.iterdir()} if config.LIBRARY_DIR.exists() else set()
-    return (catalog.used_file_names(exclude_doc=(exclude_doc or {}).get("id")) | on_disk) - {own}
+def folder_of(owner: str) -> str:
+    """Each user's files live in a folder of their own; the library from before accounts existed in the top folder."""
+    return "" if owner == config.OWNER else owner
+
+
+def stored_name(owner: str, title: str, ext: str, exclude_doc: dict | None = None) -> str:
+    """A free file name for `title` in the owner's folder, as the path stored in the catalog ("<folder>/<name>").
+    Taken: every catalog file in that folder and every file actually there (a leftover or half-finished file is never
+    overwritten), except the excluded document's own. Call under WRITE_LOCK with the write or move that follows, so
+    two files can't pick the same name."""
+    folder = folder_of(owner)
+    directory = config.LIBRARY_DIR / folder
+    directory.mkdir(parents=True, exist_ok=True)
+    in_folder = {rel.rsplit("/", 1)[-1] for rel in catalog.used_file_names(exclude_doc=(exclude_doc or {}).get("id"))
+                 if (rel.rsplit("/", 1)[0] if "/" in rel else "") == folder.lower()}
+    on_disk = {p.name.lower() for p in directory.iterdir() if p.is_file()}
+    own = Path((exclude_doc or {}).get("file_name", "")).name.lower()
+    name = naming.file_name_for(title, ext, (in_folder | on_disk) - {own})
+    return f"{folder}/{name}" if folder else name
 
 
 def _move_file(doc: dict, title: str) -> str:
     """Rename the stored file after `title`; returns the new file name. Call under WRITE_LOCK."""
-    new_name = naming.file_name_for(title, doc["ext"], taken_file_names(exclude_doc=doc))
+    new_name = stored_name(doc["owner"], title, doc["ext"], exclude_doc=doc)
     if new_name != doc["file_name"]:
         old = _path(doc)
         if old.exists():
@@ -73,9 +86,9 @@ def _move_file(doc: dict, title: str) -> str:
     return new_name
 
 
-def _unique_title(title: str, exclude: str | None = None) -> str:
-    """Ingest only: never give a new document a title another document already has."""
-    taken = {naming.normalize(d["title"]) for d in catalog.list_documents() if d["id"] != exclude}
+def _unique_title(title: str, exclude: str | None = None, owner: str = config.OWNER) -> str:
+    """Ingest only: never give a new document a title another of the owner's documents already has."""
+    taken = {naming.normalize(d["title"]) for d in catalog.list_documents(owner=owner) if d["id"] != exclude}
     candidate, n = title, 2
     while naming.normalize(candidate) in taken:
         candidate, n = f"{title} ({n})", n + 1
@@ -83,7 +96,7 @@ def _unique_title(title: str, exclude: str | None = None) -> str:
 
 
 # ---------------------------------------------------------------- ingest
-def add_file(original_name: str, data: bytes) -> tuple[dict, bool]:
+def add_file(original_name: str, data: bytes, owner: str = config.OWNER) -> tuple[dict, bool]:
     """Store an uploaded file. Returns (document, is_duplicate). Call process() next to index it."""
     original_name = Path(original_name or "").name or "document"
     ext = Path(original_name).suffix.lower()
@@ -95,7 +108,7 @@ def add_file(original_name: str, data: bytes) -> tuple[dict, bool]:
         raise LibraryError(f"The file is larger than {config.MAX_UPLOAD_MB} MB.")
 
     digest = ingestion.file_sha256(data)
-    existing = catalog.find_by_hash(digest)
+    existing = catalog.find_by_hash(digest, owner)
     if existing and existing["status"] != "failed":   # the same file, or the one it was before it was edited
         event("upload_duplicate", file=original_name, same_as=existing["title"], doc=existing["id"],
               edited_since=existing["sha256"] != digest)
@@ -106,10 +119,10 @@ def add_file(original_name: str, data: bytes) -> tuple[dict, bool]:
     config.LIBRARY_DIR.mkdir(parents=True, exist_ok=True)
     provisional = titles.fallback_profile(original_name, "").title
     with WRITE_LOCK:
-        file_name = naming.file_name_for(provisional, ext, taken_file_names())
+        file_name = stored_name(owner, provisional, ext)
         (config.LIBRARY_DIR / file_name).write_bytes(data)
         doc = catalog.add_document(title=provisional, original_name=original_name, file_name=file_name, ext=ext,
-                                   sha256=digest, size_bytes=len(data))
+                                   sha256=digest, size_bytes=len(data), owner=owner)
     event("upload", doc=doc["id"], file=original_name, bytes=len(data))
     return doc, False
 
@@ -122,24 +135,25 @@ def process(doc_id: str, ask_title=None) -> dict:
         if not pages:
             raise ingestion.IngestionError("No extractable text found (the file may be scanned images).")
         opening = "\n\n".join(p.page_content for p in pages)[: config.TITLE_SOURCE_CHARS]
-        others = [d["title"] for d in catalog.list_documents() if d["id"] != doc_id and d["status"] != "failed"]
+        others = [d["title"] for d in catalog.list_documents(owner=doc["owner"])
+                  if d["id"] != doc_id and d["status"] != "failed"]
         profile, _ = titles.profile_document(doc["original_name"], opening, others, ask=ask_title)
         with WRITE_LOCK:   # choosing the title and the file name, and taking them, is one step for renames too
-            title = _unique_title(profile.title, exclude=doc_id)
+            title = _unique_title(profile.title, exclude=doc_id, owner=doc["owner"])
             file_name = _move_file(catalog.get_document(doc_id), title)
             catalog.update_document(doc_id, title=title, file_name=file_name, summary=profile.summary,
                                     keywords=profile.keywords)
             catalog.record_rename(doc_id, doc["original_name"], title, "titled")
 
-        result = ingestion.ingest_file(config.LIBRARY_DIR / file_name, user_id=config.OWNER, doc_id=doc_id,
+        result = ingestion.ingest_file(config.LIBRARY_DIR / file_name, user_id=doc["owner"], doc_id=doc_id,
                                        filename=title)
-        _set_chunk_fields(doc_id, title=title, file_name=file_name)
+        _set_chunk_fields(doc_id, doc["owner"], title=title, file_name=file_name)
         catalog.update_document(doc_id, status="indexed", pages=result["pages"], chunks=result["chunks"], error=None)
         event("indexed", doc=doc_id, title=title, chunks=result["chunks"], pages=result["pages"])
     except Exception as e:
         log.exception("Ingesting %s failed", doc["original_name"])
         try:
-            vectorstore.delete_document_vectors(config.OWNER, doc_id)
+            vectorstore.delete_document_vectors(doc["owner"], doc_id)
         except Exception:
             pass
         catalog.update_document(doc_id, status="failed", error=str(e)[:300])
@@ -157,7 +171,7 @@ def delete(doc_id: str) -> None:
     doc = catalog.get_document(doc_id)
     if not doc:
         raise LibraryError("Document not found.")
-    vectorstore.delete_document_vectors(config.OWNER, doc_id)
+    vectorstore.delete_document_vectors(doc["owner"], doc_id)
     _path(doc).unlink(missing_ok=True)
     shutil.rmtree(config.DATA_DIR / "versions" / doc_id, ignore_errors=True)
     catalog.delete_document(doc_id)
@@ -166,7 +180,11 @@ def delete(doc_id: str) -> None:
 
 # ---------------------------------------------------------------- rename
 def name_conflicts(new_title: str, exclude: str) -> list[dict]:
-    return [d for d in catalog.list_documents() if d["id"] != exclude and naming.same_name(d["title"], new_title)]
+    """The other documents of the same owner that already have this name."""
+    doc = catalog.get_document(exclude)
+    owner = doc["owner"] if doc else config.OWNER
+    return [d for d in catalog.list_documents(owner=owner)
+            if d["id"] != exclude and naming.same_name(d["title"], new_title)]
 
 
 @_exclusive
@@ -179,7 +197,7 @@ def rename(doc_id: str, new_title: str) -> dict:
     file_name = _move_file(doc, title)
     try:
         if doc["status"] == "indexed":
-            _set_chunk_fields(doc_id, source=title, title=title, file_name=file_name)
+            _set_chunk_fields(doc_id, doc["owner"], source=title, title=title, file_name=file_name)
     except Exception:
         if file_name != doc["file_name"]:  # put the file back so the catalog and disk still agree
             os.replace(config.LIBRARY_DIR / file_name, _path(doc))
@@ -206,10 +224,11 @@ def _name_score(description: str, doc: dict, history: list[dict]) -> float:
     return max(naming.name_similarity(description, n) * w for n, w in names)
 
 
-def _content_scores(description: str, docs: list[dict]) -> tuple[dict[str, float], dict[str, str], str]:
-    """Best relevance per document from its chunks and its profile. Returns (scores, evidence, scorer)."""
+def _content_scores(description: str, docs: list[dict], owner: str) -> tuple[dict[str, float], dict[str, str], str]:
+    """Best relevance per document from its chunks and its profile. Returns (scores, evidence, scorer).
+    Only the owner's chunks are searched."""
     try:
-        hits = retrieval.retrieve([description], config.OWNER, k=12, min_score=0.0)
+        hits = retrieval.retrieve([description], owner, k=12, min_score=0.0)
     except Exception as e:
         log.warning("Content search failed: %s", str(e)[:200])
         hits = []
@@ -260,21 +279,21 @@ _VOYAGE = limits.TokenWindow(config.VOYAGE_CALLS_PER_MINUTE, 60.0)   # rerank ca
 _FIND_CACHE: dict = {}   # (description, catalog version) -> (time, result)
 
 
-def find(description: str) -> dict:
+def find(description: str, owner: str = config.OWNER) -> dict:
     """find_documents, reused while nothing in the library has changed: the agent often looks the same document up
     again in a follow-up message, and each search costs a Gemini embedding and a Voyage rerank call."""
-    key = (" ".join(description.lower().split()), catalog.version())
+    key = (owner, " ".join(description.lower().split()), catalog.version())
     hit = _FIND_CACHE.get(key)
     if hit and time.monotonic() - hit[0] < config.FIND_CACHE_SECONDS:
         return copy.deepcopy(hit[1])
-    result = _find(description)
+    result = _find(description, owner)
     if len(_FIND_CACHE) > 200:
         _FIND_CACHE.clear()
     _FIND_CACHE[key] = (time.monotonic(), result)
     return copy.deepcopy(result)
 
 
-def _find(description: str) -> dict:
+def _find(description: str, owner: str = config.OWNER) -> dict:
     """Which document does `description` mean? It can be a name, part of one, or what the document is about.
 
     decision:
@@ -283,7 +302,7 @@ def _find(description: str) -> dict:
         uncertain  only a weak match: confirm with the user first
         none       nothing matches
     """
-    docs = catalog.list_documents(status="indexed")
+    docs = catalog.list_documents(status="indexed", owner=owner)
     if not docs:
         return {"decision": "none", "reason": "empty_library", "candidates": []}
 
@@ -292,7 +311,7 @@ def _find(description: str) -> dict:
     best_name = max(names.values())
     named = [d for d in docs if names[d["id"]] >= config.NAME_EXACT and names[d["id"]] >= best_name - 0.05]
 
-    content, evidence, scorer = ({}, {}, "name") if len(named) == 1 else _content_scores(description, docs)
+    content, evidence, scorer = ({}, {}, "name") if len(named) == 1 else _content_scores(description, docs, owner)
     high, low, margin = _thresholds(scorer if scorer != "name" else "voyage")
 
     def combined(doc_id: str) -> float:
@@ -334,3 +353,21 @@ def _find(description: str) -> dict:
             **({"evidence": snippet(evidence[d["id"]])} if d["id"] in evidence else {}),
         } for d, score in keep[:5]],
     }
+
+
+# ---------------------------------------------------------------- accounts
+@_exclusive
+def give_legacy_library_to(user_id: str) -> int:
+    """The first account takes the library from before accounts existed: each document becomes the user's, its file
+    moves into the user's folder and its chunks carry the user's id. Returns how many documents moved."""
+    moved = 0
+    for doc in catalog.list_documents(owner=config.OWNER):
+        new_name = stored_name(user_id, Path(doc["file_name"]).stem, doc["ext"])
+        old = _path(doc)
+        if old.exists():
+            os.replace(old, config.LIBRARY_DIR / new_name)
+        if doc["status"] == "indexed":
+            _set_chunk_fields(doc["id"], config.OWNER, user_id=user_id, file_name=new_name)
+        catalog.update_document(doc["id"], owner=user_id, file_name=new_name)
+        moved += 1
+    return moved

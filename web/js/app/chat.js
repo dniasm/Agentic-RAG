@@ -5,7 +5,6 @@ import { markdown } from "../lib/markdown.js";
 import { newStoredId, storedId } from "../lib/storage.js";
 import { autosize, submitOnEnter } from "../lib/textarea.js";
 
-const SESSION_KEY = "renamer-session";
 const TYPING = '<span class="typing"><span></span><span></span><span></span></span>';
 
 /** One line under a reply for each thing the agent did. */
@@ -24,8 +23,9 @@ function actionChip(a) {
 }
 
 /** els: messages, welcome, composer, input, send, newChat, suggestions. onReply(result) runs after each reply. */
-export function createChat({ els, api, onReply = () => {} }) {
-  let sessionId = storedId(SESSION_KEY);
+/** sessionKey: where this browser keeps the current chat (one per user). */
+export function createChat({ els, api, sessionKey, onReply = () => {} }) {
+  let sessionId = storedId(sessionKey);
   let busy = false;
   const fitInput = autosize(els.input);
 
@@ -80,7 +80,7 @@ export function createChat({ els, api, onReply = () => {} }) {
   }
 
   function newChat() {
-    sessionId = newStoredId(SESSION_KEY);
+    sessionId = newStoredId(sessionKey);
     els.messages.querySelectorAll(".msg").forEach((m) => m.remove());
     els.welcome.hidden = false;
     els.input.focus();

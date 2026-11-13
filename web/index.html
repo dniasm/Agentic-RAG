@@ -10,7 +10,19 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <div class="app">
+  <main class="auth" id="auth" hidden>
+    <form class="auth-card" id="auth-form">
+      <h1>Document Agent</h1>
+      <p class="muted" id="auth-intro">Log in to your library.</p>
+      <label>Username <input id="auth-user" autocomplete="username" required></label>
+      <label>Password <input id="auth-pass" type="password" autocomplete="current-password" required></label>
+      <label id="auth-invite-row" hidden>Invite code <input id="auth-invite" autocomplete="off"></label>
+      <p class="auth-error" id="auth-error" role="alert"></p>
+      <button class="button" id="auth-submit">Log in</button>
+      <button type="button" class="link-button" id="auth-switch">Create an account</button>
+    </form>
+  </main>
+  <div class="app" id="app" hidden>
     <aside class="library" id="library">
       <a class="brand" href="/" title="Document Agent: back to the start">
         <svg class="mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
@@ -20,7 +32,7 @@
         </svg>
         <div>
           <div class="brand-name">Document Agent</div>
-          <div class="brand-sub">Your library</div>
+          <div class="brand-sub" id="user-name">Your library</div>
         </div>
       </a>
 
@@ -64,6 +76,7 @@
           <div class="meter-bar"><span id="meter-fill"></span></div>
         </div>
         <button class="secondary" id="new-chat">New chat</button>
+        <button class="secondary" id="log-out">Log out</button>
       </header>
       <section class="messages" id="messages" aria-live="polite">
         <div class="welcome" id="welcome">
