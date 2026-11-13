@@ -329,3 +329,42 @@ const longPlaceholder = els.input.placeholder;
 const fitPlaceholder = () => { els.input.placeholder = narrow.matches ? "Rename, edit or undo a document…" : longPlaceholder; };
 narrow.addEventListener("change", fitPlaceholder);
 fitPlaceholder();
+
+/* ---------------------------------------------------------------- resizable library */
+const LIBRARY_WIDTH = { min: 240, max: 600, default: 320, key: "renamer-library-width" };
+const resizer = document.getElementById("resizer");
+
+function setLibraryWidth(px, save = true) {
+  const width = Math.round(Math.min(LIBRARY_WIDTH.max, Math.max(LIBRARY_WIDTH.min, px)));
+  document.documentElement.style.setProperty("--library-width", `${width}px`);
+  resizer.setAttribute("aria-valuenow", width);
+  if (save) localStorage.setItem(LIBRARY_WIDTH.key, width);
+}
+
+setLibraryWidth(Number(localStorage.getItem(LIBRARY_WIDTH.key)) || LIBRARY_WIDTH.default, false);
+resizer.setAttribute("aria-valuemin", LIBRARY_WIDTH.min);
+resizer.setAttribute("aria-valuemax", LIBRARY_WIDTH.max);
+
+resizer.addEventListener("pointerdown", (e) => {
+  e.preventDefault();
+  try { resizer.setPointerCapture(e.pointerId); } catch { /* a synthetic event has no pointer to capture */ }
+  document.body.classList.add("resizing");
+  const left = els.library.getBoundingClientRect().left;
+  const move = (ev) => setLibraryWidth(ev.clientX - left);
+  const stop = () => {
+    document.body.classList.remove("resizing");
+    resizer.removeEventListener("pointermove", move);
+    resizer.removeEventListener("pointerup", stop);
+    resizer.removeEventListener("pointercancel", stop);
+  };
+  resizer.addEventListener("pointermove", move);
+  resizer.addEventListener("pointerup", stop);
+  resizer.addEventListener("pointercancel", stop);
+});
+resizer.addEventListener("dblclick", () => setLibraryWidth(LIBRARY_WIDTH.default));
+resizer.addEventListener("keydown", (e) => {   /* arrow keys resize too, for the keyboard */
+  const step = e.shiftKey ? 64 : 16;
+  const now = els.library.getBoundingClientRect().width;
+  if (e.key === "ArrowLeft") { setLibraryWidth(now - step); e.preventDefault(); }
+  if (e.key === "ArrowRight") { setLibraryWidth(now + step); e.preventDefault(); }
+});

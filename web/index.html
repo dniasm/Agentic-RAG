@@ -12,7 +12,7 @@
 <body>
   <div class="app">
     <aside class="library" id="library">
-      <div class="brand">
+      <a class="brand" href="/" title="Document Agent: back to the start">
         <svg class="mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/>
@@ -22,7 +22,7 @@
           <div class="brand-name">Document Agent</div>
           <div class="brand-sub">Your library</div>
         </div>
-      </div>
+      </a>
 
       <header class="library-head">
         <div>
@@ -40,6 +40,8 @@
         <h3>Queue <span class="muted" id="queue-count"></span></h3>
         <ul class="queue-list" id="queue-list"></ul>
       </section>
+      <div class="resizer" id="resizer" role="separator" aria-orientation="vertical" tabindex="0"
+           aria-label="Resize the library" title="Drag to resize · double-click to reset"></div>
       <div class="empty-library" id="empty-library">
         <p><strong>No documents yet.</strong></p>
         <p class="muted">Add files with the button above or drop them here. Each one is indexed and given a title

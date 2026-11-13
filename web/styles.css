@@ -83,12 +83,27 @@ button, textarea, input { font: inherit; color: inherit; }
 ::selection { background: color-mix(in srgb, var(--data) 22%, transparent); }
 
 /* Shell: the library on the ground, the chat on one white sheet inset 8px (no shadow) */
-.app { display: grid; grid-template-columns: 320px 1fr; height: 100vh; }
+.app { display: grid; grid-template-columns: var(--library-width, 320px) 1fr; height: 100vh; }
 
 /* ---------------------------------------------------------------- library */
 .library { display: flex; flex-direction: column; min-height: 0; position: relative; }
 
-.brand { display: flex; align-items: center; gap: 10px; padding: 20px 20px 4px; }
+.brand {
+  display: flex; align-items: center; gap: 10px; margin: 12px 12px 0; padding: 8px; border-radius: var(--radius-control);
+  color: inherit; text-decoration: none; align-self: flex-start;
+}
+.brand:hover { background: var(--hover); }
+
+/* the library's right edge: drag to resize */
+.resizer {
+  position: absolute; top: 0; right: -4px; bottom: 0; width: 8px; z-index: 4; cursor: col-resize; touch-action: none;
+}
+.resizer::after {
+  content: ""; position: absolute; top: 0; bottom: 0; left: 3px; width: 2px; background: transparent; transition: background .15s;
+}
+.resizer:hover::after, .resizer:focus-visible::after, .resizing .resizer::after { background: var(--control); }
+.resizer:focus-visible { outline: none; }
+.resizing, .resizing * { cursor: col-resize !important; user-select: none; }
 .mark { width: 22px; height: 22px; flex: none; color: var(--text); }
 .brand-name { font-weight: 500; font-size: 14px; }
 .brand-sub { font-size: 12px; line-height: 16px; color: var(--muted); }
@@ -277,6 +292,7 @@ button, textarea, input { font: inherit; color: inherit; }
     border-right: 1px solid var(--border); transform: translateX(-100%); transition: transform .2s; }
   .library.open { transform: none; box-shadow: 0 0 24px rgb(0 0 0 / .12); }   /* taste-skill-ignore: an open drawer floats */
   .icon-button { display: inline-grid; }
+  .resizer { display: none; }
   .chat { margin: 0; border: 0; border-radius: 0; }
   .chat-head { padding: 10px 16px; }
   .messages { padding: 20px 16px 8px; }
