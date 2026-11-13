@@ -52,13 +52,14 @@ function renderDocs(flashIds = []) {
 
   for (const d of [...docs].reverse()) {
     const li = document.createElement("li");
-    li.className = "doc" + (flashIds.includes(d.id) ? " flash" : "");
+    const type = (d.ext || "").replace(".", "");
+    li.className = `doc t-${type}` + (flashIds.includes(d.id) ? " flash" : "");
     const renamedFrom = d.original_name;
     const badge = d.status === "indexed" ? "" :
       `<span class="badge ${d.status}">${d.status === "processing" ? "Indexing…" : "Failed"}</span>`;
     li.innerHTML = `
       <div class="doc-title">${escapeHtml(d.title)}</div>
-      <div class="doc-meta">${badge}<span title="Original file name">${escapeHtml(renamedFrom)}</span>
+      <div class="doc-meta"><span class="type">${escapeHtml(type.toUpperCase())}</span>${badge}<span title="Original file name">${escapeHtml(renamedFrom)}</span>
         ${d.pages ? `<span>· ${d.pages} page${d.pages === 1 ? "" : "s"}</span>` : ""}</div>
       ${d.status === "failed" ? `<div class="doc-summary" style="color:var(--bad)">${escapeHtml(d.error || "")}</div>` :
         d.summary ? `<div class="doc-summary" title="${escapeHtml(d.summary)}">${escapeHtml(d.summary)}</div>` : ""}
@@ -168,7 +169,7 @@ function addMessage(role, text, actions = []) {
   else bubble.innerHTML = markdown(text);
   for (const a of actions) {
     const chip = document.createElement("div");
-    chip.className = "action";
+    chip.className = `action ${a.type}`;
     chip.innerHTML = a.type === "queue"
       ? `<span>Queued</span><strong>${a.tasks} task${a.tasks === 1 ? "" : "s"}</strong><span>see the Queue panel</span>`
       : a.type === "undo"
@@ -321,3 +322,10 @@ loadDocs();
 loadSession();
 loadQueue();
 pollMeter();
+
+/* a shorter example in the input on narrow screens, where the long one wraps out of sight */
+const narrow = matchMedia("(max-width: 640px)");
+const longPlaceholder = els.input.placeholder;
+const fitPlaceholder = () => { els.input.placeholder = narrow.matches ? "Rename, edit or undo a document…" : longPlaceholder; };
+narrow.addEventListener("change", fitPlaceholder);
+fitPlaceholder();

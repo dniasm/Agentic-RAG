@@ -3,29 +3,49 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Document Renaming Agent</title>
+  <title>Document Agent</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+  <div class="aurora" aria-hidden="true"><span></span><span></span><span></span></div>
   <div class="app">
     <aside class="library" id="library">
+      <div class="brand">
+        <div class="logo" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/>
+            <path d="M9 13h6M9 17h4"/>
+          </svg>
+        </div>
+        <div>
+          <div class="brand-name">Document Agent</div>
+          <div class="brand-sub">Rename · Edit · Undo · Queue</div>
+        </div>
+      </div>
+
       <header class="library-head">
         <div>
           <h1>Library</h1>
           <p class="muted" id="doc-count">No documents</p>
         </div>
-        <label class="button" title="Add PDF, DOCX, TXT or MD files">
+        <label class="button add-button" title="Add PDF, DOCX, TXT or MD files">
           <input type="file" id="file-input" multiple accept=".pdf,.docx,.txt,.md" hidden>
-          Add files
+          <span aria-hidden="true">＋</span> Add files
         </label>
       </header>
-      <div class="drop-hint">Drop files to add them</div>
+      <div class="drop-hint">
+        <div>
+          <div class="drop-icon" aria-hidden="true">⇪</div>
+          Drop files to add them
+        </div>
+      </div>
       <ul class="doc-list" id="doc-list"></ul>
       <section class="queue" id="queue" hidden>
-        <h3>Queue <span class="muted" id="queue-count"></span></h3>
+        <h3><span class="pulse" aria-hidden="true"></span>Queue <span class="muted" id="queue-count"></span></h3>
         <ul class="queue-list" id="queue-list"></ul>
       </section>
       <div class="empty-library" id="empty-library">
+        <div class="empty-icon" aria-hidden="true">📂</div>
         <p><strong>No documents yet.</strong></p>
         <p class="muted">Add files with the button above or drop them here. Each one is indexed and given a title
           from its content.</p>
@@ -35,29 +55,45 @@
     <main class="chat">
       <header class="chat-head">
         <button class="icon-button only-mobile" id="toggle-library" aria-label="Show library">☰</button>
-        <h2>Rename documents</h2>
+        <div class="chat-title">
+          <h2>Assistant</h2>
+          <span class="status"><span class="dot" aria-hidden="true"></span>gpt-oss-120b on Groq</span>
+        </div>
         <div class="meter" id="meter" title="Groq tokens used in the last 60 seconds. They free up as the minute passes.">
           <div class="meter-top"><span id="meter-text">– / – tokens</span><span id="meter-timer" class="muted"></span></div>
           <div class="meter-bar"><span id="meter-fill"></span></div>
         </div>
-        <button class="ghost" id="new-chat">New chat</button>
+        <button class="ghost" id="new-chat"><span aria-hidden="true">✦</span> New chat</button>
       </header>
       <section class="messages" id="messages" aria-live="polite">
         <div class="welcome" id="welcome">
-          <h3>Ask me to rename a document</h3>
-          <p class="muted">Point to it by name or by what it is about. If more than one document fits,
-            I'll ask which you mean.</p>
+          <div class="hero-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/>
+            </svg>
+          </div>
+          <h3>What should we do with your documents?</h3>
+          <p class="muted">Point to a document by name or by what it is about. I can rename it, change its text,
+            undo an edit, or queue changes to many documents at once. If more than one fits, I'll ask which you mean.</p>
           <div class="suggestions">
-            <button class="chip">List my documents</button>
-            <button class="chip" data-fill="Rename the document about ">Rename the document about … to …</button>
-            <button class="chip" data-fill="Suggest a better name for ">Suggest a better name for …</button>
+            <button class="chip"><span aria-hidden="true">☰</span>List my documents</button>
+            <button class="chip" data-fill="Rename the document about "><span aria-hidden="true">✎</span>Rename the document about … to …</button>
+            <button class="chip" data-fill="Suggest a better name for "><span aria-hidden="true">✦</span>Suggest a better name for …</button>
+            <button class="chip" data-fill="In the document about , replace "><span aria-hidden="true">✐</span>Change the text of a document …</button>
           </div>
         </div>
       </section>
       <form class="composer" id="composer">
-        <textarea id="input" rows="1" placeholder="e.g. Rename the GDPR document to “EU Data Protection Rules”"
-                  autocomplete="off"></textarea>
-        <button type="submit" class="button" id="send">Send</button>
+        <div class="composer-box">
+          <textarea id="input" rows="1" placeholder="e.g. Rename the GDPR document to “EU Data Protection Rules”"
+                    autocomplete="off"></textarea>
+          <button type="submit" class="send" id="send" aria-label="Send">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M5 12h14M13 6l6 6-6 6"/>
+            </svg>
+          </button>
+        </div>
+        <p class="hint">Enter to send · Shift+Enter for a new line</p>
       </form>
     </main>
   </div>
