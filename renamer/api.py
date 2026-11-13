@@ -1,15 +1,17 @@
 """HTTP API and the chat page.  Run:  python -m renamer serve   (http://127.0.0.1:8200)"""
+import logging
 import threading
+from urllib.parse import quote
 from concurrent.futures import ThreadPoolExecutor
 
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from renamer import agent, batch, catalog, config, library, logs
+from renamer import agent, batch, catalog, config, export, library, logs
 from renamer.logs import event
 
 logs.setup()   # data/logs/events.log (major events) and data/logs/all.log (everything)
@@ -97,6 +99,25 @@ def download(doc_id: str):
     if not path or not path.exists():
         raise HTTPException(404, "File not found")
     return FileResponse(path, filename=doc["file_name"])
+
+
+@app.get("/api/documents/{doc_id}/pdf")
+def download_pdf(doc_id: str):
+    """The document as a PDF: a PDF as it is stored, any other document laid out from its text."""
+    doc = catalog.get_document(doc_id)
+    if not doc or not (config.LIBRARY_DIR / doc["file_name"]).exists():
+        raise HTTPException(404, "File not found")
+    if path := export.stored_pdf(doc):
+        return FileResponse(path, filename=doc["file_name"], media_type="application/pdf")
+    try:
+        data = export.to_pdf(doc)
+    except Exception as e:
+        logging.getLogger(__name__).exception("PDF export of %s failed", doc["title"])
+        raise HTTPException(500, f"Couldn't make a PDF of this document: {str(e)[:200]}") from e
+    event("pdf_export", doc=doc_id, title=doc["title"], bytes=len(data))
+    name = export.pdf_file_name(doc)
+    return Response(data, media_type="application/pdf",
+                    headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(name)}"})
 
 
 @app.post("/api/chat")

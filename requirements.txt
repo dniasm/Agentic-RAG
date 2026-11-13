@@ -17,3 +17,4 @@ pypdf
 python-docx
 voyageai
 pytest
+fpdf2>=2.8   # PDF downloads of edited documents

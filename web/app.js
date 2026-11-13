@@ -64,6 +64,8 @@ function renderDocs(flashIds = []) {
         d.summary ? `<div class="doc-summary" title="${escapeHtml(d.summary)}">${escapeHtml(d.summary)}</div>` : ""}
       <div class="doc-actions">
         <a class="link-button" href="/api/documents/${d.id}/file" title="${escapeHtml(d.file_name)}">Download</a>
+        ${d.status === "indexed" && d.ext !== ".pdf"
+          ? `<a class="link-button" href="/api/documents/${d.id}/pdf" title="Download as a PDF (simple layout)">PDF</a>` : ""}
         ${d.status !== "processing" ? `<button class="link-button" data-delete="${d.id}">Remove</button>` : ""}
       </div>`;
     els.docList.appendChild(li);

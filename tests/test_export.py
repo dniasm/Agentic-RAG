@@ -1,0 +1,80 @@
+"""Downloading a document as a PDF."""
+import io
+
+import docx
+import pytest
+from fastapi.testclient import TestClient
+from pypdf import PdfReader
+
+from renamer import config, editing, export, library
+from tests.test_pdf_edit import LINES, make_pdf, pdf_doc  # noqa: F401  (fixture)
+
+MARKDOWN = """# Measles Outbreak in Morocco 2023‐2025
+
+## Key facts
+
+- **Cases:** 25,000 suspected, in all 12 regions
+- Deaths: 120
+  - mostly children under five
+
+1. Vaccinate
+2. Report cases
+
+See the [WHO page](https://www.who.int) for more. Kathmandu – नेपाल
+"""
+
+
+def pdf_text(data: bytes) -> str:
+    return "\n".join(page.extract_text() for page in PdfReader(io.BytesIO(data)).pages)
+
+
+@pytest.fixture
+def md_doc(tmp_path):
+    path = tmp_path / "measles.md"
+    path.write_text(MARKDOWN, encoding="utf-8")
+    doc, _ = library.ingest_path(path)
+    assert doc["status"] == "indexed"
+    return doc
+
+
+@pytest.fixture
+def client():
+    from renamer import api
+    return TestClient(api.app)
+
+
+def test_markdown_becomes_a_tidy_pdf(md_doc):
+    data = export.to_pdf(md_doc)
+    assert data.startswith(b"%PDF")
+    text = pdf_text(data)
+    assert "Measles Outbreak in Morocco 2023-2025" in text            # the odd hyphen is a plain one now
+    assert "Cases: 25,000 suspected" in text and "**" not in text and "#" not in text
+    assert "• Deaths: 120" in text and "1. Vaccinate" in text
+    assert "WHO page (https://www.who.int)" in text
+
+
+def test_text_and_word_documents_too(library_docs, tmp_path):
+    assert "maximum margin" in pdf_text(export.to_pdf(library_docs["svm.txt"]))
+    path = tmp_path / "memo.docx"
+    d = docx.Document()
+    d.add_paragraph("The launch is planned for March in Kathmandu.")
+    d.save(str(path))
+    doc, _ = library.ingest_path(path)
+    assert "planned for March in Kathmandu" in pdf_text(export.to_pdf(doc))
+
+
+def test_the_download_endpoint(md_doc, client):
+    r = client.get(f"/api/documents/{md_doc['id']}/pdf")
+    assert r.status_code == 200 and r.headers["content-type"] == "application/pdf"
+    assert r.content.startswith(b"%PDF") and ".pdf" in r.headers["content-disposition"]
+    assert client.get("/api/documents/nope/pdf").status_code == 404
+
+
+def test_an_edited_pdf_comes_back_as_a_pdf_with_the_edit(pdf_doc, client):  # noqa: F811
+    r = client.get(f"/api/documents/{pdf_doc['id']}/pdf")
+    assert r.content == make_pdf(LINES)                                # still a PDF: the file itself
+    editing.edit(pdf_doc["id"], "replace", find="March", text="June", convert_pdf=True)
+    r = client.get(f"/api/documents/{pdf_doc['id']}/pdf")
+    text = pdf_text(r.content)
+    assert "June in Kathmandu" in text and "March" not in text
+    assert (config.LIBRARY_DIR / editing.catalog.get_document(pdf_doc["id"])["file_name"]).suffix == ".md"

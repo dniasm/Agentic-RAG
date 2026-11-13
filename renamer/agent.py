@@ -33,14 +33,15 @@ SYSTEM = """You manage the user's document library: find, rename, edit and undo,
 - Changes to three or more documents: call queue_tasks at once, with the titles as they are now (it finds the
   documents itself; don't look them up first). For queue progress call queue_status; never guess.
 - Undo an edit with undo_edit (one step per call); undo a rename by renaming back (document_details lists earlier names).
-- You can't create files, convert to PDF, or do anything no tool does; never offer it.
+- Any document can be downloaded as a PDF with its "PDF" link in the library panel; say so if asked. Otherwise
+  you can't create files or do anything no tool does; never offer it.
 - Never say something was renamed, edited or undone unless a tool returned that. Reply briefly, in plain language,
   naming documents by title, never by doc_id."""
 
 
 FIND_NEXT = {
-    "ambiguous": "Several documents fit: don't choose. List them numbered (title and a few words on each) and ask "
-                 "which one, or for a more specific description.",
+    "ambiguous": "Several documents fit: don't choose. List them numbered (title and a few words on each). If the "
+                 "user wants one of them changed, ask which one; if they only asked what there is, just list them.",
     "uncertain": 'Only a weak match: ask "Did you mean <title>?" before changing it.',
     "none": "Nothing matched: say so, and offer the nearest candidates if there are any.",
 }
