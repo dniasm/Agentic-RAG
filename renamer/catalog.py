@@ -1,0 +1,326 @@
+"""SQLite catalog: documents, their rename history, and chat sessions."""
+import json
+import sqlite3
+import threading
+import uuid
+from contextlib import contextmanager
+from datetime import datetime, timezone
+
+from renamer import config
+
+_lock = threading.RLock()
+_conn: sqlite3.Connection | None = None
+_version = 0   # goes up with every change to documents or their names: cached search results are stale after it
+
+
+def version() -> int:
+    return _version
+
+
+def _changed() -> None:
+    global _version
+    with _lock:
+        _version += 1
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS documents (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    original_name TEXT NOT NULL,
+    file_name TEXT NOT NULL,          -- name of the stored file in data/library (follows the title)
+    ext TEXT NOT NULL,
+    sha256 TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL,
+    pages INTEGER,
+    chunks INTEGER,
+    summary TEXT NOT NULL DEFAULT '',
+    keywords TEXT NOT NULL DEFAULT '[]',
+    status TEXT NOT NULL,             -- processing | indexed | failed
+    error TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS renames (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    doc_id TEXT NOT NULL,
+    old_title TEXT NOT NULL,
+    new_title TEXT NOT NULL,
+    reason TEXT NOT NULL,             -- titled (on ingest) | user (through the agent)
+    at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS edits (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    doc_id TEXT NOT NULL,
+    operation TEXT NOT NULL,          -- replace | append
+    detail TEXT NOT NULL,
+    backup TEXT NOT NULL,             -- the file as it was before, in data/versions/<doc_id>/
+    at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS batches (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,         -- the chat that queued it
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS batch_tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    batch_id TEXT NOT NULL,
+    position INTEGER NOT NULL,
+    instruction TEXT NOT NULL,
+    payload TEXT,                     -- a structured change (run in code, no model), or NULL for free text
+    status TEXT NOT NULL,             -- queued | running | done | not_done | failed | cancelled
+    reply TEXT NOT NULL DEFAULT '',
+    actions TEXT NOT NULL DEFAULT '[]',
+    tokens INTEGER NOT NULL DEFAULT 0,
+    started_at TEXT,
+    finished_at TEXT
+);
+CREATE TABLE IF NOT EXISTS sessions (
+    id TEXT PRIMARY KEY,
+    turn INTEGER NOT NULL DEFAULT 0,
+    llm_messages TEXT NOT NULL DEFAULT '[]',   -- the model's conversation, tool calls included
+    display TEXT NOT NULL DEFAULT '[]',        -- what the chat window shows
+    guard TEXT NOT NULL DEFAULT '{}',          -- what the rename guard remembers (see agent.Guard)
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+"""
+
+
+def now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _db() -> sqlite3.Connection:
+    global _conn
+    if _conn is None:
+        config.CATALOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _conn = sqlite3.connect(config.CATALOG_PATH, check_same_thread=False)
+        _conn.row_factory = sqlite3.Row
+        _conn.executescript(SCHEMA)
+        try:  # databases made before structured changes existed
+            _conn.execute("ALTER TABLE batch_tasks ADD COLUMN payload TEXT")
+            _conn.commit()
+        except sqlite3.OperationalError:
+            pass
+    return _conn
+
+
+def reset_connection() -> None:
+    """Close the connection (tests point CATALOG_PATH elsewhere and reopen)."""
+    global _conn
+    with _lock:
+        if _conn is not None:
+            _conn.close()
+        _conn = None
+
+
+@contextmanager
+def tx():
+    with _lock:
+        conn = _db()
+        try:
+            yield conn
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+
+
+def _doc(row) -> dict | None:
+    if row is None:
+        return None
+    d = dict(row)
+    d["keywords"] = json.loads(d["keywords"] or "[]")
+    return d
+
+
+# ---------------------------------------------------------------- documents
+def add_document(*, title: str, original_name: str, file_name: str, ext: str, sha256: str, size_bytes: int) -> dict:
+    doc_id = uuid.uuid4().hex[:12]
+    t = now()
+    _changed()
+    with tx() as c:
+        c.execute(
+            "INSERT INTO documents (id, title, original_name, file_name, ext, sha256, size_bytes, status, "
+            "created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'processing', ?, ?)",
+            (doc_id, title, original_name, file_name, ext, sha256, size_bytes, t, t),
+        )
+    return get_document(doc_id)
+
+
+def update_document(doc_id: str, **fields) -> None:
+    if "keywords" in fields:
+        fields["keywords"] = json.dumps(fields["keywords"], ensure_ascii=False)
+    fields["updated_at"] = now()
+    cols = ", ".join(f"{k} = ?" for k in fields)
+    _changed()
+    with tx() as c:
+        c.execute(f"UPDATE documents SET {cols} WHERE id = ?", (*fields.values(), doc_id))
+
+
+def get_document(doc_id: str) -> dict | None:
+    with _lock:
+        return _doc(_db().execute("SELECT * FROM documents WHERE id = ?", (doc_id,)).fetchone())
+
+
+def find_by_hash(sha256: str) -> dict | None:
+    with _lock:
+        return _doc(_db().execute("SELECT * FROM documents WHERE sha256 = ?", (sha256,)).fetchone())
+
+
+def list_documents(status: str | None = None) -> list[dict]:
+    sql, args = "SELECT * FROM documents", ()
+    if status:
+        sql, args = sql + " WHERE status = ?", (status,)
+    with _lock:
+        return [_doc(r) for r in _db().execute(sql + " ORDER BY created_at, id", args).fetchall()]
+
+
+def delete_document(doc_id: str) -> None:
+    _changed()
+    with tx() as c:
+        c.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
+        c.execute("DELETE FROM renames WHERE doc_id = ?", (doc_id,))
+        c.execute("DELETE FROM edits WHERE doc_id = ?", (doc_id,))
+
+
+def record_rename(doc_id: str, old_title: str, new_title: str, reason: str) -> None:
+    _changed()
+    with tx() as c:
+        c.execute("INSERT INTO renames (doc_id, old_title, new_title, reason, at) VALUES (?, ?, ?, ?, ?)",
+                  (doc_id, old_title, new_title, reason, now()))
+
+
+def rename_history(doc_id: str) -> list[dict]:
+    with _lock:
+        rows = _db().execute("SELECT old_title, new_title, reason, at FROM renames WHERE doc_id = ? ORDER BY id",
+                             (doc_id,)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def record_edit(doc_id: str, operation: str, detail: str, backup: str) -> None:
+    with tx() as c:
+        c.execute("INSERT INTO edits (doc_id, operation, detail, backup, at) VALUES (?, ?, ?, ?, ?)",
+                  (doc_id, operation, detail, backup, now()))
+
+
+def last_edit(doc_id: str) -> dict | None:
+    with _lock:
+        row = _db().execute("SELECT id, operation, detail, backup, at FROM edits WHERE doc_id = ? "
+                            "ORDER BY id DESC LIMIT 1", (doc_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def delete_edit(edit_id: int) -> None:
+    with tx() as c:
+        c.execute("DELETE FROM edits WHERE id = ?", (edit_id,))
+
+
+def edit_history(doc_id: str) -> list[dict]:
+    with _lock:
+        rows = _db().execute("SELECT operation, detail, at FROM edits WHERE doc_id = ? ORDER BY id", (doc_id,)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def used_file_names(exclude_doc: str | None = None) -> set[str]:
+    with _lock:
+        rows = _db().execute("SELECT id, file_name FROM documents").fetchall()
+    return {r["file_name"].lower() for r in rows if r["id"] != exclude_doc}
+
+
+# ---------------------------------------------------------------- sessions
+def load_session(session_id: str) -> dict:
+    with _lock:
+        row = _db().execute("SELECT * FROM sessions WHERE id = ?", (session_id,)).fetchone()
+    if row is None:
+        return {"id": session_id, "turn": 0, "llm_messages": [], "display": [], "guard": {}}
+    return {"id": row["id"], "turn": row["turn"], "llm_messages": json.loads(row["llm_messages"]),
+            "display": json.loads(row["display"]), "guard": json.loads(row["guard"])}
+
+
+def save_session(session: dict) -> None:
+    t = now()
+    with tx() as c:
+        c.execute(
+            "INSERT INTO sessions (id, turn, llm_messages, display, guard, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET turn = excluded.turn, "
+            "llm_messages = excluded.llm_messages, display = excluded.display, guard = excluded.guard, "
+            "updated_at = excluded.updated_at",
+            (session["id"], session["turn"], json.dumps(session["llm_messages"], ensure_ascii=False),
+             json.dumps(session["display"], ensure_ascii=False), json.dumps(session["guard"]), t, t),
+        )
+
+
+# ---------------------------------------------------------------- batches
+def _task(row) -> dict:
+    d = dict(row)
+    d["actions"] = json.loads(d["actions"] or "[]")
+    d["payload"] = json.loads(d["payload"]) if d.get("payload") else None
+    return d
+
+
+def add_batch(session_id: str, items: list) -> dict:
+    """items: instruction strings (run by the agent) or (instruction, change dict) pairs (run in code)."""
+    batch_id = uuid.uuid4().hex[:10]
+    with tx() as c:
+        c.execute("INSERT INTO batches (id, session_id, created_at) VALUES (?, ?, ?)", (batch_id, session_id, now()))
+        for i, item in enumerate(items, start=1):
+            text, change = item if isinstance(item, tuple) else (item, None)
+            c.execute("INSERT INTO batch_tasks (batch_id, position, instruction, payload, status) "
+                      "VALUES (?, ?, ?, ?, 'queued')",
+                      (batch_id, i, text, json.dumps(change, ensure_ascii=False) if change else None))
+    return get_batch(batch_id)
+
+
+def get_batch(batch_id: str) -> dict | None:
+    with _lock:
+        row = _db().execute("SELECT * FROM batches WHERE id = ?", (batch_id,)).fetchone()
+        if row is None:
+            return None
+        tasks = _db().execute("SELECT * FROM batch_tasks WHERE batch_id = ? ORDER BY position", (batch_id,)).fetchall()
+    return {**dict(row), "tasks": [_task(t) for t in tasks]}
+
+
+def list_batches(limit: int = 10) -> list[dict]:
+    with _lock:
+        ids = [r["id"] for r in _db().execute("SELECT id FROM batches ORDER BY created_at DESC, rowid DESC LIMIT ?",
+                                              (limit,)).fetchall()]
+    return [get_batch(i) for i in ids]
+
+
+def next_queued_task() -> dict | None:
+    with _lock:
+        row = _db().execute("SELECT t.* FROM batch_tasks t JOIN batches b ON b.id = t.batch_id "
+                            "WHERE t.status = 'queued' ORDER BY b.created_at, b.rowid, t.position LIMIT 1").fetchone()
+    return _task(row) if row else None
+
+
+def get_task(task_id: int) -> dict | None:
+    with _lock:
+        row = _db().execute("SELECT * FROM batch_tasks WHERE id = ?", (task_id,)).fetchone()
+    return _task(row) if row else None
+
+
+def update_task(task_id: int, **fields) -> None:
+    if "actions" in fields:
+        fields["actions"] = json.dumps(fields["actions"], ensure_ascii=False)
+    cols = ", ".join(f"{k} = ?" for k in fields)
+    with tx() as c:
+        c.execute(f"UPDATE batch_tasks SET {cols} WHERE id = ?", (*fields.values(), task_id))
+
+
+def cancel_batch(batch_id: str) -> int:
+    with tx() as c:
+        return c.execute("UPDATE batch_tasks SET status = 'cancelled', finished_at = ? "
+                         "WHERE batch_id = ? AND status = 'queued'", (now(), batch_id)).rowcount
+
+
+def count_queued_tasks() -> int:
+    with _lock:
+        return _db().execute("SELECT COUNT(*) FROM batch_tasks WHERE status = 'queued'").fetchone()[0]
+
+
+def requeue_running_tasks() -> None:
+    """Tasks that were running when the server stopped are queued again."""
+    with tx() as c:
+        c.execute("UPDATE batch_tasks SET status = 'queued', started_at = NULL WHERE status = 'running'")

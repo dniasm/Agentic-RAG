@@ -1,0 +1,19 @@
+# What this project and the day7 modules it imports need.
+fastapi
+uvicorn
+python-multipart
+python-dotenv
+pydantic-settings
+groq
+langchain-core
+langchain-groq
+langchain-openai
+langchain-google-genai
+langchain-text-splitters
+qdrant-client
+mmh3
+numpy
+pypdf
+python-docx
+voyageai
+pytest
