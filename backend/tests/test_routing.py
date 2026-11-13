@@ -295,6 +295,13 @@ class TokenTrims(unittest.TestCase):
                 nodes.evaluate_node(dict(base, answer=answer))
             ev.assert_called_once()
 
+    def test_every_answer_writer_keeps_the_model_private(self):
+        from backend.tools import IDENTITY, FORMAT_RULES, direct_answer, rag, web_search
+        prompts = {"direct": direct_answer.system_prompt(False), "open": direct_answer.system_prompt(True),
+                   "documents": rag.SYSTEM, "web": web_search.SYSTEM.format(today="x", format_rules=FORMAT_RULES)}
+        for name, prompt in prompts.items():
+            self.assertIn(IDENTITY.strip(), prompt, name)
+
     def test_checker_reads_month_abbreviations(self):
         from backend.evaluation import citations
         r = citations.check("Python 3.15.1 was released on 21 October 2026 [1].", ["Python 3.15.1 - Oct. 21, 2026"])

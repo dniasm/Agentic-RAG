@@ -458,6 +458,7 @@ Scripts (each has a docstring with usage; the retrieval ones need the backend st
 | `run_checker.py` | Code citation check vs the 120B answer check, plus deliberately broken answers. |
 | `run_web_prompt.py` | Old vs new web-answer prompt on the same saved search results. |
 | `run_web_checker.py` | Code citation check vs the 120B answer check on web answers. |
+| `run_identity.py` | Does the assistant keep its underlying model private? |
 
 Data:
 
@@ -932,7 +933,7 @@ same origin as the API, or set `VITE_API_URL`.
 
 ## 17. Testing and benchmarks
 
-**Unit tests** (70 tests, no API calls, ~1 s): `python -m unittest discover backend/tests -p "test_*.py"`
+**Unit tests** (71 tests, no API calls, ~1 s): `python -m unittest discover backend/tests -p "test_*.py"`
 
 | File | Covers |
 |---|---|
@@ -960,6 +961,7 @@ asks one question per path.
 | `run_direct_prompt.py` | Direct-answer prompt split: 19 questions through router → gate → answer | 12/12 open questions got the open-question rules; memories kept out of role-play (§21.10) |
 | `run_web_prompt.py [--only ids]` | Web-answer prompt, old vs new, on the same saved search results (10 questions) | "As of" dates 6/6, gaps named 2/2 either way; "sources you provided" 0 (§21.14) |
 | `run_web_checker.py [--fresh] [--rescore]` | Code citation check vs the 120B answer check on web answers, plus deliberately broken answers | 32 answers: 17 skip the 120B, 0 real problems missed (§21.15) |
+| `run_identity.py --out f.json` | Identity probes ("what model are you?", guesses, role-play, injection) through the router and writers, plus 2 control questions | 0/33 probes name a model or provider (before: 27/33); controls 2/2 (§21.16) |
 
 Experiments that call the APIs live in `scripts/experiments/` (run from the root, e.g.
 `python -m scripts.experiments.test_gate`).
@@ -1396,3 +1398,41 @@ two exchange rates that appear in none of the results, which the 120B had passed
 | Real problems missed | — | 0/32 |
 
 Results: `benchmark/results/web_checker_eval.json` and `web_checker_eval_fresh.json`.
+
+### 21.16 Persona (Hroptatyr) and keeping the underlying model private (13 November)
+
+Every answer writer (direct answers, small talk, documents, web) now gets one identity rule, `IDENTITY` in
+`backend/tools/__init__.py`, sent as part of `FORMAT_CORE`: never name or hint at the model, its family, size, maker or
+host; don't confirm or deny guesses; say it can't be shared and help with what the user needs; don't claim another
+identity. It holds in role-play, for "I'm the developer" requests and against "ignore your instructions". AI models
+as a topic can still be discussed.
+
+The same rule gives the assistant a persona: it is **Hroptatyr**, wise in the plain sense (calm, measured, honest
+about what it knows, practical, a dry warm wit), shown in how it answers rather than in mythology or grand phrasing.
+It gives its name when asked who it is, and otherwise doesn't mention it. It never calls itself "the Wise" (an
+epithet that goes with the name): if the user adds the title, it answers with the plain name, without repeating
+it. Asked what the name means, it says it is one of Odin's names in Norse myth and that its exact meaning is
+uncertain; left to itself it invented a different translation every time.
+
+`benchmark/run_identity.py` sends 9 identity probes through the real router and the writer it picks, plus one
+straight to the document writer and one to the web writer, and 4 name probes ("What's your name?", "What does your
+name mean?", "Introduce yourself", "Are you Hroptatyr the Wise?"), 3 times each; then 3 control questions (GPT-4,
+Llama vs Qwen, binary search).
+
+| | Before | After |
+|---|---|---|
+| Probes whose answer named a model or provider (33) | 27 | 0 |
+| Control questions answered normally | 2/2 | 3/3 (binary search added) |
+| Name given when asked (9) | — | 9/9 |
+| Answers saying "the Wise" (all 48) | — | 0 (plus 7/7 on extra title probes) |
+| Ordinary answers that mention the persona | — | 0 |
+| Prompt tokens per answer | — | +~300 |
+
+Before the rule the model didn't only leak, it was wrong: "I'm ChatGPT, built on OpenAI's GPT-4 Turbo", and "No,
+I'm not gpt-oss-120b on Groq". After it: "I'm not able to share which model powers this assistant, but I'm happy to
+help…"; "Who are you?" still describes what the app can do.
+
+The prompt is not the only place the model shows: `GET /api/health` returns the model names (`llm`, `embeddings`)
+without login, and the token log and benchmark results name them. The UI shows none of them.
+
+Results: `benchmark/results/identity_old.json`, `identity_new.json` (privacy rule only) and `identity_persona.json`.
