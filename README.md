@@ -140,7 +140,7 @@ Create an account on the login screen, upload files on **Documents**, then chat.
 
 Smoke test (backend must be running): `python test_rag_pipeline.py [path/to/file.pdf]`
 
-Unit tests (87, no API calls): `python -m unittest discover backend/tests -p "test_*.py"` (routing, memory, streaming,
+Unit tests (91, no API calls): `python -m unittest discover backend/tests -p "test_*.py"` (routing, memory, streaming,
 citation check, reranker fallbacks)
 
 Model experiments (they call the APIs) live in `scripts/experiments/`; run them from the project root,

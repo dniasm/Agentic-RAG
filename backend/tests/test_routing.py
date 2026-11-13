@@ -462,5 +462,44 @@ class MemoryBatching(unittest.TestCase):
         self.assertNotIn("{message}", memory.BATCH_PROMPT)
 
 
+class PreviousAnswerCap(unittest.TestCase):
+    def test_long_previous_answer_keeps_its_start_and_end(self):
+        from backend.tools import history_to_messages
+        answer = "START " + "x" * 5000 + " END"
+        msgs = history_to_messages([{"role": "user", "content": "q" * 3000}, {"role": "assistant", "content": answer}])
+        self.assertEqual(len(msgs[0].content), 3000)  # the user's message stays whole
+        self.assertTrue(msgs[1].content.startswith("START"))
+        self.assertTrue(msgs[1].content.endswith("END"))
+        self.assertIn("omitted", msgs[1].content)
+        self.assertLess(len(msgs[1].content), 1700)
+
+    def test_normal_answers_and_code_answers_are_unchanged(self):
+        from backend.tools import history_to_messages
+        for answer in ("y" * 1500, "Here:\n```python\n" + "x = 1\n" * 1000 + "```"):
+            self.assertEqual(history_to_messages([{"role": "assistant", "content": answer}])[0].content, answer)
+
+
+class ShortEpisodes(unittest.TestCase):
+    def _remember(self, question, answer):
+        from backend.api.routes import chat
+        state = {"answer": answer, "standalone_query": question, "tool": "direct", "intent": "direct"}
+        with mock.patch.object(chat, "summarize_exchange", return_value="Summary.") as summarize, \
+             mock.patch.object(chat, "save_memory") as save, \
+             mock.patch.object(chat, "record_usage"), \
+             mock.patch.object(chat._memory_batcher, "add"):
+            chat._remember_exchange("u", "c", question, [], state, mock.Mock(), {})
+        return summarize.called, save.call_args.args[1]
+
+    def test_short_exchange_is_saved_without_a_summary(self):
+        summarized, episode = self._remember("What is the capital of Nepal?", "Kathmandu.")
+        self.assertFalse(summarized)
+        self.assertEqual(episode, "User asked: What is the capital of Nepal?\nAssistant answered: Kathmandu.")
+
+    def test_long_exchange_is_summarised(self):
+        summarized, episode = self._remember("Explain how BM25 ranks documents?", "z" * 900)
+        self.assertTrue(summarized)
+        self.assertEqual(episode, "Summary.")
+
+
 if __name__ == "__main__":
     unittest.main()

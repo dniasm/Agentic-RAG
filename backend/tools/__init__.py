@@ -4,15 +4,32 @@ from datetime import date
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
 
+# The previous answer, which follow-ups refer to, is kept up to this length. Longer ones (a quarter of stored
+# answers, up to ~10,000 characters) keep their start and their end: follow-ups mostly ask about the opening
+# claim or the last points ("and the last step?"), so cutting only the end would lose those.
+PREVIOUS_ANSWER_HEAD = 1000
+PREVIOUS_ANSWER_TAIL = 500
+
+
+def _head_and_tail(text: str, head: int = PREVIOUS_ANSWER_HEAD, tail: int = PREVIOUS_ANSWER_TAIL) -> str:
+    # Answers with code stay whole: their follow-ups edit the code ("this seems outdated", "make it multi-file").
+    if len(text) <= head + tail + 100 or "```" in text:
+        return text
+    return f"{text[:head].rstrip()}\n\n[… middle of this answer omitted …]\n\n{text[-tail:].lstrip()}"
+
+
 def history_to_messages(history: list[dict], keep_full: int = 2, older_max_chars: int = 800) -> list[BaseMessage]:
-    """Chat history as messages. The last `keep_full` messages (the previous exchange) are kept whole,
-    because follow-ups refer to them; older ones are shortened, since long answers re-sent on every turn
-    were a large share of each prompt."""
+    """Chat history as messages. The last `keep_full` messages (the previous exchange) are kept nearly whole,
+    because follow-ups refer to them: the user's message in full, a long answer as its start and end. Older ones
+    are shortened, since long answers re-sent on every turn were a large share of each prompt."""
     out: list[BaseMessage] = []
     for i, m in enumerate(history):
         content = m["content"]
-        if i < len(history) - keep_full and len(content) > older_max_chars:
-            content = content[:older_max_chars].rstrip() + " …"
+        if i < len(history) - keep_full:
+            if len(content) > older_max_chars:
+                content = content[:older_max_chars].rstrip() + " …"
+        elif m["role"] == "assistant":
+            content = _head_and_tail(content)
         if m["role"] == "user":
             out.append(HumanMessage(content))
         elif m["role"] == "assistant":

@@ -1475,3 +1475,16 @@ picks the open-question prompt and temperature, so the answer call can't know wh
 needs full answers (31 cases × 5, ~300k 120B tokens). Prompt caching was left as it is (§21.3).
 
 Results: `benchmark/results/memory_eval_batch.json` (batched), `memory_eval.json` (per message, same day).
+
+Two smaller cuts, the same day:
+
+- **Previous answer capped in history** (`tools.history_to_messages`). The answer writers still get the previous
+  exchange, but an answer longer than ~1,600 characters keeps its first 1,000 and last 500 characters with a
+  "middle omitted" marker: follow-ups mostly ask about the opening claim or the last points. Answers containing code
+  stay whole, since their follow-ups edit the code. In the stored conversations, 50 of the 55 follow-ups after a
+  long answer would be capped, saving ~14,400 tokens across them (~290 per such follow-up). On 5 real follow-ups
+  answered with the full and the capped answer, 4 were equivalent; the fifth (a moral dilemma at temperature 0.8)
+  varied run to run either way (3 repeats each).
+- **Short exchanges stored without a summary** (`routes/chat.py`, `EPISODE_RAW_MAX_CHARS` = 400). When question +
+  answer are at most 400 characters, the exchange is saved as it is, about the size of a summary, and the memory
+  model isn't called: 116 of the 281 stored exchanges that got a summary were this short.

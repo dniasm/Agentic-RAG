@@ -35,6 +35,7 @@ router = APIRouter(tags=["Chat"])
 
 EPISODE_LIMIT = 3          # past-conversation memories added to each request
 EPISODE_MAX_CHARS = 800    # characters kept from each (summaries are shorter; older episodes may not be)
+EPISODE_RAW_MAX_CHARS = 400  # exchanges up to this long (question + answer) are saved as they are, not summarised
 
 # Memory work (fact extraction, episode summary) runs after the reply is sent, one job at a time, so it
 # adds no wait for the user and two quick messages can't update the same memory keys at once.
@@ -258,8 +259,12 @@ def _remember_exchange(user_id: str, conv_id: str, user_message: str, history: l
         and state.get("intent") != "error"
     ):
         try:
-            summary = summarize_exchange(question, answer, callbacks=[tracker])
-            episode = summary or f"User asked: {question[:500]}\nAssistant answered: {answer[:800]}"
+            raw = f"User asked: {question[:500]}\nAssistant answered: {answer[:800]}"
+            # A short exchange stored as it is is about the size of its summary, so the memory call is skipped
+            # (measured 2026-11-14: 116 of 281 stored exchanges were this short).
+            short = len(question) + len(answer) <= EPISODE_RAW_MAX_CHARS
+            summary = None if short else summarize_exchange(question, answer, callbacks=[tracker])
+            episode = summary or raw
             save_memory(user_id, episode, kind="episodic", conversation_id=conv_id)
         except Exception:
             log.exception("Semantic memory persistence failed")
