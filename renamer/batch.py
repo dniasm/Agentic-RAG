@@ -54,6 +54,13 @@ class PacedModel:
         self.estimate = limits.tokens_of(reply) or self.estimate
         return reply
 
+    def __getattr__(self, name):
+        """Everything else is the wrapped model's: its "anything left?" check and its retry on the main model.
+        Hiding them made a free-text task stop after its first change ("rename X and Y" renamed only X)."""
+        if name == "inner":   # not set yet (copying, pickling): don't recurse
+            raise AttributeError(name)
+        return getattr(self.inner, name)
+
 
 def _resolve(change: dict) -> tuple[dict | None, str]:
     """The document a change is about: the one it was pinned to when queued, else named exactly or found uniquely.

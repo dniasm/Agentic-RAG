@@ -209,3 +209,25 @@ def test_the_upload_endpoint_says_edited_since(library_docs):
     editing.edit(doc["id"], "append", text="An extra line.")
     later = client.post("/api/documents/upload", files={"files": ("svm.txt", original)}).json()[0]
     assert later["status"] == "duplicate" and later["edited_since"] is True
+
+
+# ---------------------------------------------------------------- 10. a free-text queue task does all it says
+def test_a_free_text_task_does_every_change_it_names(library_docs, monkeypatch):
+    from tests.test_optimizations import Checked
+    from tests.test_undo_and_batch import NeverStopped
+    monkeypatch.setattr(batch, "_stop", NeverStopped())
+    svm, glove = library_docs["svm.txt"]["id"], library_docs["glove.txt"]["id"]
+    model = Checked([("find_documents", {"description": "svm.txt"}), ("find_documents", {"description": "glove.txt"})],
+                    [("rename_document", {"doc_id": svm, "new_title": "SVM Primer"})],
+                    [("rename_document", {"doc_id": glove, "new_title": "GloVe Primer"})],
+                    left=[True, False])
+    created = catalog.add_batch("s", ["Rename svm.txt to SVM Primer and glove.txt to GloVe Primer"])
+    batch.run_pending(sleep=lambda s: None, model=model)
+    task = catalog.get_batch(created["id"])["tasks"][0]
+    assert task["status"] == "done" and [a["new_title"] for a in task["actions"]] == ["SVM Primer", "GloVe Primer"]
+    assert model.asked == [["renamed"], ["renamed", "renamed"]]      # the check ran through the pacing wrapper
+
+
+def test_the_pacing_wrapper_hides_nothing_the_model_lacks():
+    paced = batch.PacedModel(object())
+    assert not hasattr(paced, "anything_left") and not hasattr(paced, "retry_on_main")
