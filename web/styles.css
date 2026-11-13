@@ -70,6 +70,16 @@ h2 { font-size: 16px; line-height: 24px; }
 .muted { color: var(--muted); }
 button, textarea, input { font: inherit; color: inherit; }
 :focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+/* scrollbars: thin, one flat grey thumb, no track colour and no arrow buttons */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--control); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--faint); }
+::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+::-webkit-scrollbar-corner { background: transparent; }
+@supports not selector(::-webkit-scrollbar) {   /* Firefox: the standard properties */
+  * { scrollbar-width: thin; scrollbar-color: var(--control) transparent; }
+}
 ::selection { background: color-mix(in srgb, var(--data) 22%, transparent); }
 
 /* Shell: the library on the ground, the chat on one white sheet inset 8px (no shadow) */
@@ -89,7 +99,7 @@ button, textarea, input { font: inherit; color: inherit; }
 }
 .library-head p { margin: 0; font-size: 12px; line-height: 16px; }
 
-.doc-list { list-style: none; margin: 0; padding: 0 8px 8px; overflow-y: auto; flex: 1; }
+.doc-list { list-style: none; margin: 0; padding: 0 8px 8px 8px; overflow-y: auto; flex: 1; scrollbar-gutter: stable; }
 .doc {
   padding: 10px 12px; border-radius: var(--radius-control); display: grid; gap: 2px;
   border-bottom: 1px solid var(--rule); transition: background-color .15s;
@@ -129,10 +139,11 @@ button, textarea, input { font: inherit; color: inherit; }
 .library.dragging .drop-hint { display: grid; }
 
 /* ---------------------------------------------------------------- queue */
-.queue { border-top: 1px solid var(--rule); padding: 12px 20px 16px; }
+.queue { border-top: 1px solid var(--rule); padding: 12px 0 16px 20px; }   /* no right padding: its list scrolls at the edge */
+.queue h3 { padding-right: 20px; }
 .queue h3 { margin: 0 0 6px; font-size: 14px; }
 .queue h3 .muted { font-weight: 400; font-size: 12px; }
-.queue-list { list-style: none; margin: 0; padding: 0; max-height: 180px; overflow-y: auto; }
+.queue-list { list-style: none; margin: 0; padding: 0 20px 0 0; max-height: 180px; overflow-y: auto; }
 .queue-list > .link-button { margin-top: 8px; }
 .task {
   display: grid; grid-template-columns: 64px 1fr; column-gap: 8px; align-items: baseline;
@@ -161,8 +172,6 @@ button, textarea, input { font: inherit; color: inherit; }
   border-bottom: 1px solid var(--border);
 }
 .chat-title { flex: 1; min-width: 0; }
-.status { font-size: 12px; line-height: 16px; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
-.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--positive); }
 
 .messages { flex: 1; overflow-y: auto; padding: 32px var(--pad) 16px; display: flex; flex-direction: column; gap: 24px; }
 .messages > * { width: 100%; max-width: 720px; margin: 0 auto; }
@@ -275,6 +284,6 @@ button, textarea, input { font: inherit; color: inherit; }
 }
 @media (max-width: 640px) {
   .chat-head { flex-wrap: wrap; row-gap: 8px; }
-  .status, .hint { display: none; }
+  .hint { display: none; }
   .meter { order: 5; width: 100%; }           /* the meter takes its own row under the title */
 }
