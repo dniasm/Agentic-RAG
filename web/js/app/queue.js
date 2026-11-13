@@ -1,5 +1,6 @@
 /** The queue panel: batches still running or queued in the last hour, polled fast while any task is waiting. */
 import { escapeHtml } from "../lib/dom.js";
+import { plainText } from "../lib/markdown.js";
 import { createPoller } from "../lib/poller.js";
 
 const ACTIVE_POLL_MS = 3000;
@@ -12,8 +13,8 @@ function taskItem(t) {
   const li = document.createElement("li");
   li.className = `task ${t.status}`;
   li.innerHTML = `<span class="task-state">${LABEL[t.status]}</span>
-    <span class="task-text" title="${escapeHtml(t.reply || t.instruction)}">${escapeHtml(t.instruction)}</span>` +
-    (t.reply && t.status !== "queued" ? `<div class="task-reply">${escapeHtml(t.reply)}</div>` : "");
+    <span class="task-text" title="${escapeHtml(plainText(t.reply) || t.instruction)}">${escapeHtml(t.instruction)}</span>` +
+    (t.reply && t.status !== "queued" ? `<div class="task-reply">${escapeHtml(plainText(t.reply))}</div>` : "");
   return li;
 }
 

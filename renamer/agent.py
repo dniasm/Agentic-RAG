@@ -10,6 +10,7 @@ The model chooses what to do, but the rules that protect the library are enforce
     in the same turn is refused.
 """
 import json
+import re
 import logging
 import time
 
@@ -58,7 +59,7 @@ def _tool(name: str, description: str, properties: dict | None = None, required:
 _S, _B = {"type": "string"}, {"type": "boolean"}
 
 TOOLS = [
-    _tool("list_documents", "Every document: title, original file name, short summary."),
+    _tool("list_documents", "Every document's title, newest first."),
     _tool("find_documents", "Which document the user means, by name or content: a decision (unique, ambiguous, "
           "uncertain, none) and the candidates.", {"description": {**_S, "description": "The user's words for it."}},
           ["description"]),
@@ -150,10 +151,7 @@ class Guard:
 # ---------------------------------------------------------------- tools
 def run_tool(name: str, args: dict, guard: Guard, actions: list) -> dict:
     if name == "list_documents":
-        docs = catalog.list_documents()
-        guard.saw_list([d["id"] for d in docs if d["status"] == "indexed"])
-        return {"documents": [{"doc_id": d["id"], "title": d["title"], "original_name": d["original_name"],
-                               "status": d["status"], "summary": library.snippet(d["summary"], 160)} for d in docs]}
+        return _list(guard)
 
     if name == "find_documents":
         description = (args.get("description") or "").strip()
@@ -199,6 +197,21 @@ def run_tool(name: str, args: dict, guard: Guard, actions: list) -> dict:
         return batch.summary()
 
     return {"error": f"Unknown tool {name}."}
+
+
+def _list(guard: Guard) -> dict:
+    """Titles only, newest first, at most LIST_MAX_DOCUMENTS: about 20 tokens a document. With summaries a list cost
+    76 tokens a document, so about 100 documents filled Groq's whole minute and "list my documents" failed."""
+    docs = list(reversed(catalog.list_documents()))
+    shown = docs[: config.LIST_MAX_DOCUMENTS]
+    guard.saw_list([d["id"] for d in shown if d["status"] == "indexed"])
+    out = {"total": len(docs), "documents": [
+        {"doc_id": d["id"], "title": d["title"], **({"status": d["status"]} if d["status"] != "indexed" else {})}
+        for d in shown]}
+    if len(docs) > len(shown):
+        out["next"] = (f"Only the newest {len(shown)} of {len(docs)} are listed. Say so: the library panel shows them "
+                       "all, and find_documents finds any one by name or content.")
+    return out
 
 
 def _edit(args: dict, guard: Guard, actions: list) -> dict:
@@ -488,19 +501,28 @@ DONE_STATUSES = ("renamed", "edited", "undone")
 CODE_REPLY_STATUSES = (*DONE_STATUSES, "needs_confirmation")
 
 
+_MARKDOWN_CHARS = re.compile(r"([\\`*])")
+
+
+def _md(text: str) -> str:
+    """Text from a document or a title, escaped for the chat's Markdown: a Markdown file's own ** or a cut-off half of
+    one must not pair with the reply's bold and embolden the wrong words."""
+    return _MARKDOWN_CHARS.sub(r"\\\1", str(text or ""))
+
+
 def _bold(text: str) -> str:
-    return f"**{text}**" if text else ""
+    return f"**{_md(text)}**" if text else ""
 
 
 def _question(r: dict) -> str:
     """A needs_confirmation result as the question to the user."""
     if r["reason"] == "pdf_conversion":
-        return (f'"{r["document"]}" is a PDF. To edit it I would convert it to a Markdown copy of its text: the layout '
-                "and images are lost, but the PDF is kept and undo brings it back. Shall I convert it and make the change?")
+        return (f'"{_md(r["document"])}" is a PDF. To edit it I would convert it to a Markdown copy of its text: the '
+                "layout and images are lost, but the PDF is kept and undo brings it back. Shall I convert it and make the change?")
     n = len(r["conflicts_with"])   # their titles are the new name itself, so say what they are about instead
-    about = "; ".join(c["summary"] for c in r["conflicts_with"] if c["summary"])
-    return (f'{"Another document is" if n == 1 else f"{n} other documents are"} already called "{r["new_title"]}"'
-            + (f" ({about})" if about else "") + f'. Rename "{r["document"]}" to "{r["new_title"]}" anyway, '
+    about = "; ".join(_md(c["summary"]) for c in r["conflicts_with"] if c["summary"])
+    return (f'{"Another document is" if n == 1 else f"{n} other documents are"} already called "{_md(r["new_title"])}"'
+            + (f" ({about})" if about else "") + f'. Rename "{_md(r["document"])}" to "{_md(r["new_title"])}" anyway, '
             "or use a different name?")
 
 
@@ -512,20 +534,21 @@ def compose_reply(results: list[dict]) -> str:
         if r["status"] == "needs_confirmation":
             parts.append(_question(r))
         elif r["status"] == "renamed":
-            parts.append(f'Renamed "{r["old_title"]}" to "{r["new_title"]}".')
+            parts.append(f'Renamed "{_md(r["old_title"])}" to "{_md(r["new_title"])}".')
         elif r["status"] == "undone":
-            parts.append(f'Undid the last edit to "{r["title"]}" ({r["undid"]}).')
+            parts.append(f'Undid the last edit to "{_md(r["title"])}" ({_md(r["undid"])}).')
         else:
             n = r["changes"]
             lines = ['Converted the PDF to Markdown (layout and images are not kept); undo restores the PDF.'] if r.get("converted") else []
-            lines += [f'Edited "{r["title"]}" ({n} change{"" if n == 1 else "s"}'
+            lines += [f'Edited "{_md(r["title"])}" ({n} change{"" if n == 1 else "s"}'
                      + (f", first {len(r['previews'])} shown" if n > len(r["previews"]) else "") + "):"]
             for p in r["previews"]:
+                lead, trail = _md(p["lead"]), _md(p["trail"])
                 if p["old"]:
-                    lines.append(f'Before: …{p["lead"]}{_bold(p["old"])}{p["trail"]}…')
-                    lines.append(f'After: …{p["lead"]}{_bold(p["new"])}{p["trail"]}…')
+                    lines.append(f'Before: …{lead}{_bold(p["old"])}{trail}…')
+                    lines.append(f'After: …{lead}{_bold(p["new"])}{trail}…')
                 else:
-                    lines.append(f'Added after …{p["lead"]}: {_bold(p["new"])}')
+                    lines.append(f'Added after …{lead}: {_bold(p["new"])}')
             parts.append("\n".join(lines))
     return "\n\n".join(parts)
 

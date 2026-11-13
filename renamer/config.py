@@ -25,6 +25,7 @@ BACKUP_MODEL = os.environ.get("RENAMER_BACKUP_MODEL", "openai/gpt-oss-20b")
 AGENT_REASONING = os.environ.get("RENAMER_AGENT_REASONING", "low")
 AGENT_MAX_STEPS = 8          # model calls per user message
 OLDER_MAX_CHARS = 800        # earlier messages are cut to this many characters (same as day7's history_to_messages)
+LIST_MAX_DOCUMENTS = 150   # list_documents shows at most this many titles (about 3,000 tokens)
 HISTORY_TURNS = 8            # earlier user messages sent back to the model (only the last with its tool calls)
 
 # Finding documents. Scores are on Voyage rerank-2.5's 0-1 scale (day7's calibrated thresholds).

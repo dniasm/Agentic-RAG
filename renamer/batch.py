@@ -55,21 +55,30 @@ class PacedModel:
         return reply
 
 
-def run_change(change: dict) -> tuple[str, str, list]:
-    """A structured change, done in code with the agent's own rules and no model call: (status, reply, actions).
-    The document must be named exactly or found uniquely; anything doubtful is left for the user, not guessed."""
+def _resolve(change: dict) -> tuple[dict | None, str]:
+    """The document a change is about, named exactly or found uniquely: (document, "") or (None, why not)."""
     named = [d for d in catalog.list_documents(status="indexed") if naming.same_name(d["title"], change["document"])]
     if len(named) > 1:
-        return "not_done", f'{len(named)} documents are called "{change["document"]}". Say which one.', []
+        return None, f'{len(named)} documents are called "{change["document"]}". Say which one.'
     if named:
-        doc = named[0]
-    else:
-        found = library.find(change["document"])
-        if found["decision"] != "unique":
-            options = ", ".join(f'"{c["title"]}"' for c in found.get("candidates", [])[:4])
-            return "not_done", (f'Could not tell which document "{change["document"]}" is ({found["decision"]})'
-                                + (f": {options}." if options else ".")), []
-        doc = catalog.get_document(found["candidates"][0]["doc_id"])
+        return named[0], ""
+    found = library.find(change["document"])
+    if found["decision"] != "unique":
+        options = ", ".join(f'"{c["title"]}"' for c in found.get("candidates", [])[:4])
+        return None, (f'Could not tell which document "{change["document"]}" is ({found["decision"]})'
+                      + (f": {options}." if options else "."))
+    return catalog.get_document(found["candidates"][0]["doc_id"]), ""
+
+
+def run_change(change: dict, before_applying=None) -> tuple[str, str, list]:
+    """A structured change, done in code with the agent's own rules and no model call: (status, reply, actions).
+    The document must be named exactly or found uniquely; anything doubtful is left for the user, not guessed.
+    before_applying(doc) runs once the document is known, just before anything changes."""
+    doc, problem = _resolve(change)
+    if doc is None:
+        return "not_done", problem, []
+    if before_applying:
+        before_applying(doc)
     guard = agent.Guard({}, 1)
     guard.resolved[doc["id"]] = {"turn": 1, "by": "name"}
     actions: list = []
@@ -120,8 +129,10 @@ def run_task(task: dict, sleep=_sleep, model=None) -> None:
             return
         catalog.update_task(task["id"], status="running", started_at=catalog.now())
         STATE["running_task"] = task["id"]
+        def checkpoint(doc: dict) -> None:   # the document as it was, so a restart can tell whether this already ran
+            catalog.update_task(task["id"], checkpoint={"doc_id": doc["id"], "sha256": doc["sha256"], "title": doc["title"]})
         try:
-            status, reply, actions = run_change(task["payload"])
+            status, reply, actions = run_change(task["payload"], before_applying=checkpoint)
         except Exception as e:
             log.exception("Queued change %s failed", task["id"])
             status, reply, actions = "failed", f"{type(e).__name__}: {str(e)[:200]}", []
@@ -170,8 +181,27 @@ def run_pending(sleep=_sleep, model=None) -> int:
     return n
 
 
+def recover_interrupted() -> None:
+    """Tasks the server was running when it stopped. A structured change whose document has changed since it began
+    (other content, or another title) most likely finished before the stop, so it is not run again: an append run
+    twice would add its text twice. Anything else is queued again."""
+    for task in catalog.tasks_with_status("running"):
+        cp = task["checkpoint"]
+        doc = catalog.get_document(cp["doc_id"]) if cp else None
+        if cp and doc is None:
+            catalog.update_task(task["id"], status="not_done", finished_at=catalog.now(),
+                                reply="The document was removed while this change was running.")
+        elif cp and (doc["sha256"] != cp["sha256"] or doc["title"] != cp["title"]):
+            catalog.update_task(task["id"], status="done", finished_at=catalog.now(),
+                                reply="Finished before the server stopped (the document had changed since this task "
+                                      "began), so it was not run again. Check the document if in doubt.")
+            event("task_recovered", task=task["id"], doc=doc["id"])
+        else:
+            catalog.update_task(task["id"], status="queued", started_at=None, checkpoint=None)
+
+
 def _loop() -> None:
-    catalog.requeue_running_tasks()
+    recover_interrupted()
     event("queue_worker_started")
     while not _stop.is_set():
         try:

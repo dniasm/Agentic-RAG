@@ -1,12 +1,19 @@
-/** A small, safe Markdown renderer for chat replies: paragraphs, numbered and bulleted lists, bold, italics, code.
-    Everything is escaped first, so model output can't inject HTML. */
+/** A small, safe Markdown renderer for chat replies: paragraphs, numbered and bulleted lists, bold, italics, code,
+    and backslash escapes (\* shows a literal asterisk). Everything is escaped first, so model output can't inject
+    HTML. As in CommonMark, emphasis markers must hug their text: "2 * 3 * 4" stays as written. */
 import { escapeHtml } from "./dom.js";
 
+const ESCAPABLE = /\\([\\`*_#\[\]()>~-])/g;
+/* placeholders for escaped characters, so the emphasis rules below never see them */
+const hide = (text) => text.replace(ESCAPABLE, (_, c) => `\u0000${c.charCodeAt(0)}\u0000`);
+const restore = (text, as = (c) => c) =>
+  text.replace(/\u0000(\d+)\u0000/g, (_, code) => as(String.fromCharCode(Number(code))));
+
 export function inline(text) {
-  return escapeHtml(text)
+  return restore(escapeHtml(hide(String(text ?? "")))
     .replace(/`([^`]+)`/g, "<code>$1</code>")
-    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-    .replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>");
+    .replace(/\*\*(?=\S)([^*]*?\S)\*\*/g, "<strong>$1</strong>")
+    .replace(/(^|[^*\w])\*(?=[^\s*])([^*\n]*?[^\s*])\*(?![*\w])/g, "$1<em>$2</em>"), escapeHtml);
 }
 
 export function markdown(text) {
@@ -25,9 +32,16 @@ export function markdown(text) {
       close();
     } else {
       close();
-      out.push(`<p>${inline(line.replace(/^#+\s*/, ""))}</p>`);
+      out.push(`<p>${inline(line.replace(/^#+\s+/, ""))}</p>`);
     }
   }
   close();
   return out.join("");
+}
+
+/** The text of a Markdown string without its markup, for places that show plain text (a list, a tooltip). */
+export function plainText(text) {
+  return restore(hide(String(text ?? ""))
+    .replace(/\*\*(?=\S)([^*]*?\S)\*\*/g, "$1")
+    .replace(/`([^`]+)`/g, "$1"));
 }

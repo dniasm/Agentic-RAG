@@ -67,6 +67,7 @@ CREATE TABLE IF NOT EXISTS batch_tasks (
     position INTEGER NOT NULL,
     instruction TEXT NOT NULL,
     payload TEXT,                     -- a structured change (run in code, no model), or NULL for free text
+    checkpoint TEXT,                  -- the document as it was when a structured change began (doc_id, sha256, title)
     status TEXT NOT NULL,             -- queued | running | done | not_done | failed | cancelled
     reply TEXT NOT NULL DEFAULT '',
     actions TEXT NOT NULL DEFAULT '[]',
@@ -103,6 +104,11 @@ def _db() -> sqlite3.Connection:
         _conn.executescript(SCHEMA)
         try:  # databases made before structured changes existed
             _conn.execute("ALTER TABLE batch_tasks ADD COLUMN payload TEXT")
+            _conn.commit()
+        except sqlite3.OperationalError:
+            pass
+        try:  # databases made before restart recovery existed
+            _conn.execute("ALTER TABLE batch_tasks ADD COLUMN checkpoint TEXT")
             _conn.commit()
         except sqlite3.OperationalError:
             pass
@@ -270,6 +276,7 @@ def _task(row) -> dict:
     d = dict(row)
     d["actions"] = json.loads(d["actions"] or "[]")
     d["payload"] = json.loads(d["payload"]) if d.get("payload") else None
+    d["checkpoint"] = json.loads(d["checkpoint"]) if d.get("checkpoint") else None
     return d
 
 
@@ -327,8 +334,9 @@ def get_task(task_id: int) -> dict | None:
 
 
 def update_task(task_id: int, **fields) -> None:
-    if "actions" in fields:
-        fields["actions"] = json.dumps(fields["actions"], ensure_ascii=False)
+    for key in ("actions", "checkpoint"):
+        if key in fields and fields[key] is not None:
+            fields[key] = json.dumps(fields[key], ensure_ascii=False)
     cols = ", ".join(f"{k} = ?" for k in fields)
     with tx() as c:
         c.execute(f"UPDATE batch_tasks SET {cols} WHERE id = ?", (*fields.values(), task_id))
@@ -343,6 +351,12 @@ def cancel_batch(batch_id: str) -> int:
 def count_queued_tasks() -> int:
     with _lock:
         return _db().execute("SELECT COUNT(*) FROM batch_tasks WHERE status = 'queued'").fetchone()[0]
+
+
+def tasks_with_status(status: str) -> list[dict]:
+    with _lock:
+        rows = _db().execute("SELECT * FROM batch_tasks WHERE status = ? ORDER BY id", (status,)).fetchall()
+    return [_task(r) for r in rows]
 
 
 def requeue_running_tasks() -> None:
