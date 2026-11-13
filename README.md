@@ -138,7 +138,10 @@ ingested, picked to exercise every scenario above, with a prompt list per scenar
 | `renamer/agent.py` | The tool-calling agent (gpt-oss-120b, 20B when rate-limited) and the rename guard |
 | `renamer/catalog.py` | SQLite: documents, rename history, chat sessions |
 | `renamer/api.py` | FastAPI routes and the chat page |
-| `web/` | Chat page (plain HTML, CSS and JS, no build step) |
+| `web/` | Chat page: `index.html`, `styles.css` and native ES modules, no build step |
+| `web/js/lib/` | Reusable modules with no knowledge of this site, to copy to other projects: `api` (JSON fetch), `dom` (element lookup, escaping, plurals), `toast`, `markdown` (safe renderer), `poller` (self-scheduling polling), `resizer` (draggable panel width), `dropzone` (file drop), `textarea` (autosize, Enter to send, responsive placeholder), `storage` (ids kept in localStorage) |
+| `web/js/app/` | This site's features, each a `create…({ els, api, … })` taking its elements and helpers: `library`, `chat`, `queue`, `meter` |
+| `web/js/main.js` | The entry module: finds the elements by id and wires the features together |
 | `tests/` | Unit tests |
 | `scripts/fetch_test_corpus.py` | Downloads the test corpus |
 | `test_corpus/` | The test documents (`files/`, git-ignored), their sources (`manifest.json`) and the test plan |

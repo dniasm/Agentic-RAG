@@ -1,5 +1,6 @@
 """HTTP API and the chat page.  Run:  python -m renamer serve   (http://127.0.0.1:8200)"""
 import logging
+import mimetypes
 import threading
 from urllib.parse import quote
 from concurrent.futures import ThreadPoolExecutor
@@ -14,6 +15,9 @@ from pydantic import BaseModel, Field
 from renamer import agent, batch, catalog, config, export, library, logs
 from renamer.logs import event
 
+# The page loads its scripts as ES modules, which browsers run only when served as JavaScript; on Windows,
+# Python's mimetypes can read .js as text/plain from the registry.
+mimetypes.add_type("text/javascript", ".js")
 logs.setup()   # data/logs/events.log (major events) and data/logs/all.log (everything)
 
 
