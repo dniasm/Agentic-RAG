@@ -27,6 +27,16 @@ async def lifespan(_app):
 
 
 app = FastAPI(title="Document Renaming Agent", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def always_fresh_page(request, call_next):
+    """The page's own files (HTML, CSS, JS) are checked with the server on every load, so a browser never pairs a
+    new page with an old cached stylesheet. Unchanged files still come back as a quick 304."""
+    response = await call_next(request)
+    if not request.url.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
 # One file at a time: Gemini's free tier allows 100 embedding requests a minute.
 _ingest_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ingest")
 # One chat message at a time per session, so two quick messages can't race on the same session.
