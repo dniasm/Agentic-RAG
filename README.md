@@ -77,6 +77,8 @@ Old vs current, from the benchmarks and the token log (details: [`docs/DOCUMENTA
 | Web answers checked without the 120B (32 answers) | 0/32 | 17/32; 0 real problems missed; 124/128 broken answers caught |
 | Identity probes naming the underlying model or provider (33) | 27/33 | 0/33; questions about AI models still answered |
 | Persona "Hroptatyr": name given when asked / says "the Wise" | — | 9/9 / 0 |
+| Router calls on 80 router test messages | 80 | 70 (greetings and first-message document requests decided in code) |
+| Memory benchmark, batched extraction (same day) | 17/18, 14,375 tokens | 17/18, 12,180 (−15%); 0 false saves |
 
 ## Repository layout
 
@@ -138,7 +140,7 @@ Create an account on the login screen, upload files on **Documents**, then chat.
 
 Smoke test (backend must be running): `python test_rag_pipeline.py [path/to/file.pdf]`
 
-Unit tests (71, no API calls): `python -m unittest discover backend/tests -p "test_*.py"` (routing, memory, streaming,
+Unit tests (87, no API calls): `python -m unittest discover backend/tests -p "test_*.py"` (routing, memory, streaming,
 citation check, reranker fallbacks)
 
 Model experiments (they call the APIs) live in `scripts/experiments/`; run them from the project root,

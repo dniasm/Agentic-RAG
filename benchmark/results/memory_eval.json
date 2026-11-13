@@ -1,12 +1,12 @@
 {
-  "timestamp": "2026-11-03T13:27:48",
+  "timestamp": "2026-11-14T01:17:56",
   "model": "qwen/qwen3.8-27b",
   "summary": {
     "cases_passed": "17/18",
     "facts_saved": "19/20",
     "stale_values_left": 0,
     "false_saves": 0,
-    "memory_model_tokens": 15984
+    "memory_model_tokens": 14375
   },
   "rows": [
     {
@@ -39,21 +39,22 @@
       "missing": [],
       "unwanted": [],
       "false_save": false,
-      "tokens": 1753
+      "tokens": 1876
     },
     {
       "id": "hobbies-append",
-      "passed": true,
+      "passed": false,
       "memories": {
         "hobbies": [
-          "trekking",
-          "futsal"
+          "trekking"
         ]
       },
-      "missing": [],
+      "missing": [
+        "futsal"
+      ],
       "unwanted": [],
       "false_save": false,
-      "tokens": 1810
+      "tokens": 1816
     },
     {
       "id": "liked-vs-favourite",
@@ -89,7 +90,7 @@
       "missing": [],
       "unwanted": [],
       "false_save": false,
-      "tokens": 973
+      "tokens": 874
     },
     {
       "id": "forget-one",
@@ -102,7 +103,7 @@
       "missing": [],
       "unwanted": [],
       "false_save": false,
-      "tokens": 0
+      "tokens": 798
     },
     {
       "id": "forget-all",
@@ -137,7 +138,7 @@
       "missing": [],
       "unwanted": [],
       "false_save": false,
-      "tokens": 1690
+      "tokens": 1825
     },
     {
       "id": "response-style",
@@ -163,31 +164,33 @@
       "missing": [],
       "unwanted": [],
       "false_save": false,
-      "tokens": 898
+      "tokens": 0
     },
     {
       "id": "vegetarian",
       "passed": true,
       "memories": {
-        "dietary_restrictions": [
+        "diet": [
           "vegetarian"
         ]
       },
       "missing": [],
       "unwanted": [],
       "false_save": false,
-      "tokens": 766
+      "tokens": 0
     },
     {
       "id": "dislike",
-      "passed": false,
-      "memories": {},
-      "missing": [
-        "spicy"
-      ],
+      "passed": true,
+      "memories": {
+        "disliked_foods": [
+          "spicy food"
+        ]
+      },
+      "missing": [],
       "unwanted": [],
       "false_save": false,
-      "tokens": 908
+      "tokens": 0
     },
     {
       "id": "no-facts-question",

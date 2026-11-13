@@ -26,7 +26,8 @@ from backend.models.schemas import (
     ConversationOut,
     MessageOut,
 )
-from backend.tools.memory import extract_and_save_memories, summarize_exchange
+from backend.memory.batching import MemoryBatcher
+from backend.tools.memory import extract_and_save_batch, summarize_exchange
 
 log = logging.getLogger(__name__)
 
@@ -38,6 +39,54 @@ EPISODE_MAX_CHARS = 800    # characters kept from each (summaries are shorter; o
 # Memory work (fact extraction, episode summary) runs after the reply is sent, one job at a time, so it
 # adds no wait for the user and two quick messages can't update the same memory keys at once.
 _memory_worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix="memory")
+MEMORY_FLUSH_WAIT_SECONDS = 30  # longest a new conversation waits for the user's pending facts to be saved
+
+
+def _extract_batch(user_id: str, turns: list[dict]) -> None:
+    """Runs on the memory worker. Batched extraction happens after the messages' own usage lines were logged,
+    so its tokens get a line of their own."""
+    tracker = UsageTracker()
+    extract_and_save_batch(user_id, turns, callbacks=[tracker])
+    if tracker.summary()["total"]["input"]:
+        record_usage(tracker, tool="memory_batch", intent="memory", message=f"{len(turns)} message(s)",
+                     batched_messages=len(turns))
+
+
+_memory_batcher = MemoryBatcher(
+    _extract_batch,
+    idle_seconds=settings.memory_batch_idle_seconds,
+    max_pending=settings.memory_batch_max,
+    # The answer writer sees the last history_turns messages; flush before a waiting fact leaves that window
+    # (one exchange early, since memory work runs after the reply).
+    max_age=max(1, settings.history_turns // 2 - 1),
+    schedule=lambda flush, user_id: _memory_worker.submit(flush, user_id),
+)
+
+# user_id -> conversation ids whose memory work is still queued or running on the worker
+_queued_memory: dict[str, list[str]] = {}
+_queued_lock = threading.Lock()
+
+
+def _wait_for_memory(user_id: str, conversation_id: str) -> None:
+    """Before a request in another conversation reads the user's memories, save the facts still waiting from
+    the previous one. Within one conversation the history covers them, so nothing waits there."""
+    with _queued_lock:
+        queued_elsewhere = any(c != conversation_id for c in _queued_memory.get(user_id, []))
+    if not (queued_elsewhere or _memory_batcher.has_pending(user_id, other_than_conversation=conversation_id)):
+        return
+    try:
+        # FIFO worker: the queued memory jobs run first, then the flush.
+        _memory_worker.submit(_memory_batcher.flush_user, user_id).result(timeout=MEMORY_FLUSH_WAIT_SECONDS)
+    except Exception:
+        log.exception("Waiting for pending memory extraction failed")
+
+
+def flush_pending_memory(timeout: float = 60) -> None:
+    """On shutdown: extract every user's pending messages."""
+    try:
+        _memory_worker.submit(_memory_batcher.flush_all).result(timeout=timeout)
+    except Exception:
+        log.exception("Flushing pending memory on shutdown failed")
 _STREAM_END = object()  # marks the end of an answer's event stream
 
 
@@ -67,6 +116,7 @@ def _prepare(
     ]
 
     # Exact facts and preferences from SQLite.
+    _wait_for_memory(user["id"], conv["id"])
     memories = db.list_memories(user["id"])
 
     # Relevant past conversations from semantic memory.
@@ -162,6 +212,8 @@ def _persist(
         memories=memory_count,
         latency_ms=latency_ms,
     )
+    with _queued_lock:
+        _queued_memory.setdefault(user_id, []).append(conv["id"])
     _memory_worker.submit(_remember, user_id, conv["id"], user_message, history, dict(state), tracker,
                           usage_context)
 
@@ -176,12 +228,26 @@ def _persist(
 
 def _remember(user_id: str, conv_id: str, user_message: str, history: list[dict], state: dict,
               tracker: UsageTracker, usage_context: dict) -> None:
-    """Background: update the user's facts, save the exchange as an episode, then log the request's tokens
-    (including the memory model's). Failures are logged; the answer has already been saved and sent."""
+    """Background: queue the message for batched fact extraction, save the exchange as an episode, then log
+    the request's tokens. Failures are logged; the answer has already been saved and sent."""
     try:
-        extract_and_save_memories(user_id=user_id, message=user_message, history=history, callbacks=[tracker])
+        _remember_exchange(user_id, conv_id, user_message, history, state, tracker, usage_context)
+    finally:
+        with _queued_lock:
+            queued = _queued_memory.get(user_id, [])
+            if conv_id in queued:
+                queued.remove(conv_id)
+            if not queued:
+                _queued_memory.pop(user_id, None)
+
+
+def _remember_exchange(user_id: str, conv_id: str, user_message: str, history: list[dict], state: dict,
+                       tracker: UsageTracker, usage_context: dict) -> None:
+    try:
+        # Facts are extracted in batches (see _memory_batcher); this only queues the message.
+        _memory_batcher.add(user_id, conv_id, user_message, history)
     except Exception:
-        log.exception("Key-value memory extraction failed")
+        log.exception("Queueing the message for memory extraction failed")
 
     answer = (state.get("answer") or "").strip()
     question = (state.get("standalone_query") or user_message).strip()

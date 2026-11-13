@@ -1,0 +1,238 @@
+{
+  "timestamp": "2026-11-14T01:15:27",
+  "model": "qwen/qwen3.8-27b",
+  "summary": {
+    "cases_passed": "17/18",
+    "facts_saved": "16/20",
+    "stale_values_left": 0,
+    "false_saves": 0,
+    "memory_model_tokens": 12180
+  },
+  "rows": [
+    {
+      "id": "basic-identity",
+      "passed": true,
+      "memories": {
+        "location": [
+          "Pokhara"
+        ],
+        "preferred_name": [
+          "Asmin"
+        ]
+      },
+      "missing": [],
+      "unwanted": [],
+      "false_save": false,
+      "tokens": 927
+    },
+    {
+      "id": "relocation",
+      "passed": true,
+      "memories": {
+        "location": [
+          "Kathmandu"
+        ],
+        "preferred_name": [
+          "Asmin"
+        ]
+      },
+      "missing": [],
+      "unwanted": [],
+      "false_save": false,
+      "tokens": 1002
+    },
+    {
+      "id": "hobbies-append",
+      "passed": true,
+      "memories": {
+        "hobbies": [
+          "trekking",
+          "futsal"
+        ]
+      },
+      "missing": [],
+      "unwanted": [],
+      "false_save": false,
+      "tokens": 971
+    },
+    {
+      "id": "liked-vs-favourite",
+      "passed": true,
+      "memories": {
+        "favorite_drink": [
+          "milk tea"
+        ],
+        "liked_drinks": [
+          "coffee"
+        ]
+      },
+      "missing": [],
+      "unwanted": [],
+      "false_save": false,
+      "tokens": 928
+    },
+    {
+      "id": "many-facts",
+      "passed": false,
+      "memories": {},
+      "missing": [
+        "Tribhuvan",
+        "Nepali",
+        "English",
+        "student"
+      ],
+      "unwanted": [],
+      "false_save": false,
+      "tokens": 0
+    },
+    {
+      "id": "forget-one",
+      "passed": true,
+      "memories": {
+        "liked_foods": [
+          "momo"
+        ]
+      },
+      "missing": [],
+      "unwanted": [],
+      "false_save": false,
+      "tokens": 882
+    },
+    {
+      "id": "forget-all",
+      "passed": true,
+      "memories": {},
+      "missing": [],
+      "unwanted": [],
+      "false_save": false,
+      "tokens": 988
+    },
+    {
+      "id": "collection-correction",
+      "passed": true,
+      "memories": {
+        "hobbies": [
+          "cricket"
+        ]
+      },
+      "missing": [],
+      "unwanted": [],
+      "false_save": false,
+      "tokens": 996
+    },
+    {
+      "id": "name-change",
+      "passed": true,
+      "memories": {
+        "preferred_name": [
+          "Asmin"
+        ]
+      },
+      "missing": [],
+      "unwanted": [],
+      "false_save": false,
+      "tokens": 988
+    },
+    {
+      "id": "response-style",
+      "passed": true,
+      "memories": {
+        "response_style": [
+          "short answers"
+        ]
+      },
+      "missing": [],
+      "unwanted": [],
+      "false_save": false,
+      "tokens": 902
+    },
+    {
+      "id": "assistant-name",
+      "passed": true,
+      "memories": {
+        "assistant_name": [
+          "Nova"
+        ]
+      },
+      "missing": [],
+      "unwanted": [],
+      "false_save": false,
+      "tokens": 898
+    },
+    {
+      "id": "vegetarian",
+      "passed": true,
+      "memories": {
+        "diet": [
+          "vegetarian"
+        ]
+      },
+      "missing": [],
+      "unwanted": [],
+      "false_save": false,
+      "tokens": 898
+    },
+    {
+      "id": "dislike",
+      "passed": true,
+      "memories": {
+        "disliked_foods": [
+          "spicy food"
+        ]
+      },
+      "missing": [],
+      "unwanted": [],
+      "false_save": false,
+      "tokens": 901
+    },
+    {
+      "id": "no-facts-question",
+      "passed": true,
+      "memories": {},
+      "missing": [],
+      "unwanted": [],
+      "false_save": false,
+      "tokens": 0
+    },
+    {
+      "id": "no-facts-thanks",
+      "passed": true,
+      "memories": {},
+      "missing": [],
+      "unwanted": [],
+      "false_save": false,
+      "tokens": 0
+    },
+    {
+      "id": "no-facts-own-question",
+      "passed": true,
+      "memories": {},
+      "missing": [],
+      "unwanted": [],
+      "false_save": false,
+      "tokens": 0
+    },
+    {
+      "id": "no-facts-hypothetical",
+      "passed": true,
+      "memories": {},
+      "missing": [],
+      "unwanted": [],
+      "false_save": false,
+      "tokens": 0
+    },
+    {
+      "id": "facts-then-question",
+      "passed": true,
+      "memories": {
+        "occupation": [
+          "data analyst"
+        ]
+      },
+      "missing": [],
+      "unwanted": [],
+      "false_save": false,
+      "tokens": 899
+    }
+  ]
+}

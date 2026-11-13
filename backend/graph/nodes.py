@@ -17,7 +17,7 @@ from backend.graph.state import AgentState
 from backend.rag import rerank
 from backend.rag.retrieval import retrieve
 from backend.tools import direct_answer, greeting, rag, web_search
-from backend.tools import history_to_text, today
+from backend.tools import history_to_text, memories_for_decision, memory_lines, today
 
 log = logging.getLogger(__name__)
 
@@ -258,14 +258,39 @@ def _doc_list(docs: list[str]) -> str:
     return ", ".join(docs[:ROUTER_DOC_NAMES]) + (f" (and {more} more)" if more > 0 else "")
 
 
+# Messages that are only a greeting, thanks or goodbye ("hi!", "thanks a lot", "good morning", "bye"). Anything
+# more ("hi, what is X?") goes to the router.
+_GREETING_WORD = (r"(?:hi+|hello|hey|hiya|howdy|greetings|good\s+(?:morning|afternoon|evening|night)|thanks|"
+                  r"thank\s+(?:you|u)|thx|ty|cheers|bye|goodbye|bye\s+bye|see\s+(?:you|ya))")
+_GREETING_FILLER = (r"(?:so\s+much|a\s+lot|very\s+much|again|there|everyone|all|for\s+the\s+help|"
+                    r"for\s+your\s+help|later|soon)")
+_PLAIN_SMALL_TALK = re.compile(
+    rf"^{_GREETING_WORD}(?:[\s!.,:;~-]+(?:{_GREETING_WORD}|{_GREETING_FILLER}))*[\s!.,:;)(~-]*$", re.I)
+
+
+def _code_route(state: AgentState) -> tuple | None:
+    """Decisions plain enough to make without the router model (~1,000 tokens each):
+    - a message that is only a greeting, thanks or goodbye -> small talk;
+    - the first message of a conversation that explicitly asks for the uploaded documents -> documents
+      (with no history the message is already standalone).
+    Returns (kind, preference, clear, confidence_required, standalone, reason) or None."""
+    query = state["query"].strip()
+    if len(query) <= 40 and _PLAIN_SMALL_TALK.match(query):
+        return "small_talk", "auto", True, False, query, "Plain greeting, thanks or goodbye (decided in code)."
+    docs = state.get("doc_names", [])
+    if docs and not state.get("history") and asks_for_documents(query, docs):
+        return ("information_request", "documents", True, True, query,
+                "First message, explicitly asks for the user's documents (decided in code).")
+    return None
+
+
 def router_node(state: AgentState) -> dict:
     docs = state.get("doc_names", [])
-    memories = state.get("memories", [])
+    shortcut = _code_route(state)
+    if shortcut:
+        return _route_update(state, *shortcut, review_steps=[], decided_in_code=True)
 
-    memory_text = "\n".join(
-        f"{m['memory_key']}: {m['memory_value']}"
-        for m in memories
-    ) or "(none)"
+    memory_text = memory_lines(memories_for_decision(state.get("memories", []), state["query"]))
 
     prompt = ROUTER_PROMPT.format(
         today=today(),
@@ -316,6 +341,12 @@ def router_node(state: AgentState) -> dict:
         reason = "Router error; using the default source order."
         confidence_required = True
 
+    return _route_update(state, kind, pref, clear, confidence_required, standalone, reason, review_steps)
+
+
+def _route_update(state: AgentState, kind: str, pref: str, clear: bool, confidence_required: bool,
+                  standalone: str, reason: str, review_steps: list[dict], decided_in_code: bool = False) -> dict:
+    docs = state.get("doc_names", [])
     standalone = standalone or state["query"]
     notices: list[str] = []
 
@@ -388,6 +419,7 @@ def router_node(state: AgentState) -> dict:
                 source_preference=pref,
                 query_is_clear=clear,
                 standalone_query=standalone,
+                decided_in_code=decided_in_code,
             ),
             *review_steps,
         ],

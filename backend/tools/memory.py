@@ -259,6 +259,64 @@ def extract_and_save_memories(user_id: str, message: str, history: list[dict],
         return []
 
 
+# ---------------------------------------------------------------- batched extraction
+# Several user messages in one call (see backend/memory/batching.py): the ~1,000 tokens of rules and tool format
+# are paid once per conversation pause instead of once per message. A single pending message uses EXTRACT_PROMPT
+# unchanged; this variant only replaces the message section and says how later messages override earlier ones.
+BATCH_PROMPT = EXTRACT_PROMPT.replace(
+    "List the durable facts the LATEST USER MESSAGE states about the user. Return an empty list if there are none.",
+    "List the durable facts the USER MESSAGES below state about the user, as operations in message order.\n"
+    "A later message overrides an earlier one: if it changes or retracts a fact, list the earlier operation and "
+    "then the correcting one.\nReturn an empty list if there are none.",
+).replace(
+    "PREVIOUS EXCHANGE (only to understand references; never a source of facts):\n{history}\n\n"
+    "LATEST USER MESSAGE:\n{message}",
+    "CONVERSATION, oldest first. Only USER lines are a source of facts; ASSISTANT lines only help understand "
+    "references:\n{conversation}",
+)
+assert "{conversation}" in BATCH_PROMPT and "LATEST USER MESSAGE states" not in BATCH_PROMPT
+
+BATCH_REPLY_CHARS = 300  # characters kept from the assistant reply before each user message
+
+
+def extract_and_save_batch(user_id: str, turns: list[dict], callbacks: list | None = None
+                           ) -> list[tuple[str, str, str | None]]:
+    """Extract facts from several user messages, oldest first, in one memory-model call.
+
+    turns: [{"message": user message, "history": the conversation before it}]. Messages the pre-check rejects
+    are dropped; with one left this is exactly extract_and_save_memories."""
+    turns = [t for t in turns if (t.get("message") or "").strip() and _may_contain_memory(t["message"])]
+    if not turns:
+        return []
+    if len(turns) == 1:
+        return extract_and_save_memories(user_id, turns[0]["message"], turns[0].get("history") or [], callbacks)
+    try:
+        existing = _grouped(user_id)
+        existing_text = "\n".join(f"{k}: {'; '.join(v)}" for k, v in existing.items()) or "(none)"
+        lines = []
+        for t in turns:
+            previous = next((m for m in reversed(t.get("history") or []) if m["role"] == "assistant"), None)
+            if previous:
+                lines.append(f"ASSISTANT: {' '.join(previous['content'].split())[:BATCH_REPLY_CHARS]}")
+            lines.append(f"USER: {t['message'].strip()}")
+        result = structured(MemoryExtraction, memory=True).invoke(
+            BATCH_PROMPT.format(existing=existing_text, conversation="\n".join(lines)),
+            config={"callbacks": callbacks or [], "metadata": {"usage_step": "memory_extract"}},
+        )
+        log.info("Batched memory extraction (%d messages) returned %d operation(s): %s", len(turns),
+                 len(result.facts), [op.model_dump() for op in result.facts])
+        changes = plan_changes(existing, result.facts)
+        apply_changes(user_id, changes)
+        return changes
+    except Exception:
+        # Don't lose the facts: fall back to one call per message (what the batch was meant to save).
+        log.exception("Batched memory extraction failed; extracting message by message")
+        changes = []
+        for t in turns:
+            changes += extract_and_save_memories(user_id, t["message"], t.get("history") or [], callbacks)
+        return changes
+
+
 # ---------------------------------------------------------------- episode summaries
 EPISODE_PROMPT = """Summarise this exchange between a user and an AI assistant in one or two sentences,
 so it can be recalled in a later conversation. Write in the third person ("The user asked …; the assistant

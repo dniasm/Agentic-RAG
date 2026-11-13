@@ -38,6 +38,8 @@ async def lifespan(_: FastAPI):
     try:
         yield
     finally:
+        from backend.api.routes.chat import flush_pending_memory
+        flush_pending_memory()  # facts still waiting for a batched extraction
         close_client()
 
 

@@ -5,6 +5,7 @@ Calls the real memory model (Qwen), paced to stay under its tokens-per-minute li
 
     python benchmark/run_memory.py            # all cases
     python benchmark/run_memory.py relocation # one case
+    python benchmark/run_memory.py --batch    # facts extracted in batches, as the app does (memory_batch_max)
 """
 import json
 import os
@@ -24,7 +25,10 @@ settings.database_path = os.path.join(tempfile.mkdtemp(), "memory_bench.db")  # 
 
 from backend.config.usage import UsageTracker  # noqa: E402
 from backend.models import database as db  # noqa: E402
-from backend.tools.memory import extract_and_save_memories  # noqa: E402
+from backend.memory.batching import MemoryBatcher  # noqa: E402
+from backend.tools.memory import extract_and_save_batch, extract_and_save_memories  # noqa: E402
+
+BATCH = "--batch" in sys.argv
 
 BENCH_DIR = Path(__file__).resolve().parent
 TOKENS_PER_MINUTE = 6000  # Groq free tier allows 8,000 per model; leave headroom
@@ -39,9 +43,18 @@ def run_case(case: dict, pace: dict) -> dict:
     user = db.create_user(f"mem_{case['id']}_{time.time_ns()}", "x")
     history: list[dict] = []
     tracker = UsageTracker()
-    for turn in case["turns"]:
+    # Batch mode: the app's batcher (no idle timer fires: the turns come faster), flushed at the end of the case.
+    batcher = MemoryBatcher(lambda uid, turns: extract_and_save_batch(uid, turns, callbacks=[tracker]),
+                            idle_seconds=3600, max_pending=settings.memory_batch_max,
+                            max_age=max(1, settings.history_turns // 2 - 1))
+    for i, turn in enumerate(case["turns"]):
         before = tracker.summary()["total"]
-        extract_and_save_memories(user["id"], turn, history, callbacks=[tracker])
+        if BATCH:
+            batcher.add(user["id"], "bench", turn, history)
+            if i == len(case["turns"]) - 1:
+                batcher.flush_user(user["id"])
+        else:
+            extract_and_save_memories(user["id"], turn, history, callbacks=[tracker])
         after = tracker.summary()["total"]
         used = (after["input"] + after["output"]) - (before["input"] + before["output"])
         # Pace: spend at most TOKENS_PER_MINUTE per rolling minute.
@@ -65,7 +78,8 @@ def run_case(case: dict, pace: dict) -> dict:
 
 def main():
     all_cases = json.loads((BENCH_DIR / "memory_cases.json").read_text(encoding="utf-8"))["cases"]
-    cases = [c for c in all_cases if c["id"] in sys.argv[1:]] if len(sys.argv) > 1 else all_cases
+    ids = [a for a in sys.argv[1:] if not a.startswith("--")]
+    cases = [c for c in all_cases if c["id"] in ids] if ids else all_cases
     db.init_db()
     pace = {"spent": []}
     rows = []
@@ -92,7 +106,7 @@ def main():
     if len(cases) != len(all_cases):  # a single-case run must not replace the full results
         print("single case: results not saved")
         return
-    out = BENCH_DIR / "results" / "memory_eval.json"
+    out = BENCH_DIR / "results" / ("memory_eval_batch.json" if BATCH else "memory_eval.json")
     out.write_text(json.dumps({"timestamp": datetime.now().isoformat(timespec="seconds"), "model":
                                settings.memory_llm_model, "summary": summary, "rows": rows},
                               indent=2, ensure_ascii=False), encoding="utf-8")

@@ -26,6 +26,28 @@ def history_to_text(history: list[dict], max_chars: int = 600) -> str:
     return "\n".join(f"{m['role'].upper()}: {m['content'][:max_chars]}" for m in history)
 
 
+# The message refers back to an earlier conversation ("what did you recommend last time?"): the router and the
+# knowledge gate then need the recalled episodes to see that the answer is already known.
+_PAST_REFERENCE = re.compile(
+    r"\b(?:last\s+time|remember|recall|we\s+(?:talked|discussed|spoke|chatted)|"
+    r"you\s+(?:told|said|mentioned|recommended|suggested|gave)|"
+    r"(?:our|the)\s+(?:last|previous|earlier|other)\s+(?:chat|conversation|session|discussion))\b",
+    re.I)
+
+
+def memories_for_decision(memories: list[dict], query: str) -> list[dict]:
+    """Memories for the router and the knowledge gate: saved facts only. Recalled episodes (up to three of ~800
+    characters) are kept for the answer writer, which is the only step that uses their content, unless the
+    message refers back to a past conversation."""
+    if _PAST_REFERENCE.search(query):
+        return memories
+    return [m for m in memories if m.get("memory_source") != "semantic"]
+
+
+def memory_lines(memories: list[dict], empty: str = "(none)") -> str:
+    return "\n".join(f"{m['memory_key']}: {m['memory_value']}" for m in memories) or empty
+
+
 def today() -> str:
     return date.today().strftime("%B %d, %Y")
 

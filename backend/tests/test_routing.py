@@ -317,5 +317,150 @@ class TokenTrims(unittest.TestCase):
         self.assertLess(len(prompt), len(direct_answer.GATE_PROMPT) + 2500)
 
 
+class RouterSkippedInCode(unittest.TestCase):
+    """Messages the router model doesn't need to see (each skip saves ~1,000 tokens)."""
+
+    def _route(self, query: str, docs: list[str] | None = None, history: list[dict] | None = None):
+        """The update if decided in code, None if the router model was asked."""
+        with mock.patch.object(nodes, "verified_decision", side_effect=RuntimeError("router called")) as router:
+            update = nodes.router_node({"query": query, "doc_names": docs or [], "history": history or []})
+        return None if router.called else update
+
+    def test_plain_greetings_and_thanks_go_to_small_talk(self):
+        for q in ("hi", "Hello!", "hey there", "good morning", "thanks a lot!", "Thank you so much.",
+                  "thx", "bye", "see you later", "hi, hello"):
+            update = self._route(q)
+            self.assertIsNotNone(update, q)
+            self.assertEqual(update["intent"], "greeting", q)
+            self.assertFalse(update["confidence_required"], q)
+
+    def test_greetings_with_a_question_still_go_to_the_router(self):
+        for q in ("hi, what is BM25?", "thanks, but why is that?", "hello, are you sure?", "again",
+                  "thank you for nothing, that answer was wrong"):
+            self.assertIsNone(self._route(q, docs=["report.pdf"]), q)
+
+    def test_first_message_asking_for_documents_goes_to_rag(self):
+        update = self._route("According to my documents, how many districts are there?", docs=["report.pdf"])
+        self.assertEqual(update["intent"], "rag")
+        self.assertEqual(update["standalone_query"], "According to my documents, how many districts are there?")
+
+    def test_document_request_needs_the_router_after_the_first_message_or_without_uploads(self):
+        q = "what do my notes say about it?"
+        self.assertIsNone(self._route(q, docs=["report.pdf"], history=[{"role": "user", "content": "x"}]))
+        self.assertIsNone(self._route(q, docs=[]))
+
+
+class EpisodesOnlyForTheAnswer(unittest.TestCase):
+    MEMORIES = [
+        {"memory_key": "name", "memory_value": "Asha", "memory_source": "sqlite"},
+        {"memory_key": "past_conversation_episodic", "memory_value": "User asked about BM25.",
+         "memory_source": "semantic"},
+    ]
+
+    def test_router_and_gate_get_saved_facts_only(self):
+        from backend.tools import memories_for_decision
+        kept = memories_for_decision(self.MEMORIES, "what is tf-idf?")
+        self.assertEqual([m["memory_key"] for m in kept], ["name"])
+
+    def test_episodes_kept_when_the_message_refers_to_a_past_conversation(self):
+        from backend.tools import memories_for_decision
+        for q in ("what did you recommend last time?", "do you remember what we discussed?",
+                  "in our previous chat you said something about BM25"):
+            self.assertEqual(len(memories_for_decision(self.MEMORIES, q)), 2, q)
+
+    def test_router_prompt_leaves_episodes_out(self):
+        decision = nodes.Route(
+            message_type="information_request", source_preference="model_knowledge", reasoning="r",
+            query_is_clear=True, standalone_query="q", confidence="high", confidence_required=True)
+        with mock.patch.object(nodes, "verified_decision", return_value=(decision, [])) as router:
+            nodes.router_node({"query": "what is tf-idf?", "doc_names": [], "memories": self.MEMORIES})
+        prompt = router.call_args.args[0]
+        self.assertIn("name: Asha", prompt)
+        self.assertNotIn("BM25", prompt)
+
+    def test_answer_writer_still_gets_episodes(self):
+        from backend.tools import direct_answer
+        messages = direct_answer._messages("q", [], self.MEMORIES)
+        self.assertIn("User asked about BM25.", messages[1].content)
+
+
+class SmallTalkPrompt(unittest.TestCase):
+    def test_small_talk_uses_the_short_prompt_with_the_persona(self):
+        from backend.tools import IDENTITY, direct_answer
+        with mock.patch.object(direct_answer, "invoke_answer", return_value="Hi!") as invoke:
+            direct_answer.converse("hi", [], "Asha", 2, [])
+        system = invoke.call_args.args[0][0].content
+        self.assertIn(IDENTITY.strip(), system)
+        self.assertIn("Asha", system)
+        self.assertNotIn("## Accuracy", system)
+        self.assertLess(len(system), len(direct_answer.system_prompt(False)))
+
+
+class MemoryBatching(unittest.TestCase):
+    """Fact extraction batched per conversation pause (backend/memory/batching.py). No API calls."""
+
+    def _batcher(self, max_pending=3, max_age=2):
+        from backend.memory.batching import MemoryBatcher
+        self.calls = []
+        return MemoryBatcher(lambda uid, turns: self.calls.append((uid, [t["message"] for t in turns])),
+                             idle_seconds=3600, max_pending=max_pending, max_age=max_age)
+
+    def test_messages_wait_until_the_batch_is_full(self):
+        b = self._batcher()
+        b.add("u", "c", "I live in Pokhara.", [])
+        b.add("u", "c", "I play futsal.", [])
+        self.assertEqual(self.calls, [])
+        b.add("u", "c", "My favourite drink is milk tea.", [])
+        self.assertEqual(self.calls, [("u", ["I live in Pokhara.", "I play futsal.",
+                                             "My favourite drink is milk tea."])])
+        self.assertFalse(b.has_pending("u"))
+
+    def test_messages_without_facts_are_not_queued(self):
+        b = self._batcher()
+        self.assertFalse(b.add("u", "c", "what is BM25?", []))
+        self.assertFalse(b.has_pending("u"))
+
+    def test_flushed_before_the_fact_leaves_the_history_window(self):
+        b = self._batcher(max_age=2)
+        b.add("u", "c", "I live in Pokhara.", [])
+        b.add("u", "c", "what is BM25?", [])
+        self.assertEqual(self.calls, [])
+        b.add("u", "c", "and tf-idf?", [])
+        self.assertEqual(self.calls, [("u", ["I live in Pokhara."])])
+
+    def test_another_conversation_flushes_the_previous_one_first(self):
+        b = self._batcher()
+        b.add("u", "c1", "I live in Pokhara.", [])
+        self.assertTrue(b.has_pending("u", other_than_conversation="c2"))
+        self.assertFalse(b.has_pending("u", other_than_conversation="c1"))
+        b.add("u", "c2", "I play futsal.", [])
+        self.assertEqual(self.calls, [("u", ["I live in Pokhara."])])
+        b.flush_all()
+        self.assertEqual(self.calls[-1], ("u", ["I play futsal."]))
+
+    def test_one_pending_message_uses_the_single_message_prompt(self):
+        with mock.patch.object(memory, "extract_and_save_memories", return_value=[]) as single, \
+             mock.patch.object(memory, "structured") as batched:
+            memory.extract_and_save_batch("u", [{"message": "I live in Pokhara.", "history": []},
+                                                {"message": "what is BM25?", "history": []}])
+        single.assert_called_once()
+        batched.assert_not_called()
+
+    def test_failed_batch_falls_back_to_one_call_per_message(self):
+        broken = mock.Mock()
+        broken.return_value.invoke.side_effect = RuntimeError("bad tool call")
+        with mock.patch.object(memory, "structured", broken), \
+             mock.patch.object(memory, "_grouped", return_value={}), \
+             mock.patch.object(memory, "extract_and_save_memories", return_value=[]) as single:
+            memory.extract_and_save_batch("u", [{"message": "I live in Pokhara.", "history": []},
+                                                {"message": "I play futsal.", "history": []}])
+        self.assertEqual(single.call_count, 2)
+
+    def test_batch_prompt_keeps_the_rules(self):
+        self.assertIn("DO NOT REMEMBER", memory.BATCH_PROMPT)
+        self.assertIn("{conversation}", memory.BATCH_PROMPT)
+        self.assertNotIn("{message}", memory.BATCH_PROMPT)
+
+
 if __name__ == "__main__":
     unittest.main()

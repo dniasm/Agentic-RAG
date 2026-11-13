@@ -136,6 +136,10 @@ class Settings(BaseSettings):
     tavily_search_depth: str = "basic"   # basic = 1 credit/search, advanced = 2 (free plan: 1,000 credits/month)
     web_cache_ttl_seconds: int = 3600    # identical searches within this window reuse results (saves credits)
     history_turns: int = 6
+    # Fact extraction is batched per conversation pause (backend/memory/batching.py): the user's messages that may
+    # hold a fact are extracted together after this many idle seconds, or once this many are waiting.
+    memory_batch_idle_seconds: float = 90
+    memory_batch_max: int = 3
 
     # --- Auth / persistence ---
     database_path: str = str(BACKEND_DIR / "data" / "app.db")

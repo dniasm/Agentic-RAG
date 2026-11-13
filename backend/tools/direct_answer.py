@@ -7,7 +7,10 @@ from pydantic import BaseModel, Field
 
 from backend.config.llm import invoke_answer, structured
 from backend.config.settings import settings
-from backend.tools import FORMAT_CORE, clean_answer, history_to_messages, history_to_text, today
+from backend.tools import (
+    FORMAT_CORE, IDENTITY, clean_answer, history_to_messages, history_to_text, memories_for_decision,
+    memory_lines, today,
+)
 
 log = logging.getLogger(__name__)
 
@@ -102,10 +105,7 @@ def _run_gate(
             else "(no previous conversation)"
         )
 
-        memory_text = "\n".join(
-            f"{m['memory_key']}: {m['memory_value']}"
-            for m in memories
-        ) or "(no saved memories)"
+        memory_text = memory_lines(memories_for_decision(memories, query), "(no saved memories)")
 
         # Fixed rules first (a cacheable prefix), then this message's context, the question last.
         prompt = GATE_PROMPT.format(today=today()) + GATE_INPUT.format(
@@ -226,11 +226,15 @@ def answer(
     return clean_answer(text), False, gate
 
 
-SMALL_TALK = """The user is making small talk: a greeting, thanks, a goodbye, sharing something about
-themselves, or asking who you are or what you can do. Reply warmly and naturally in 1-3 sentences, in the
-same voice you use for every other answer. If it fits, mention that you can answer questions from their
-uploaded documents, search the web for recent information, and answer general questions.
-The user's name is {username}. They currently have {doc_count} document(s) indexed."""
+# Small talk gets its own short system prompt instead of CORE: a greeting doesn't need the accuracy and follow-up
+# rules (~480 tokens). It keeps what small talk does need: what the assistant can do, that it is an AI, and the
+# persona/identity rule (identity questions such as "who are you?" are routed here).
+SMALL_TALK = """You are the assistant of an Agentic RAG workspace: you answer from the user's uploaded
+documents, search the web for recent information, and answer general questions from your own knowledge.
+Today's date is {today}. You are an AI: don't claim human experiences or a personal life.
+The user is making small talk: a greeting, thanks, a goodbye, sharing something about themselves, or asking
+who you are or what you can do. Reply warmly and naturally in 1-3 sentences, in plain prose. If it fits,
+mention what you can do. The user's name is {username}. They currently have {doc_count} document(s) indexed."""
 
 
 def converse(
@@ -241,8 +245,8 @@ def converse(
     memories: list[dict] | None = None,
 ) -> str:
     """Small talk, written by the same model and persona as every other answer."""
-    note = SMALL_TALK.format(username=username, doc_count=doc_count)
-    return clean_answer(invoke_answer(_messages(query, history, memories or [], note),
+    system = SMALL_TALK.format(today=today(), username=username, doc_count=doc_count) + IDENTITY
+    return clean_answer(invoke_answer(_messages(query, history, memories or [], system=system),
                                       temperature=settings.chat_temperature))
 
 
@@ -250,16 +254,13 @@ def _messages(
     query: str,
     history: list[dict],
     memories: list[dict],
-    mode_note: str | None = None,
     open_question: bool = False,
+    system: str | None = None,
 ) -> list:
-    memory_text = "\n".join(
-        f"{m['memory_key']}: {m['memory_value']}"
-        for m in memories
-    ) or "(no saved memories)"
+    memory_text = memory_lines(memories, "(no saved memories)")
 
     messages = [
-        SystemMessage(system_prompt(open_question)),
+        SystemMessage(system or system_prompt(open_question)),
         SystemMessage(
             "Persistent user memories, saved from previous interactions:\n"
             f"{memory_text}\n\n"
@@ -272,7 +273,6 @@ def _messages(
             "remember details that are absent from both the supplied history "
             "and the supplied memories."
         ),
-        *([SystemMessage(mode_note)] if mode_note else []),
         *history_to_messages(history),
         HumanMessage(query),
     ]

@@ -93,8 +93,8 @@ What makes it *agentic* rather than a fixed pipeline:
 4. The final state is saved as an assistant message (sources, notices, trace, evaluation, latency, token usage) and
    sent as the `final` event. Because the agent runs in its own thread, the answer is saved even if the browser
    disconnects.
-5. In the background, one job at a time, the memory model updates the user's facts and summarises the exchange; then
-   the request's token use is logged.
+5. In the background, one job at a time, the message is queued for batched fact extraction (§8), the memory model
+   summarises the exchange, and the request's token use is logged.
 
 ---
 
@@ -618,8 +618,8 @@ Two kinds, kept separate on purpose:
 |---|---|---|
 | What | Specific details about the user: name, location, hobbies, preferences, how they want answers | A one- or two-sentence summary of an answered exchange |
 | Stored in | SQLite `user_facts`, one row per value | Qdrant collection `user_memories`, Voyage embeddings |
-| Written by | `tools/memory.extract_and_save_memories` | `tools/memory.summarize_exchange` + `memory/store.save_memory` |
-| Read | Every request (`db.list_memories`) | Up to 3 closest (score ≥ 0.45), each cut to 800 chars |
+| Written by | `tools/memory.extract_and_save_batch` (batched, `memory/batching.py`) | `tools/memory.summarize_exchange` + `memory/store.save_memory` |
+| Read | Every request (`db.list_memories`) | Up to 3 closest (score ≥ 0.45), each cut to 800 chars; only the answer writer gets them, unless the message refers back to a past conversation (§21.17) |
 
 **Fact rules.** A cheap pre-check (`_may_contain_memory`) skips the model for messages that can't hold a fact.
 Memory commands ("remember", "forget", "call me", "from now on") always go through. Otherwise each clause is checked
@@ -637,6 +637,13 @@ case-insensitively. Deleting a conversation also deletes its episodes.
 
 Memory work runs **after** the reply, on a single background worker, so it adds no waiting time and two quick
 messages can't update the same keys at once.
+
+**Batched extraction** (`memory/batching.py`). Messages that pass the pre-check wait per user and are extracted
+together in one memory-model call when the user pauses (`MEMORY_BATCH_IDLE_SECONDS`, 90), when `MEMORY_BATCH_MAX` (3)
+are waiting, or before the oldest one would leave the chat history the answer writer sees. A request in another
+conversation first waits (up to 30 s) for the user's pending facts to be saved; on shutdown everything pending is
+extracted. One waiting message uses the single-message prompt unchanged; if a batch call fails, each message is
+extracted on its own. Batched calls are logged as their own `memory_batch` line in the token log.
 
 The original one-row-per-key `user_memory` table was migrated into `user_facts` once (recorded in `migrations` as
 `user_facts_v1`) and kept, unused, as a backup.
@@ -1436,3 +1443,35 @@ The prompt is not the only place the model shows: `GET /api/health` returns the 
 without login, and the token log and benchmark results name them. The UI shows none of them.
 
 Results: `benchmark/results/identity_old.json`, `identity_new.json` (privacy rule only) and `identity_persona.json`.
+
+### 21.17 Fewer calls per message: router skips, facts-only decisions, slim small talk, batched memory (14 November)
+
+Four token cuts that leave answer quality alone.
+
+- **Router skipped when code can decide** (`nodes._code_route`, ~1,000 tokens each). A message that is only a greeting,
+  thanks or goodbye ("hi", "thanks a lot!", "see you later") goes straight to small talk. The first message of a
+  conversation that explicitly asks for the uploaded documents (`asks_for_documents`, with uploads) goes straight to
+  the documents; with no history it is already standalone. Trace steps say `decided_in_code`.
+- **Episodes only for the answer writer** (`tools.memories_for_decision`). The router and the knowledge gate get the
+  saved facts, not the up to three ~800-character past-conversation summaries, unless the message refers back to a
+  past conversation ("last time", "remember", "you said", "our previous chat"): then they need the episodes to see
+  that the answer is already known.
+- **Slim small-talk prompt** (`direct_answer.SMALL_TALK`). Small talk no longer gets the direct-answer rules on
+  accuracy and follow-ups: system prompt 1,848 characters instead of ~4,200; the persona rule (`IDENTITY`) is kept.
+- **Batched fact extraction** (§8, `memory/batching.py`): one memory-model call per conversation pause instead of
+  one per message with a possible fact.
+
+| | Before | After |
+|---|---|---|
+| Router benchmark messages decided without the router (80) | 0 | 10 (2 greetings, 8 document requests), all as expected |
+| Identity probes naming a model or provider (33) / name given (9) / "the Wise" | 0 / 9 / 0 | 0 / 9 / 0 |
+| Memory benchmark, same day (18 conversations) | 17/18, 14,375 tokens | 17/18, 12,180 tokens (−15%); 0 false saves, 0 stale both |
+
+The misses differ and are intermittent: per message `hobbies-append` once, batched `many-facts` once (a single
+message, so the unchanged single-message prompt); both pass 3/3 batched on repeat.
+
+Not done: folding the knowledge gate into the answer call. The gate also decides whether a question is *open*, which
+picks the open-question prompt and temperature, so the answer call can't know which prompt to use; and checking it
+needs full answers (31 cases × 5, ~300k 120B tokens). Prompt caching was left as it is (§21.3).
+
+Results: `benchmark/results/memory_eval_batch.json` (batched), `memory_eval.json` (per message, same day).
