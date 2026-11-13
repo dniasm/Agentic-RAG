@@ -9,3 +9,6 @@ data/
 
 # downloaded test documents (third-party; re-create with scripts/fetch_test_corpus.py)
 test_corpus/files/
+
+# design inspector's working files
+.taste-skill/
