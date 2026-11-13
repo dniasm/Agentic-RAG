@@ -61,7 +61,8 @@ def health():
 @app.get("/api/documents")
 def list_documents():
     docs = catalog.list_documents()
-    return [{**_public(d), "history": catalog.rename_history(d["id"])} for d in docs]
+    histories = catalog.rename_histories()
+    return [{**_public(d), "history": histories.get(d["id"], [])} for d in docs]
 
 
 @app.post("/api/documents/upload")

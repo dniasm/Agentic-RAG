@@ -4,7 +4,7 @@ import sqlite3
 import threading
 import uuid
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from renamer import config
 
@@ -83,6 +83,10 @@ CREATE TABLE IF NOT EXISTS sessions (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
+CREATE INDEX IF NOT EXISTS renames_doc ON renames (doc_id);
+CREATE INDEX IF NOT EXISTS edits_doc ON edits (doc_id);
+CREATE INDEX IF NOT EXISTS tasks_status ON batch_tasks (status);
+CREATE INDEX IF NOT EXISTS tasks_batch ON batch_tasks (batch_id, position);
 """
 
 
@@ -191,6 +195,16 @@ def record_rename(doc_id: str, old_title: str, new_title: str, reason: str) -> N
                   (doc_id, old_title, new_title, reason, now()))
 
 
+def rename_histories() -> dict[str, list[dict]]:
+    """Every document's rename history in one query (doc_id -> oldest first), for searches and the library list."""
+    with _lock:
+        rows = _db().execute("SELECT doc_id, old_title, new_title, reason, at FROM renames ORDER BY id").fetchall()
+    out: dict[str, list[dict]] = {}
+    for r in rows:
+        out.setdefault(r["doc_id"], []).append({k: r[k] for k in ("old_title", "new_title", "reason", "at")})
+    return out
+
+
 def rename_history(doc_id: str) -> list[dict]:
     with _lock:
         rows = _db().execute("SELECT old_title, new_title, reason, at FROM renames WHERE doc_id = ? ORDER BY id",
@@ -279,6 +293,17 @@ def get_batch(batch_id: str) -> dict | None:
             return None
         tasks = _db().execute("SELECT * FROM batch_tasks WHERE batch_id = ? ORDER BY position", (batch_id,)).fetchall()
     return {**dict(row), "tasks": [_task(t) for t in tasks]}
+
+
+def active_or_recent_batches(hours: float = 1.0) -> list[dict]:
+    """What the queue panel shows: batches with tasks still to run, and batches queued in the last `hours`."""
+    since = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat(timespec="seconds")
+    with _lock:
+        ids = [r["id"] for r in _db().execute(
+            "SELECT id FROM batches b WHERE created_at >= ? OR EXISTS (SELECT 1 FROM batch_tasks t "
+            "WHERE t.batch_id = b.id AND t.status IN ('queued', 'running')) ORDER BY created_at DESC, rowid DESC",
+            (since,)).fetchall()]
+    return [get_batch(i) for i in ids]
 
 
 def list_batches(limit: int = 10) -> list[dict]:

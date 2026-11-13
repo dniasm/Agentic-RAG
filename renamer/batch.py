@@ -223,5 +223,6 @@ def summary() -> dict:
 
 
 def status() -> dict:
-    """The queue panel: the recent batches and their tasks (the meter reads status_light)."""
-    return {"batches": catalog.list_batches()}
+    """The queue panel: batches still running or queued in the last hour, with their tasks (polled every few
+    seconds while anything runs; the meter reads status_light)."""
+    return {"batches": catalog.active_or_recent_batches()}

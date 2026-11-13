@@ -132,3 +132,34 @@ def test_undo_is_a_queued_change_too(library_docs):
     assert "nothing to undo" in tasks[2]["reply"]
     assert "classifier" in stored(svm) and "An extra line." not in stored(glove)
     assert tasks[0]["instruction"] == 'Undo the last edit to "Support Vector Machines"'
+
+
+# ---------------------------------------------------------------- the catalog's queries
+def test_rename_histories_in_one_query_match_the_per_document_ones(library_docs):
+    svm = library_docs["svm.txt"]["id"]
+    library.rename(svm, "SVM Primer")
+    library.rename(svm, "SVM Guide")
+    all_of_them = catalog.rename_histories()
+    for doc in library_docs.values():
+        assert all_of_them.get(doc["id"], []) == catalog.rename_history(doc["id"])
+    assert [h["new_title"] for h in all_of_them[svm]][-2:] == ["SVM Primer", "SVM Guide"]
+    assert library.find("Support Vector Machines")["candidates"][0]["doc_id"] == svm    # found by its old name
+
+
+def test_the_queue_panel_gets_only_active_and_recent_batches(library_docs):
+    old_done = catalog.add_batch("s", ["a"])
+    old_waiting = catalog.add_batch("s", ["b"])
+    recent = catalog.add_batch("s", ["c"])
+    catalog.update_task(old_done["tasks"][0]["id"], status="done")
+    catalog.update_task(recent["tasks"][0]["id"], status="done")
+    with catalog.tx() as c:                                   # two of them were queued two hours ago
+        c.execute("UPDATE batches SET created_at = '2000-01-01T00:00:00+00:00' WHERE id IN (?, ?)",
+                  (old_done["id"], old_waiting["id"]))
+    shown = {b["id"] for b in batch.status()["batches"]}
+    assert shown == {old_waiting["id"], recent["id"]}         # old but still waiting: shown; old and done: not
+
+
+def test_the_searched_columns_are_indexed():
+    with catalog.tx() as c:
+        names = {r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type = 'index'")}
+    assert {"renames_doc", "edits_doc", "tasks_status", "tasks_batch"} <= names

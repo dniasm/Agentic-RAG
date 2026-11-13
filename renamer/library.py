@@ -188,9 +188,9 @@ def profile_text(doc: dict) -> str:
     return "\n".join(parts)
 
 
-def _name_score(description: str, doc: dict) -> float:
+def _name_score(description: str, doc: dict, history: list[dict]) -> float:
     names = [(doc["title"], 1.0), (doc["original_name"], 1.0)]
-    names += [(h["old_title"], 0.97) for h in catalog.rename_history(doc["id"])]  # names it used to have
+    names += [(h["old_title"], 0.97) for h in history]  # names it used to have
     return max(naming.name_similarity(description, n) * w for n, w in names)
 
 
@@ -275,7 +275,8 @@ def _find(description: str) -> dict:
     if not docs:
         return {"decision": "none", "reason": "empty_library", "candidates": []}
 
-    names = {d["id"]: _name_score(description, d) for d in docs}
+    histories = catalog.rename_histories()
+    names = {d["id"]: _name_score(description, d, histories.get(d["id"], [])) for d in docs}
     best_name = max(names.values())
     named = [d for d in docs if names[d["id"]] >= config.NAME_EXACT and names[d["id"]] >= best_name - 0.05]
 
