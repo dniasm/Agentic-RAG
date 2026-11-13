@@ -109,3 +109,103 @@ def test_a_free_text_task_without_a_checkpoint_is_queued_again(library_docs):
     catalog.update_task(task["id"], status="running")
     batch.recover_interrupted()
     assert catalog.get_task(task["id"])["status"] == "queued"
+
+
+# ---------------------------------------------------------------- 5. swapping titles in one batch
+def test_two_documents_can_swap_titles_in_one_batch(library_docs):
+    from tests.test_logs_and_queue import NoModel, queue
+    svm, glove = library_docs["svm.txt"]["id"], library_docs["glove.txt"]["id"]
+    _, results = queue([
+        {"document": "Support Vector Machines", "action": "rename", "new_title": "GloVe Word Embeddings"},
+        {"document": "GloVe Word Embeddings", "action": "rename", "new_title": "Support Vector Machines"}])
+    assert results[-1]["status"] == "queued"
+    batch.run_pending(model=NoModel())
+    assert [t["status"] for t in catalog.list_batches()[0]["tasks"]] == ["done", "done"]
+    assert catalog.get_document(svm)["title"] == "GloVe Word Embeddings"
+    assert catalog.get_document(glove)["title"] == "Support Vector Machines"
+
+
+def test_a_batch_rename_still_asks_when_the_name_is_kept(library_docs):
+    """Taking a name is allowed only when its holder gives it up later in the same batch."""
+    from tests.test_logs_and_queue import NoModel, queue
+    queue([{"document": "Support Vector Machines", "action": "rename", "new_title": "GloVe Word Embeddings"}])
+    batch.run_pending(model=NoModel())
+    task = catalog.list_batches()[0]["tasks"][0]
+    assert task["status"] == "not_done" and "already has the name" in task["reply"]
+
+
+def test_later_changes_find_their_document_after_an_earlier_rename(library_docs):
+    from tests.test_logs_and_queue import NoModel, queue
+    queue([{"document": "Support Vector Machines", "action": "rename", "new_title": "SVM Primer"},
+           {"document": "Support Vector Machines", "action": "append", "text": "Reviewed."}])
+    batch.run_pending(model=NoModel())
+    assert [t["status"] for t in catalog.list_batches()[0]["tasks"]] == ["done", "done"]
+    assert stored(library_docs["svm.txt"]).rstrip().endswith("Reviewed.")
+
+
+# ---------------------------------------------------------------- 6. Word text across paragraphs
+def test_word_text_across_two_paragraphs_gets_a_clear_message(tmp_path):
+    import docx
+    from renamer import editing
+    path = tmp_path / "memo.docx"
+    d = docx.Document()
+    d.add_paragraph("The launch is planned")
+    d.add_paragraph("for March in Kathmandu.")
+    d.save(str(path))
+    doc, _ = library.ingest_path(path)
+    with pytest.raises(editing.EditError, match="runs across more than one paragraph"):
+        editing.edit(doc["id"], "replace", find="planned for March", text="planned for June")
+    with pytest.raises(editing.EditError, match="isn't in the document"):
+        editing.edit(doc["id"], "replace", find="planned for April", text="x")
+
+
+# ---------------------------------------------------------------- 7. odd titles
+def test_odd_titles_get_clear_messages():
+    from renamer import naming
+    with pytest.raises(naming.TitleError, match="at least one letter or number"):
+        naming.clean_title("📄📄")
+    with pytest.raises(naming.TitleError, match="only a file extension"):
+        naming.clean_title(".txt")
+    with pytest.raises(naming.TitleError, match="empty"):
+        naming.clean_title("  ")
+    assert naming.file_name_for(".hidden notes", ".md", set()) == "hidden notes.md"
+
+
+# ---------------------------------------------------------------- 8. file names never collide
+def test_a_file_on_disk_is_never_overwritten(library_docs):
+    stray = config.LIBRARY_DIR / "SVM Primer.txt"
+    stray.write_text("not in the catalog", encoding="utf-8")
+    result = library.rename(library_docs["svm.txt"]["id"], "SVM Primer")
+    assert result["file_name"] == "SVM Primer (2).txt"
+    assert stray.read_text(encoding="utf-8") == "not in the catalog"
+    stray.unlink()
+
+
+def test_renaming_to_its_own_file_name_keeps_it(library_docs):
+    doc = library_docs["svm.txt"]
+    library.rename(doc["id"], "SVM Primer")
+    assert library.rename(doc["id"], "svm primer")["file_name"] == "svm primer.txt"   # not "(2)": it is its own file
+
+
+# ---------------------------------------------------------------- 9. re-uploading an edited document's original
+def test_the_original_of_an_edited_document_is_a_duplicate(library_docs, tmp_path):
+    from renamer import editing
+    doc = library_docs["svm.txt"]
+    original = (config.LIBRARY_DIR / doc["file_name"]).read_bytes()
+    editing.edit(doc["id"], "append", text="An extra line.")
+    again, duplicate = library.add_file("svm.txt", original)
+    assert duplicate and again["id"] == doc["id"]
+    assert len(catalog.list_documents()) == 4
+
+
+def test_the_upload_endpoint_says_edited_since(library_docs):
+    from fastapi.testclient import TestClient
+    from renamer import api, editing
+    doc = library_docs["svm.txt"]
+    original = (config.LIBRARY_DIR / doc["file_name"]).read_bytes()
+    client = TestClient(api.app)
+    same = client.post("/api/documents/upload", files={"files": ("svm.txt", original)}).json()[0]
+    assert same["status"] == "duplicate" and same["edited_since"] is False
+    editing.edit(doc["id"], "append", text="An extra line.")
+    later = client.post("/api/documents/upload", files={"files": ("svm.txt", original)}).json()[0]
+    assert later["status"] == "duplicate" and later["edited_since"] is True

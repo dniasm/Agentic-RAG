@@ -300,6 +300,11 @@ def _queue(args: dict, guard: Guard, actions: list) -> dict:
     if problems:
         return {"status": "error", "error": "Nothing was queued. Fix these and call queue_tasks again.",
                 "problems": problems[:20]}
+    indexed = catalog.list_documents(status="indexed")
+    for c in changes:   # pin each change to its document now, so titles changed earlier in the batch don't lose it
+        named = [d for d in indexed if naming.same_name(d["title"], c["document"])]
+        if len(named) == 1:
+            c["doc_id"] = named[0]["id"]
     items = [(_describe(c), c) for c in changes] + tasks
     if not items:
         return {"status": "error", "error": "Give at least one change."}

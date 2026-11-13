@@ -321,7 +321,7 @@ def undo(doc_id: str) -> dict:
     if not backup.exists() or not path.exists():
         raise EditError("The saved earlier version is missing, so the edit can't be undone.")
     if backup.suffix != doc["ext"]:   # the edit converted the file (PDF to Markdown): the original comes back
-        new_name = naming.file_name_for(doc["title"], backup.suffix, catalog.used_file_names(exclude_doc=doc_id))
+        new_name = naming.file_name_for(doc["title"], backup.suffix, library.taken_file_names(exclude_doc=doc))
         doc = {**doc, "ext": backup.suffix, "file_name": new_name}
     target = config.LIBRARY_DIR / doc["file_name"]
     before = _plain_text(path)
@@ -357,7 +357,7 @@ def _pdf_to_markdown(doc: dict) -> dict:
     pages, _ = ingestion.load_file(config.LIBRARY_DIR / doc["file_name"])
     if not pages:
         raise EditError("This PDF has no extractable text (it is probably scanned images), so it can't be converted.")
-    name = naming.file_name_for(doc["title"], ".md", catalog.used_file_names(exclude_doc=doc["id"]))
+    name = naming.file_name_for(doc["title"], ".md", library.taken_file_names(exclude_doc=doc))
     (config.LIBRARY_DIR / name).write_text("\n\n".join(p.page_content for p in pages), encoding="utf-8")
     return {**doc, "ext": ".md", "file_name": name}
 
@@ -414,6 +414,9 @@ def _edit(source: dict, doc: dict, op: str, find: str, text: str, replace_all: b
             pattern = _pattern(find, ignore_case=True)
             found, contexts = _count_matches(doc, pattern)
         if not found:
+            if doc["ext"] == ".docx" and _pattern(find, ignore_case=True).search(document_text(doc).replace("\n", " ")):
+                raise EditError("That text runs across more than one paragraph of this Word document, and a change "
+                                "has to stay inside one. Replace it one paragraph at a time.")
             raise EditError("That text isn't in the document. Check the exact wording.")
         if found > 1 and not replace_all:
             return {"status": "ambiguous", "matches": found, "contexts": contexts,

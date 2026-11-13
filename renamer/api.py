@@ -93,7 +93,10 @@ def upload(files: list[UploadFile] = File(...)):
             continue
         if not duplicate:
             _ingest_pool.submit(library.process, doc["id"])
-        results.append({"file": f.filename, "status": "duplicate" if duplicate else "queued", "document": _public(doc)})
+        # a duplicate of the file as it was uploaded, though the document has been edited since
+        edited_since = duplicate and doc["sha256"] != library.ingestion.file_sha256(data)
+        results.append({"file": f.filename, "status": "duplicate" if duplicate else "queued", "document": _public(doc),
+                        "edited_since": edited_since})
     return results
 
 

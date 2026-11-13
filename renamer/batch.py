@@ -56,8 +56,15 @@ class PacedModel:
 
 
 def _resolve(change: dict) -> tuple[dict | None, str]:
-    """The document a change is about, named exactly or found uniquely: (document, "") or (None, why not)."""
-    named = [d for d in catalog.list_documents(status="indexed") if naming.same_name(d["title"], change["document"])]
+    """The document a change is about: the one it was pinned to when queued, else named exactly or found uniquely.
+    Returns (document, "") or (None, why not)."""
+    if change.get("doc_id"):
+        doc = catalog.get_document(change["doc_id"])
+        if doc is None:
+            return None, f'"{change["document"]}" was removed from the library.'
+        if doc["status"] == "indexed":
+            return doc, ""
+    named =[d for d in catalog.list_documents(status="indexed") if naming.same_name(d["title"], change["document"])]
     if len(named) > 1:
         return None, f'{len(named)} documents are called "{change["document"]}". Say which one.'
     if named:
@@ -70,10 +77,11 @@ def _resolve(change: dict) -> tuple[dict | None, str]:
     return catalog.get_document(found["candidates"][0]["doc_id"]), ""
 
 
-def run_change(change: dict, before_applying=None) -> tuple[str, str, list]:
+def run_change(change: dict, before_applying=None, giving_up_names: frozenset = frozenset()) -> tuple[str, str, list]:
     """A structured change, done in code with the agent's own rules and no model call: (status, reply, actions).
     The document must be named exactly or found uniquely; anything doubtful is left for the user, not guessed.
-    before_applying(doc) runs once the document is known, just before anything changes."""
+    before_applying(doc) runs once the document is known, just before anything changes. giving_up_names: ids of
+    documents that later changes in the same batch rename away, whose current names a rename may take now."""
     doc, problem = _resolve(change)
     if doc is None:
         return "not_done", problem, []
@@ -83,7 +91,15 @@ def run_change(change: dict, before_applying=None) -> tuple[str, str, list]:
     guard.resolved[doc["id"]] = {"turn": 1, "by": "name"}
     actions: list = []
     if change["action"] == "rename":
-        result = agent.run_tool("rename_document", {"doc_id": doc["id"], "new_title": change["new_title"]}, guard, actions)
+        args = {"doc_id": doc["id"], "new_title": change["new_title"]}
+        holders = library.name_conflicts(change["new_title"], exclude=doc["id"])
+        if holders and all(h["id"] in giving_up_names for h in holders):
+            # the name's holders are renamed away later in this batch (a swap or a cycle): take it now; for a moment
+            # two documents share it, as the user's batch intends
+            guard.pending.append({"doc_id": doc["id"], "new_title": change["new_title"], "turn": 0,
+                                  "reason": "name_conflict"})
+            args["confirmed"] = True
+        result = agent.run_tool("rename_document", args, guard, actions)
     elif change["action"] == "undo":
         result = agent.run_tool("undo_edit", {"doc_id": doc["id"]}, guard, actions)
     else:
@@ -100,6 +116,14 @@ def run_change(change: dict, before_applying=None) -> tuple[str, str, list]:
         others = ", ".join(f'"{c["title"]}"' for c in result["conflicts_with"])
         return "not_done", f'Another document already has the name "{result["new_title"]}" ({others}). Not renamed.', []
     return "not_done", result.get("next") or result.get("error") or str(result.get("status")), []
+
+
+def _renamed_later(task: dict) -> frozenset:
+    """Documents that queued renames after this task, in the same batch, will rename away."""
+    batch = catalog.get_batch(task["batch_id"]) or {"tasks": []}
+    return frozenset(t["payload"]["doc_id"] for t in batch["tasks"]
+                     if t["id"] != task["id"] and t["status"] == "queued" and t["payload"]
+                     and t["payload"]["action"] == "rename" and t["payload"].get("doc_id"))
 
 
 def _refresh_expected(change: dict) -> bool:
@@ -132,7 +156,8 @@ def run_task(task: dict, sleep=_sleep, model=None) -> None:
         def checkpoint(doc: dict) -> None:   # the document as it was, so a restart can tell whether this already ran
             catalog.update_task(task["id"], checkpoint={"doc_id": doc["id"], "sha256": doc["sha256"], "title": doc["title"]})
         try:
-            status, reply, actions = run_change(task["payload"], before_applying=checkpoint)
+            status, reply, actions = run_change(task["payload"], before_applying=checkpoint,
+                                                giving_up_names=_renamed_later(task))
         except Exception as e:
             log.exception("Queued change %s failed", task["id"])
             status, reply, actions = "failed", f"{type(e).__name__}: {str(e)[:200]}", []

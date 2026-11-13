@@ -31,8 +31,12 @@ def clean_title(raw: str) -> str:
     title = title.strip("\"'`“”‘’ ").strip()
     title = strip_extension(title).strip()
     title = re.sub(r"\s+", " ", title).replace("/", "-").replace("\\", "-")
-    if not title or not re.search(r"\w", title):
+    if not title:
         raise TitleError("The new name is empty.")
+    if not re.search(r"\w", title):   # only emoji, symbols or punctuation
+        raise TitleError("The new name needs at least one letter or number.")
+    if title.lower() in KNOWN_EXTENSIONS:
+        raise TitleError(f'"{title}" is only a file extension; give the document a name.')
     if len(title) > config.TITLE_MAX_CHARS:
         raise TitleError(f"The new name is longer than {config.TITLE_MAX_CHARS} characters.")
     return title
@@ -41,7 +45,8 @@ def clean_title(raw: str) -> str:
 def file_name_for(title: str, ext: str, used: set[str]) -> str:
     """A safe, unique file name for the library folder (lower-cased names in `used` are taken)."""
     base = _BAD_FILE_CHARS.sub("-", title)
-    base = re.sub(r"\s+", " ", base).strip().rstrip(". ")[:100].rstrip(". ") or "document"
+    # no leading dot (a hidden-looking ".notes.md") and no trailing dot or space (Windows drops them)
+    base = re.sub(r"\s+", " ", base).strip().strip(". ")[:100].rstrip(". ") or "document"
     if base.lower() in _WINDOWS_RESERVED:
         base += "_"
     name, n = f"{base}{ext}", 2

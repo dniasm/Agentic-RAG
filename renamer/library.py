@@ -54,9 +54,18 @@ def _set_chunk_fields(doc_id: str, **fields) -> None:
         )
 
 
+def taken_file_names(exclude_doc: dict | None = None) -> set[str]:
+    """File names a new or renamed file must not use (lower case): every document's in the catalog, and every file
+    actually in the library folder (a leftover or half-finished file is never overwritten), except the excluded
+    document's own. Call it under WRITE_LOCK, with the move that follows, so two files can't pick the same name."""
+    own = (exclude_doc or {}).get("file_name", "").lower()
+    on_disk = {p.name.lower() for p in config.LIBRARY_DIR.iterdir()} if config.LIBRARY_DIR.exists() else set()
+    return (catalog.used_file_names(exclude_doc=(exclude_doc or {}).get("id")) | on_disk) - {own}
+
+
 def _move_file(doc: dict, title: str) -> str:
-    """Rename the stored file after `title`; returns the new file name."""
-    new_name = naming.file_name_for(title, doc["ext"], catalog.used_file_names(exclude_doc=doc["id"]))
+    """Rename the stored file after `title`; returns the new file name. Call under WRITE_LOCK."""
+    new_name = naming.file_name_for(title, doc["ext"], taken_file_names(exclude_doc=doc))
     if new_name != doc["file_name"]:
         old = _path(doc)
         if old.exists():
@@ -87,18 +96,20 @@ def add_file(original_name: str, data: bytes) -> tuple[dict, bool]:
 
     digest = ingestion.file_sha256(data)
     existing = catalog.find_by_hash(digest)
-    if existing and existing["status"] != "failed":
-        event("upload_duplicate", file=original_name, same_as=existing["title"], doc=existing["id"])
+    if existing and existing["status"] != "failed":   # the same file, or the one it was before it was edited
+        event("upload_duplicate", file=original_name, same_as=existing["title"], doc=existing["id"],
+              edited_since=existing["sha256"] != digest)
         return existing, True
     if existing:  # an earlier attempt failed: start again
         delete(existing["id"])
 
     config.LIBRARY_DIR.mkdir(parents=True, exist_ok=True)
     provisional = titles.fallback_profile(original_name, "").title
-    file_name = naming.file_name_for(provisional, ext, catalog.used_file_names())
-    (config.LIBRARY_DIR / file_name).write_bytes(data)
-    doc = catalog.add_document(title=provisional, original_name=original_name, file_name=file_name, ext=ext,
-                               sha256=digest, size_bytes=len(data))
+    with WRITE_LOCK:
+        file_name = naming.file_name_for(provisional, ext, taken_file_names())
+        (config.LIBRARY_DIR / file_name).write_bytes(data)
+        doc = catalog.add_document(title=provisional, original_name=original_name, file_name=file_name, ext=ext,
+                                   sha256=digest, size_bytes=len(data))
     event("upload", doc=doc["id"], file=original_name, bytes=len(data))
     return doc, False
 
@@ -113,11 +124,12 @@ def process(doc_id: str, ask_title=None) -> dict:
         opening = "\n\n".join(p.page_content for p in pages)[: config.TITLE_SOURCE_CHARS]
         others = [d["title"] for d in catalog.list_documents() if d["id"] != doc_id and d["status"] != "failed"]
         profile, _ = titles.profile_document(doc["original_name"], opening, others, ask=ask_title)
-        title = _unique_title(profile.title, exclude=doc_id)
-        file_name = _move_file(doc, title)
-        catalog.update_document(doc_id, title=title, file_name=file_name, summary=profile.summary,
-                                keywords=profile.keywords)
-        catalog.record_rename(doc_id, doc["original_name"], title, "titled")
+        with WRITE_LOCK:   # choosing the title and the file name, and taking them, is one step for renames too
+            title = _unique_title(profile.title, exclude=doc_id)
+            file_name = _move_file(catalog.get_document(doc_id), title)
+            catalog.update_document(doc_id, title=title, file_name=file_name, summary=profile.summary,
+                                    keywords=profile.keywords)
+            catalog.record_rename(doc_id, doc["original_name"], title, "titled")
 
         result = ingestion.ingest_file(config.LIBRARY_DIR / file_name, user_id=config.OWNER, doc_id=doc_id,
                                        filename=title)

@@ -63,7 +63,9 @@ export function createLibrary({ els, api, toast }) {
     try {
       const results = await api("/api/documents/upload", { method: "POST", body: form });
       const notes = results.filter((r) => r.status !== "queued")
-        .map((r) => r.status === "duplicate" ? `${r.file} is already in the library` : `${r.file}: ${r.error}`);
+        .map((r) => r.status === "duplicate"
+          ? `${r.file} is already in the library` + (r.edited_since ? ` as “${r.document.title}” (edited since)` : "")
+          : `${r.file}: ${r.error}`);
       if (notes.length) toast(notes.join(" · "));
       await poller.now();
     } catch (e) {

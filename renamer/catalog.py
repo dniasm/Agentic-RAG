@@ -29,7 +29,8 @@ CREATE TABLE IF NOT EXISTS documents (
     original_name TEXT NOT NULL,
     file_name TEXT NOT NULL,          -- name of the stored file in data/library (follows the title)
     ext TEXT NOT NULL,
-    sha256 TEXT NOT NULL,
+    sha256 TEXT NOT NULL,             -- the stored file now (changes with every edit)
+    original_sha256 TEXT,             -- the file as uploaded: re-uploading it is a duplicate, edited or not
     size_bytes INTEGER NOT NULL,
     pages INTEGER,
     chunks INTEGER,
@@ -107,6 +108,12 @@ def _db() -> sqlite3.Connection:
             _conn.commit()
         except sqlite3.OperationalError:
             pass
+        try:  # databases made before originals were remembered: what is stored now is the best guess
+            _conn.execute("ALTER TABLE documents ADD COLUMN original_sha256 TEXT")
+            _conn.execute("UPDATE documents SET original_sha256 = sha256 WHERE original_sha256 IS NULL")
+            _conn.commit()
+        except sqlite3.OperationalError:
+            pass
         try:  # databases made before restart recovery existed
             _conn.execute("ALTER TABLE batch_tasks ADD COLUMN checkpoint TEXT")
             _conn.commit()
@@ -151,9 +158,9 @@ def add_document(*, title: str, original_name: str, file_name: str, ext: str, sh
     _changed()
     with tx() as c:
         c.execute(
-            "INSERT INTO documents (id, title, original_name, file_name, ext, sha256, size_bytes, status, "
-            "created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'processing', ?, ?)",
-            (doc_id, title, original_name, file_name, ext, sha256, size_bytes, t, t),
+            "INSERT INTO documents (id, title, original_name, file_name, ext, sha256, original_sha256, size_bytes, "
+            "status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'processing', ?, ?)",
+            (doc_id, title, original_name, file_name, ext, sha256, sha256, size_bytes, t, t),
         )
     return get_document(doc_id)
 
@@ -174,8 +181,10 @@ def get_document(doc_id: str) -> dict | None:
 
 
 def find_by_hash(sha256: str) -> dict | None:
+    """The document stored with these bytes, or uploaded with them and edited since."""
     with _lock:
-        return _doc(_db().execute("SELECT * FROM documents WHERE sha256 = ?", (sha256,)).fetchone())
+        return _doc(_db().execute("SELECT * FROM documents WHERE sha256 = ? OR original_sha256 = ? "
+                                  "ORDER BY sha256 = ? DESC LIMIT 1", (sha256, sha256, sha256)).fetchone())
 
 
 def list_documents(status: str | None = None) -> list[dict]:
