@@ -18,6 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.api.routes import auth, chat, documents, health
 from backend.config.settings import settings
+from backend.library import api as library_api
 from backend.memory.store import ensure_memory_collection
 from backend.models.database import fail_unfinished_documents, init_db
 from backend.rag.vectorstore import get_client, close_client
@@ -34,6 +35,7 @@ async def lifespan(_: FastAPI):
     init_db()
     fail_unfinished_documents()  # indexing that a restart cut off
     get_client()  # open / create the Qdrant collection up front
+    library_api.startup()  # the document library: logs, unfinished files, the batch queue worker
     try:  # once here, not on every message; a problem only disables recall of past conversations
         ensure_memory_collection()
     except Exception as e:
@@ -46,6 +48,7 @@ async def lifespan(_: FastAPI):
         flush_pending_memory()  # facts still waiting for a batched extraction
         from backend.api.routes.documents import stop_indexing
         stop_indexing()
+        library_api.shutdown()
         close_client()
 
 
@@ -69,6 +72,7 @@ app.add_middleware(
 #ROUTES
 for module in (health, auth, chat, documents):
     app.include_router(module.router, prefix = "/api")
+app.include_router(library_api.router, prefix = "/api")  # /api/library/*
 
 @app.get("/")
 def root():

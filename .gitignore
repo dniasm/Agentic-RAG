@@ -20,3 +20,10 @@ frontend/dist/
 
 # design inspection screenshots and scripts (tasteskill working folder)
 .taste-skill/
+
+# document library: downloaded test documents (third-party; re-create with scripts/fetch_test_corpus.py)
+test_corpus/files/
+
+# local agent tooling
+.claude/
+skills-lock.json

@@ -86,9 +86,13 @@ def call_with_keys(model: str, factory: Callable[[int], object], call: Callable[
     raise key_pool.last_error(model)
 
 
-def _key(index: int) -> str:
+def api_key(index: int) -> str:
+    """The Groq key at `index` in the pool (for callers that build their own clients for call_with_keys)."""
     keys = groq_keys()
     return keys[index] if index < len(keys) else settings.groq_api_key
+
+
+_key = api_key
 
 
 @lru_cache

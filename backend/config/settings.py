@@ -142,6 +142,16 @@ class Settings(BaseSettings):
     jwt_expire_minutes: int = 60 * 24
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
+    # --- Document library (backend/library) ---
+    library_data_dir: str = str(BACKEND_DIR / "data")   # library/<user_id>/, versions/, logs/, catalog
+    signup_code: str = ""                # needed for every sign-up after the first; empty: sign-ups closed
+    library_agent_model: str = "openai/gpt-oss-120b"
+    library_backup_model: str = "openai/gpt-oss-20b"   # takes over when the 120B is rate-limited
+    library_agent_reasoning: str = "low"
+    library_tpm_limit: int = 8000         # Groq free tier, tokens per minute, 120B
+    library_backup_tpm_limit: int = 8000  # the 20B's own limit
+    library_voyage_calls_per_minute: int = 3
+
 
 @lru_cache
 def get_settings() -> Settings:

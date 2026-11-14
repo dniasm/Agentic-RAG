@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Document Agent</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="auth" id="auth" hidden>
+    <form class="auth-card" id="auth-form">
+      <h1>Document Agent</h1>
+      <p class="muted" id="auth-intro">Log in to your library.</p>
+      <label>Username <input id="auth-user" autocomplete="username" required></label>
+      <label>Password <input id="auth-pass" type="password" autocomplete="current-password" required></label>
+      <label id="auth-invite-row" hidden>Invite code <input id="auth-invite" autocomplete="off"></label>
+      <p class="auth-error" id="auth-error" role="alert"></p>
+      <button class="button" id="auth-submit">Log in</button>
+      <button type="button" class="link-button" id="auth-switch">Create an account</button>
+    </form>
+  </main>
+  <div class="app" id="app" hidden>
+    <aside class="library" id="library">
+      <a class="brand" href="/" title="Document Agent: back to the start">
+        <svg class="mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/>
+          <path d="M9 13h4"/><path d="M15 11v6"/>
+        </svg>
+        <div>
+          <div class="brand-name">Document Agent</div>
+          <div class="brand-sub" id="user-name">Your library</div>
+        </div>
+      </a>
+
+      <header class="library-head">
+        <div>
+          <h2>Library</h2>
+          <p class="muted" id="doc-count">No documents</p>
+        </div>
+        <label class="button" title="Add PDF, DOCX, TXT or MD files">
+          <input type="file" id="file-input" multiple accept=".pdf,.docx,.txt,.md" hidden>
+          Add files
+        </label>
+      </header>
+      <div class="drop-hint">Drop files to add them</div>
+      <ul class="doc-list" id="doc-list"></ul>
+      <section class="queue" id="queue" hidden>
+        <h3>Queue <span class="muted" id="queue-count"></span></h3>
+        <ul class="queue-list" id="queue-list"></ul>
+      </section>
+      <div class="resizer" id="resizer" role="separator" aria-orientation="vertical" tabindex="0"
+           aria-label="Resize the library" title="Drag to resize · double-click to reset"></div>
+      <div class="empty-library" id="empty-library">
+        <p><strong>No documents yet.</strong></p>
+        <p class="muted">Add files with the button above or drop them here. Each one is indexed and given a title
+          from its content.</p>
+      </div>
+    </aside>
+
+    <main class="chat">
+      <header class="chat-head">
+        <button class="icon-button only-mobile" id="toggle-library" aria-label="Show library">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+            <path d="M4 7h16M4 12h16M4 17h16"/>
+          </svg>
+        </button>
+        <div class="chat-title">
+          <h1>Assistant</h1>
+        </div>
+        <div class="meter" id="meter" title="Tokens used in the last 60 seconds. They free up as the minute passes.">
+          <div class="meter-top"><span id="meter-text">– / – tokens</span><span id="meter-timer" class="muted"></span></div>
+          <div class="meter-bar"><span id="meter-fill"></span></div>
+        </div>
+        <button class="secondary" id="new-chat">New chat</button>
+        <button class="secondary" id="log-out">Log out</button>
+      </header>
+      <section class="messages" id="messages" aria-live="polite">
+        <div class="welcome" id="welcome">
+          <h3>What should we do with your documents?</h3>
+          <p class="muted">Point to a document by name or by what it is about. I can rename it, change its text,
+            undo an edit, or queue changes to many documents at once. If more than one fits, I'll ask which you mean.</p>
+          <div class="suggestions">
+            <button class="chip">List my documents</button>
+            <button class="chip" data-fill="Rename the document about ">Rename the document about … to …</button>
+            <button class="chip" data-fill="Suggest a better name for ">Suggest a better name for …</button>
+            <button class="chip" data-fill="In the document about , replace ">Change the text of a document …</button>
+          </div>
+        </div>
+      </section>
+      <form class="composer" id="composer">
+        <div class="composer-box">
+          <textarea id="input" rows="1" placeholder="e.g. Rename the GDPR document to “EU Data Protection Rules”"
+                    autocomplete="off"></textarea>
+          <button type="submit" class="button send" id="send">Send</button>
+        </div>
+        <p class="hint">Enter to send · Shift+Enter for a new line</p>
+      </form>
+    </main>
+  </div>
+  <dialog class="preview" id="preview" aria-labelledby="preview-title">
+    <div class="preview-head">
+      <h2 id="preview-title"></h2>
+      <button type="button" class="link-button" id="preview-close" aria-label="Close preview">Close</button>
+    </div>
+    <div class="preview-body" id="preview-body"></div>
+  </dialog>
+  <div class="toast" id="toast" role="status"></div>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
