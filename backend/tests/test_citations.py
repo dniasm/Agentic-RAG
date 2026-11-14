@@ -79,6 +79,37 @@ class CitationChecks(unittest.TestCase):
         self.assertEqual(c._numbers("fines up to 20,000,000 EUR"), ["20000000"])
         self.assertEqual(c._numbers("BM25 and COVID-19"), [])
 
+    # False alarms found on the document-answer benchmark (benchmark/run_rag_prompt.py, 14 November).
+    def test_abbreviations_do_not_end_a_sentence(self):
+        sentences = [s for _, s in c.split_sentences("Fines of 10 M/2 % vs. 20 M/4 % apply [1]. Under Art. 33 it "
+                                                     "is reported [2]. Next.")]
+        self.assertEqual(len(sentences), 3, sentences)
+
+    def test_bold_heading_with_a_dash_is_not_a_claim(self):
+        ev = ["The Bank invests in renewable energy and resilient cities."]
+        self.assertTrue(c.check("* **Sector-specific investments** –\n* renewable energy and resilient cities [1]", ev).ok)
+
+    def test_decimal_without_leading_zero(self):
+        ev = ["Instead of adding 1 to each count, we add a fractional count k (.5? .05? .01?)."]
+        self.assertTrue(c.check("Add-k smoothing adds a fractional count k (e.g., 0.5, 0.05, 0.01) instead of 1 [1].",
+                                ev).ok)
+
+    def test_millions_written_as_billions(self):
+        ev = ["FISCAL YEARS, MILLIONS OF DOLLARS\n2020 2021 2022 2023 2024\nIBRD Commitments 27,976 30,523 33,072 "
+              "38,572 37,568"]
+        self.assertTrue(c.check("IBRD commitments were $37.6 billion in fiscal 2024 [1].", ev).ok)
+        self.assertFalse(c.check("IBRD commitments were $38.9 billion in fiscal 2024 [1].", ev).ok)
+        self.assertFalse(c.check("IBRD commitments were 37.6 percent of lending in fiscal 2024 [1].", ev).ok)
+
+    def test_question_name_missing_from_the_passages_is_left_out(self):
+        ev = ["2. It shall apply from 25 May 2018."]
+        self.assertTrue(c.check("The GDPR began to apply on 25 May 2018 [1].", ev,
+                                question="When did the GDPR start to apply?").ok)
+        # left out, not counted as found: a sentence of the question's words plus unsupported ones still fails
+        ev = ["Codes of conduct should take account of the needs of micro, small and medium-sized enterprises."]
+        self.assertFalse(c.check("The GDPR generously rewards compliant businesses with tax rebates [1].", ev,
+                                 question="Is the GDPR fair to small businesses?").ok)
+
 
 if __name__ == "__main__":
     unittest.main()

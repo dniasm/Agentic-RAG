@@ -64,7 +64,10 @@ def write_and_judge(q, docs):
     from backend.evaluation.evaluator import evaluate_answer
     from backend.graph.nodes import _cited
     from backend.tools import rag
+    from backend.config.llm import consume_backup_flag
     answer = rag.generate(q["question"], [dict(d, page=d.get("page")) for d in docs], [])
+    if consume_backup_flag():
+        sys.exit("The 120B was rate-limited and the backup model wrote this answer; stopping (not comparable).")
     if answer is None:
         return None, None
     context = "\n\n".join(rag.format_block(i, d) for i, d in _cited(docs, answer))
@@ -114,11 +117,19 @@ def main():
     ap.add_argument("--fresh", action="store_true",
                     help="validation run: skip the questions in checker_eval.json (the rules were tuned on them), "
                          "use another seed and save to checker_eval_fresh.json")
+    ap.add_argument("--validate", action="store_true",
+                    help="validation of the 14 November fixes: every answerable question in neither checker_eval.json "
+                         "nor rag_prompt_eval.json (the fixes were tuned on those), answered with today's prompt; "
+                         "saved to checker_eval_nov14.json")
     args = ap.parse_args()
     out_path, seed, exclude = OUT, 7, set()
     if args.fresh:
         exclude = set(json.loads(OUT.read_text(encoding="utf-8"))["answers"])
         out_path, seed = rs.RESULTS / "checker_eval_fresh.json", 11
+    if args.validate:
+        exclude = set(json.loads(OUT.read_text(encoding="utf-8"))["answers"]) | {
+            k.split("#")[0] for k in json.loads((rs.RESULTS / "rag_prompt_eval.json").read_text(encoding="utf-8"))["new"]}
+        out_path, seed, args.per_shape = rs.RESULTS / "checker_eval_nov14.json", 13, 100
 
     rs.SCORE_FLOOR = rs.FLOORS["voyage"]
     data = json.loads(rs.POOL_JSON.read_text(encoding="utf-8"))["pools"]

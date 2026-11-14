@@ -302,7 +302,7 @@
    ],
    "code": {
     "ok": false,
-    "support": 0.82,
+    "support": 0.827,
     "problems": [
      "1 cited claim(s) not found in the cited passages"
     ],
@@ -339,7 +339,7 @@
    ],
    "code": {
     "ok": true,
-    "support": 0.85,
+    "support": 0.862,
     "problems": [],
     "unsupported": [],
     "uncited": []
@@ -391,7 +391,7 @@
    ],
    "code": {
     "ok": true,
-    "support": 0.723,
+    "support": 0.742,
     "problems": [],
     "unsupported": [],
     "uncited": []
@@ -495,7 +495,7 @@
    ],
    "code": {
     "ok": false,
-    "support": 0.502,
+    "support": 0.51,
     "problems": [
      "1 cited claim(s) not found in the cited passages"
     ],
@@ -555,14 +555,14 @@
    ],
    "code": {
     "ok": false,
-    "support": 0.679,
+    "support": 0.712,
     "problems": [
      "1 cited claim(s) not found in the cited passages"
     ],
     "unsupported": [
      [
       "The GDPR tries to accommodate small businesses.",
-      0.2,
+      0.33,
       []
      ]
     ],
@@ -615,7 +615,7 @@
    ],
    "code": {
     "ok": true,
-    "support": 0.704,
+    "support": 0.718,
     "problems": [],
     "unsupported": [],
     "uncited": []
@@ -641,7 +641,7 @@
    ],
    "code": {
     "ok": true,
-    "support": 0.713,
+    "support": 0.705,
     "problems": [],
     "unsupported": [],
     "uncited": []

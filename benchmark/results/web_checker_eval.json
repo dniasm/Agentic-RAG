@@ -299,17 +299,10 @@
    "code": {
     "pass": false,
     "problems": [
-     "1 claim(s) without a citation",
-     "1 cited claim(s) not found in the cited passages"
+     "1 claim(s) without a citation"
     ],
     "gaps": [],
-    "unsupported": [
-     [
-      "The weight of recent, independent coverage (blog, Instagram post, ESPN) identifies Harry Kane as the 2026 men’s winner, so that is taken as the most reliable an",
-      0.38,
-      []
-     ]
-    ],
+    "unsupported": [],
     "uncited": [
      "*Note:* The Wikipedia entry for the 2026 Ballon d’Or lists “Ousmane Dembélé” as the reigning winner, which conflicts with contemporary news reports and the offi"
     ]

@@ -1565,3 +1565,44 @@ database) still doesn't say so with either prompt.
 
 Results: `benchmark/results/rag_prompt_eval.json` (`#2`, `#3` keys are the repeats), old prompt in
 `rag_prompt_old.json`.
+
+### 21.19 Answer checker: false alarms on correct answers (14 November)
+
+`evaluation/citations.py`. On the 115 document answers from §21.18, the code check flagged 25. Read one by one
+against their passages, 13 were the checker's mistakes, not the answer's:
+
+| Cause | Example | Fix |
+|---|---|---|
+| Sentence cut at an abbreviation | "10 M/2 % vs. 20 M/4 %", "Art. 33" | no split after vs., e.g., i.e., cf., Art., No., Fig., pp., approx., titles |
+| Bold list heading with a dash read as a claim | "**Sector-specific investments** –" | headings may end in a dash |
+| Decimal without its leading zero | passage ".5? .05? .01?", answer "0.5, 0.05, 0.01" | passage ".05" also reads as "0.05" |
+| Millions written as billions | "$37.6 billion" from a table in $ millions (37,568) | accepted when the sentence says billion, a cited passage says million and the rounding matches (also million/thousand) |
+| The question's name for the topic isn't in the passages | "The GDPR began to apply on 25 May 2018" (the regulation says "this Regulation") | question words that no passage contains are left out of the sentence's support |
+
+For the last one, counting those words as *found* was tried first: it let through an answer the 120B had flagged
+(`open-gdpr-sme`, whose opening "The GDPR tries to accommodate small businesses" is the model's own judgment).
+Leaving them out of the count flags it again.
+
+Not changed: comparison sentences that draw their own contrast (`cmp-bm25-tfidf`: "plain TF-IDF … without such
+length normalisation" is an inference, not something passage [2] says), so they go to the 120B check; and `sum-who`,
+which cites [4] for dates that are in [1] and [3], a real misattribution.
+
+| | Before | After |
+|---|---|---|
+| 115 document answers (§21.18) flagged | 25 | 12 |
+| Earlier checker sets (23 + 20 document, 20 + 12 web answers): agreement with the 120B, broken answers caught | — | identical to before |
+| Fresh: 23 questions in neither set, answered with today's prompt, 120B verdicts (`run_checker.py --validate`) | 23/23 code ok | 23/23 code ok; the 120B's one flag (`sum-wb`, "$40 billion over 10 years") is in cited passage [6], its own mistake as on 3 November |
+
+The fresh set is mostly fact questions (16 fact, 6 definition, 1 summary), where none of the fixes apply, so it shows
+that nothing broke, not the gain. Wrong citations are caught 12/22 there with the old and the new code alike: in fact
+questions the passages often come from the same document and share their words, so a swapped citation still matches.
+
+**Prompt (§21.18) and checker together**, share of document answers that pass the code check and so skip the 120B
+check (answers in high-relevance matches):
+
+| | Old checker | New checker |
+|---|---|---|
+| Old prompt, 35 answers / all 57 runs | 26/35 (74%) / 41/57 | 30/35 / 50/57 |
+| New prompt, 36 answers / all 58 runs | 32/36 / 49/58 | **33/36 (92%) / 53/58 (91%)** |
+
+Results: `benchmark/results/checker_eval_nov14.json`; the other checker files were re-scored (`--rescore`).

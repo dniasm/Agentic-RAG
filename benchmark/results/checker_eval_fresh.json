@@ -444,7 +444,7 @@
    ],
    "code": {
     "ok": true,
-    "support": 0.768,
+    "support": 0.775,
     "problems": [],
     "unsupported": [],
     "uncited": []
@@ -473,17 +473,9 @@
     "support": 0.619,
     "problems": [
      "8 claim(s) without a citation",
-     "2 cited claim(s) not found in the cited passages"
+     "1 cited claim(s) not found in the cited passages"
     ],
     "unsupported": [
-     [
-      "In fiscal 2024 the World Bank Group committed **$37.6 billion to the IBRD** and **$31.2 billion to the IDA** [2].",
-      0.82,
-      [
-       "37.6",
-       "31.2"
-      ]
-     ],
      [
       "- In East Asia & Pacific, Latin America & Caribbean, and Middle East & North Africa, **IBRD commitments are higher** than IDA, indicating a greater share of non",
       0.27,

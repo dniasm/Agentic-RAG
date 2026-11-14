@@ -18,7 +18,10 @@ from dataclasses import dataclass, field
 from backend.rag.sparse import tokenize
 
 CITATION = re.compile(r"\[(\d{1,2}(?:\s*,\s*\d{1,2})*)\]")
-_SENTENCE = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9\"'(*])")
+# Not after abbreviations: "10 M/2 % vs. 20 M/4 %" and "Art. 33" are one sentence each.
+_ABBREVIATIONS = "".join(rf"(?<!\b{re.escape(a)}\.)" for a in ("vs", "e.g", "i.e", "cf", "Art", "art", "No", "Fig",
+                                                                 "pp", "approx", "Dr", "Mr", "Ms", "Mrs", "St"))
+_SENTENCE = re.compile(rf"(?<=[.!?]){_ABBREVIATIONS}\s+(?=[A-Z0-9\"'(*])")
 _MARKDOWN = re.compile(r"^\s*(?:[-*+]|\d+[.)]|#+)\s*|[*_`>|]")
 # A number: thousands separators only before exactly 3 digits ("1,000", but "1.2, 2.0" is two numbers). Ordinals
 # ("20th"), decades ("1970s") and the second half of a range ("1970-80s") are skipped: they are written too many
@@ -34,7 +37,7 @@ STEM = 5                    # "classified" and "classification" match on their f
 # Sentences that don't need their own citation: lead-ins to a list ("The stack consists of:"), headings, and
 # closing summaries of what was already cited ("Together, these…", "In short, …").
 _LEAD_IN = re.compile(r":\s*$")
-_HEADING = re.compile(r"^\s*(?:\*\*[^*]+\*\*|__[^_]+__)\s*:?\s*$|^\s*#+\s")
+_HEADING = re.compile(r"^\s*(?:[-*+]\s+)?(?:\*\*[^*]+\*\*|__[^_]+__)\s*[:–—-]?\s*$|^\s*#+\s")
 _FORMULA = re.compile(r"\\(?:text|frac|times|log|sum|mathrm|cdot)\b|\\\[|\\\(|\$\$")  # LaTeX formula lines
 # A name with a number in it, after tokenizing: "bm25", "covid19" (from COVID-19), "gpt4". Not "20th" or "k1", and
 # not a long word joined to a number by a hyphen ("ribulose-1,5-bisphosphate" -> "ribulose1").
@@ -42,6 +45,7 @@ _IDENTIFIER = re.compile(r"^[a-z]{2,6}\d+[a-z\d]*$")
 _SUBSCRIPT = re.compile(r"[₀-₉]")  # chemical formulas (CO₂) are written many ways ("carbon dioxide")
 # Numbers in the passages are matched loosely (any form), so only numbers the passage really lacks are flagged.
 _ANY_NUMBER = re.compile(r"\d+(?:,\d{3})*(?:\.\d+)?")
+_BARE_DECIMAL = re.compile(r"(?<![\d.])(\.\d+)")  # ".05" in a passage is "0.05" in the answer
 _SUMMARY = re.compile(r"^\W*(?:thus|so|overall|together|therefore|hence|in (?:short|summary|sum|conclusion)|"
                       r"in other words|taken together|altogether|all in all)\b", re.I)
 # Sentences that talk about the evidence instead of making a claim from it ("the search results don't give…").
@@ -108,6 +112,19 @@ def _versions(text: str) -> list[str]:
     return [a or b for a, b in _VERSION.findall(CITATION.sub(" ", text))]
 
 
+def _converted(number: str, sentence: str, texts: list[str], numbers: set[str]) -> bool:
+    """"$37.6 billion" from a table in $ millions (37,568), or "1.2 million" from one in thousands: the passage number
+    rounded to the answer's precision. Only when the sentence names the bigger unit and a cited passage the smaller."""
+    if "." not in number:
+        return False
+    for big, small in (("billion", "million"), ("million", "thousand")):
+        if re.search(rf"\b{big}\b|\b{big[0]}n\b", sentence, re.I) and any(re.search(small, t, re.I) for t in texts):
+            places = len(number.split(".")[1])
+            if any(round(int(n) / 1000, places) == float(number) for n in numbers if n.isdigit() and len(n) >= 4):
+                return True
+    return False
+
+
 def _ungroup(text: str) -> str:
     return _GROUPED.sub(lambda m: m.group(1) + re.sub(r"\D", "", m.group(2)), text)
 
@@ -161,7 +178,11 @@ def check(answer: str, evidence: list[str], threshold: float = SUPPORT_THRESHOLD
     answer, evidence = _ungroup(answer), [_ungroup(text) for text in evidence]
     passage_words = [set(tokenize(text)) for text in evidence]
     passage_numbers = [set(n.replace(",", "") for n in _ANY_NUMBER.findall(text)) | {
-        n.replace(" ", "") for n in re.findall(r"\d{1,3}(?: \d{3})+", text)} for text in evidence]
+        n.replace(" ", "") for n in re.findall(r"\d{1,3}(?: \d{3})+", text)} | {
+        "0" + n for n in _BARE_DECIMAL.findall(text)} for text in evidence]
+    # The question's own name for its topic ("GDPR") may be missing from the passages (the regulation calls itself
+    # "this Regulation"); such words are left out of a sentence's support, neither found nor missing.
+    unnamed = asked - set().union(*passage_words) if passage_words else set()
     block_of: dict[int, int] = {}
     sentences = split_sentences(answer, block_of)
     by_paragraph: dict[int, list[int]] = {}
@@ -205,9 +226,11 @@ def check(answer: str, evidence: list[str], threshold: float = SUPPORT_THRESHOLD
             continue
         words = set().union(*(passage_words[n - 1] for n in cites))
         stems = {w[:STEM] for w in words if len(w) >= STEM}
-        support = sum(_found(t, words, stems) for t in keywords) / len(keywords)
+        judged = [t for t in keywords if t not in unnamed] or keywords
+        support = sum(_found(t, words, stems) for t in judged) / len(judged)
         numbers = set().union(*(passage_numbers[n - 1] for n in cites))
-        missing = [n for n in _numbers(s) if n not in numbers]
+        missing = [n for n in _numbers(s) if n not in numbers
+                   and not _converted(n, s, [evidence[c - 1] for c in cites], numbers)]
         # Names with digits in them (BM25, COVID-19, GPT-4, ISO 27001) must appear exactly, like numbers.
         missing += [t for t in _identifiers(s, asked) if t not in words]
         missing += [v for v in _versions(s)
