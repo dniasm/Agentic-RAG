@@ -27,3 +27,6 @@ test_corpus/files/
 # local agent tooling
 .claude/
 skills-lock.json
+
+# kept by backend/scripts/merge_library.py --apply until stage 7
+backend/vector_db/qdrant_data.before-merge/

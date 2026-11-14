@@ -310,20 +310,36 @@ def _move_signup_code(renamer_env: Path, day7_env: Path) -> str:
 
 
 def apply(staging: Path, day7_root: Path, renamer_data: Path) -> None:
+    """Swap the staged data in. Every move is undone if one fails; nothing after the swap can fail the run."""
     data = day7_root / "backend" / "data"
     qdrant = day7_root / "backend" / "vector_db" / "qdrant_data"
-    for name in DATA_FOLDERS:
-        if (data / name).exists():
-            raise MergeError(f"{data / name} already exists")
-    (data / "app.db").rename(data / "app.db.before-merge")
-    qdrant.rename(qdrant.with_name("qdrant_data.before-merge"))
-    (staging / "app.db").rename(data / "app.db")
-    (staging / "qdrant_data").rename(qdrant)
-    for name in DATA_FOLDERS:
-        if (staging / name).exists():
-            (staging / name).rename(data / name)
-    staging.rmdir()
-    print(_move_signup_code(renamer_data.parent / ".env", day7_root / ".env"))
+    moves = [(data / "app.db", data / "app.db.before-merge"),
+             (qdrant, qdrant.with_name("qdrant_data.before-merge")),
+             (staging / "app.db", data / "app.db"),
+             (staging / "qdrant_data", qdrant)]
+    moves += [(staging / name, data / name) for name in DATA_FOLDERS if (staging / name).exists()]
+    # sqlite's write-ahead log may still hold the last writes: fold it into app.db (its -wal/-shm go with it)
+    with contextlib.closing(sqlite3.connect(staging / "app.db")) as c:
+        c.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        c.execute("PRAGMA journal_mode = DELETE")   # the app turns WAL back on when it connects
+    taken = [str(dst) for _, dst in [moves[0], moves[1], *moves[4:]] if dst.exists()]
+    if taken:
+        raise MergeError(f"already there: {', '.join(taken)}")
+    done = []
+    try:
+        for src, dst in moves:
+            src.rename(dst)
+            done.append((src, dst))
+    except OSError as e:
+        for src, dst in reversed(done):
+            dst.rename(src)
+        raise MergeError(f"swap undone, nothing changed ({e})") from e
+    for step in (lambda: shutil.rmtree(staging), lambda: print(_move_signup_code(renamer_data.parent / ".env",
+                                                                                  day7_root / ".env"))):
+        try:
+            step()
+        except Exception as e:   # the data is swapped in; these are tidy-ups
+            print(f"warning: {e}")
 
 
 def main() -> None:

@@ -132,3 +132,23 @@ def test_applying_twice_is_refused(sources, tmp_path):
     assert (day7 / "backend" / "data" / "library" / "u1" / "stemming.md").exists()
     with pytest.raises(merge_library.MergeError, match="already merged"):
         merge_library.merge(day7, renamer, tmp_path / "staging2")
+
+
+def test_a_failed_swap_is_undone(sources, tmp_path, monkeypatch):
+    day7, renamer = sources
+    merge_library.merge(day7, renamer, tmp_path / "staging")
+    real_rename = type(tmp_path).rename
+
+    def rename(self, target):
+        if self.name == "qdrant_data" and "staging" in str(self):   # the 4th move: staging's store into place
+            raise PermissionError("in use")
+        return real_rename(self, target)
+    monkeypatch.setattr(type(tmp_path), "rename", rename)
+    with pytest.raises(merge_library.MergeError, match="swap undone"):
+        merge_library.apply(tmp_path / "staging", day7, renamer)
+    data = day7 / "backend" / "data"
+    assert (data / "app.db").exists() and not (data / "app.db.before-merge").exists()
+    assert (day7 / "backend" / "vector_db" / "qdrant_data").exists()
+    assert (tmp_path / "staging" / "app.db").exists()
+    with sqlite3.connect(data / "app.db") as c:   # still day7's own, unmerged
+        assert "file_hash" in {r[1] for r in c.execute("PRAGMA table_info(documents)")}
