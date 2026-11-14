@@ -14,7 +14,6 @@ from backend.config.settings import settings
 from backend.config.usage import UsageTracker, record as record_usage
 from backend.graph.workflow import run_agent, stream_agent
 from backend.memory.store import (
-    ensure_memory_collection,
     save_memory,
     search_memories,
     delete_conversation_memories,
@@ -123,8 +122,6 @@ def _prepare(
 
     # Relevant past conversations from semantic memory.
     try:
-        ensure_memory_collection()
-
         # Each episode is up to ~4,000 characters and goes into several prompts (router, knowledge gate,
         # answer), so only the closest few are used, shortened.
         semantic_memories = search_memories(

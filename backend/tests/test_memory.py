@@ -119,5 +119,40 @@ class Storage(unittest.TestCase):
         self.assertNotIn("hobbies", {m["memory_key"] for m in db.list_memories(self.uid)})
 
 
+
+class CollectionCheckedOnce(unittest.TestCase):
+    def test_checked_once_per_client(self):
+        from unittest import mock
+
+        from backend.memory import store
+
+        def fake_client():
+            c = mock.Mock()
+            c.collection_exists.return_value = True
+            c.get_collection.return_value.config.params.vectors.size = settings.voyage_memory_dimensions
+            return c
+
+        first, second = fake_client(), fake_client()
+        with mock.patch.object(store, "_checked", set()), mock.patch.object(store, "get_client", return_value=first):
+            for _ in range(3):  # startup, then every message's search and save
+                store.ensure_memory_collection()
+            self.assertEqual(first.collection_exists.call_count, 1)
+            with mock.patch.object(store, "get_client", return_value=second):  # client reopened: check again
+                store.ensure_memory_collection()
+            self.assertEqual(second.collection_exists.call_count, 1)
+
+    def test_a_failed_check_is_retried_next_time(self):
+        from unittest import mock
+
+        from backend.memory import store
+
+        client = mock.Mock()
+        client.collection_exists.side_effect = [RuntimeError("locked"), False]
+        with mock.patch.object(store, "_checked", set()), mock.patch.object(store, "get_client", return_value=client):
+            with self.assertRaises(RuntimeError):
+                store.ensure_memory_collection()
+            store.ensure_memory_collection()
+        client.create_collection.assert_called_once()
+
 if __name__ == "__main__":
     unittest.main()

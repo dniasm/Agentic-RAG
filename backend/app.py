@@ -18,6 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.api.routes import auth, chat, documents, health
 from backend.config.settings import settings
+from backend.memory.store import ensure_memory_collection
 from backend.models.database import init_db
 from backend.rag.vectorstore import get_client, close_client
 
@@ -32,6 +33,10 @@ async def lifespan(_: FastAPI):
         raise RuntimeError(f"Missing required settings in .env: {', '.join(k.upper() for k in missing)}")
     init_db()
     get_client()  # open / create the Qdrant collection up front
+    try:  # once here, not on every message; a problem only disables recall of past conversations
+        ensure_memory_collection()
+    except Exception as e:
+        logging.getLogger(__name__).warning("Conversation memory unavailable: %s", e)
 
     try:
         yield

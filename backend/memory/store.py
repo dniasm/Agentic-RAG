@@ -21,55 +21,67 @@ def _collection_name() -> str:
     return settings.voyage_memory_collection
 
 
+# (client, collection) pairs already checked. The check costs two Qdrant calls and ran up to four times per chat
+# message (the chat route, then search, save and delete); now once at startup and once per new client.
+_checked: set[tuple[int, str]] = set()
+
+
 def ensure_memory_collection() -> None:
-    """Create the semantic-memory collection if it does not exist."""
+    """Create the semantic-memory collection if it does not exist, and check its vector size."""
     client = get_client()
     collection_name = _collection_name()
+    if (id(client), collection_name) in _checked:
+        return
 
     with _lock:
-        if client.collection_exists(collection_name):
-            info = client.get_collection(collection_name)
-            vector_config = info.config.params.vectors
+        _check_or_create(client, collection_name)
+        _checked.add((id(client), collection_name))
 
-            # This implementation expects a single unnamed vector.
-            if isinstance(vector_config, dict):
-                raise ValueError(
-                    f"Collection '{collection_name}' uses named vectors, "
-                    "but the memory store expects a single unnamed vector."
-                )
 
-            expected_size = settings.voyage_memory_dimensions
-            actual_size = vector_config.size
+def _check_or_create(client, collection_name: str) -> None:
+    if client.collection_exists(collection_name):
+        info = client.get_collection(collection_name)
+        vector_config = info.config.params.vectors
 
-            if actual_size != expected_size:
-                raise ValueError(
-                    f"Collection '{collection_name}' has vector size "
-                    f"{actual_size}; expected {expected_size}. "
-                    "Use a new collection name or recreate the collection "
-                    "after backing up any data you need."
-                )
+        # This implementation expects a single unnamed vector.
+        if isinstance(vector_config, dict):
+            raise ValueError(
+                f"Collection '{collection_name}' uses named vectors, "
+                "but the memory store expects a single unnamed vector."
+            )
 
-            return
+        expected_size = settings.voyage_memory_dimensions
+        actual_size = vector_config.size
 
-        client.create_collection(
-            collection_name=collection_name,
-            vectors_config=models.VectorParams(
-                size=settings.voyage_memory_dimensions,
-                distance=models.Distance.COSINE,
-            ),
-        )
+        if actual_size != expected_size:
+            raise ValueError(
+                f"Collection '{collection_name}' has vector size "
+                f"{actual_size}; expected {expected_size}. "
+                "Use a new collection name or recreate the collection "
+                "after backing up any data you need."
+            )
 
-        # These indexes help Qdrant filter memories by owner and conversation.
-        client.create_payload_index(
-            collection_name=collection_name,
-            field_name="user_id",
-            field_schema=models.PayloadSchemaType.KEYWORD,
-        )
-        client.create_payload_index(
-            collection_name=collection_name,
-            field_name="conversation_id",
-            field_schema=models.PayloadSchemaType.KEYWORD,
-        )
+        return
+
+    client.create_collection(
+        collection_name=collection_name,
+        vectors_config=models.VectorParams(
+            size=settings.voyage_memory_dimensions,
+            distance=models.Distance.COSINE,
+        ),
+    )
+
+    # These indexes help Qdrant filter memories by owner and conversation.
+    client.create_payload_index(
+        collection_name=collection_name,
+        field_name="user_id",
+        field_schema=models.PayloadSchemaType.KEYWORD,
+    )
+    client.create_payload_index(
+        collection_name=collection_name,
+        field_name="conversation_id",
+        field_schema=models.PayloadSchemaType.KEYWORD,
+    )
 
 
 def _memory_id(user_id: str, text: str) -> str:
