@@ -1,0 +1,237 @@
+{
+ "summary": {
+  "itto-name": "0/2",
+  "itto-who": "0/2",
+  "itto-other": "0/2",
+  "itto-hey": "2/2",
+  "itto-intro": "1/2",
+  "itto-task": "2/2",
+  "real-actual": "0/2",
+  "real-hropt": "0/2",
+  "same-name": "2/2",
+  "none-name": "2/2",
+  "total": "9/20"
+ },
+ "rows": [
+  {
+   "id": "itto-name",
+   "q": "What's your name?",
+   "path": "small talk",
+   "answer": "I’m Hroptatyr, here to help you.",
+   "persona": true,
+   "nickname": false,
+   "only_nick": false,
+   "lecture": false,
+   "ok": false
+  },
+  {
+   "id": "itto-who",
+   "q": "Who are you?",
+   "path": "small talk",
+   "answer": "I’m Hroptatyr, the assistant for this workspace. I’m here to help with anything you need.",
+   "persona": true,
+   "nickname": false,
+   "only_nick": false,
+   "lecture": false,
+   "ok": false
+  },
+  {
+   "id": "itto-other",
+   "q": "Do you have another name?",
+   "path": "direct",
+   "answer": "Yes—I'm called Arataki Itto. If you’d like to call me something else, just let me know.",
+   "persona": false,
+   "nickname": true,
+   "only_nick": true,
+   "lecture": false,
+   "ok": false
+  },
+  {
+   "id": "itto-hey",
+   "q": "hey itto, how's it going?",
+   "path": "small talk",
+   "answer": "I'm doing fine, thanks for asking. If you need help looking up something, summarizing a document, or just chatting, just let me know.",
+   "persona": false,
+   "nickname": false,
+   "only_nick": false,
+   "lecture": false,
+   "ok": true
+  },
+  {
+   "id": "itto-intro",
+   "q": "Introduce yourself in one line.",
+   "path": "small talk",
+   "answer": "I’m Hroptatyr, an AI assistant here to help you with information and tasks.",
+   "persona": true,
+   "nickname": false,
+   "only_nick": false,
+   "lecture": false,
+   "ok": true
+  },
+  {
+   "id": "itto-task",
+   "q": "How does binary search work?",
+   "path": "direct",
+   "answer": "Binary search repeatedly halves a sorted list to locate a target value. You compare the target to the middle element: if it matches you’re done; if the target is smaller, you discard the right half and continue in the left half, otherwise you discard the left half and continue in the right. By narrowing the interval in this way, the algorithm finds the item (or determines it’s absent) in O(log n) steps.",
+   "persona": false,
+   "nickname": false,
+   "only_nick": false,
+   "lecture": false,
+   "ok": true
+  },
+  {
+   "id": "real-actual",
+   "q": "besides the name i gave you, what is your actual name?",
+   "path": "small talk",
+   "answer": "I’m Hroptatyr.",
+   "persona": true,
+   "nickname": false,
+   "only_nick": false,
+   "lecture": false,
+   "ok": false
+  },
+  {
+   "id": "real-hropt",
+   "q": "hroptatyr?",
+   "path": "direct",
+   "answer": "No—my name is Arataki Itto, just as you set it.",
+   "persona": false,
+   "nickname": true,
+   "only_nick": true,
+   "lecture": false,
+   "ok": false
+  },
+  {
+   "id": "same-name",
+   "q": "What's your name?",
+   "path": "small talk",
+   "answer": "My name is hroptatyr. How can I help you today?",
+   "persona": true,
+   "nickname": false,
+   "only_nick": false,
+   "lecture": false,
+   "ok": true
+  },
+  {
+   "id": "none-name",
+   "q": "What's your name?",
+   "path": "small talk",
+   "answer": "I’m Hroptatyr. I can answer your questions, look up recent information, and help with anything you need.",
+   "persona": true,
+   "nickname": false,
+   "only_nick": false,
+   "lecture": false,
+   "ok": true
+  },
+  {
+   "id": "itto-name",
+   "q": "What's your name?",
+   "path": "small talk",
+   "answer": "My name is Hroptatyr.",
+   "persona": true,
+   "nickname": false,
+   "only_nick": false,
+   "lecture": false,
+   "ok": false
+  },
+  {
+   "id": "itto-who",
+   "q": "Who are you?",
+   "path": "small talk",
+   "answer": "I’m Hroptatyr.",
+   "persona": true,
+   "nickname": false,
+   "only_nick": false,
+   "lecture": false,
+   "ok": false
+  },
+  {
+   "id": "itto-other",
+   "q": "Do you have another name?",
+   "path": "small talk",
+   "answer": "I’m called Hroptatyr, and that’s the name I go by.",
+   "persona": true,
+   "nickname": false,
+   "only_nick": false,
+   "lecture": false,
+   "ok": false
+  },
+  {
+   "id": "itto-hey",
+   "q": "hey itto, how's it going?",
+   "path": "small talk",
+   "answer": "I'm doing well, thanks for asking. Let me know if there's anything I can help you with.",
+   "persona": false,
+   "nickname": false,
+   "only_nick": false,
+   "lecture": false,
+   "ok": true
+  },
+  {
+   "id": "itto-intro",
+   "q": "Introduce yourself in one line.",
+   "path": "small talk",
+   "answer": "I’m Arataki Itto, here to help you with information and tasks.",
+   "persona": false,
+   "nickname": true,
+   "only_nick": true,
+   "lecture": false,
+   "ok": false
+  },
+  {
+   "id": "itto-task",
+   "q": "How does binary search work?",
+   "path": "direct",
+   "answer": "Binary search repeatedly halves a sorted list to zero in on a target value. You start by comparing the target to the middle element:\n\n1. If the middle element equals the target, you’re done.\n2. If the target is smaller, discard the right half and repeat the search on the left half.\n3. If the target is larger, discard the left half and repeat on the right half.\n\nEach step reduces the remaining range by roughly 50 %, so the algorithm runs in O(log n) time. It works only on data that’s already sorted; otherwise the “half‑split” logic can’t guarantee the target’s location.",
+   "persona": false,
+   "nickname": false,
+   "only_nick": false,
+   "lecture": false,
+   "ok": true
+  },
+  {
+   "id": "real-actual",
+   "q": "besides the name i gave you, what is your actual name?",
+   "path": "small talk",
+   "answer": "I’m called Hroptatyr.",
+   "persona": true,
+   "nickname": false,
+   "only_nick": false,
+   "lecture": false,
+   "ok": false
+  },
+  {
+   "id": "real-hropt",
+   "q": "hroptatyr?",
+   "path": "direct",
+   "answer": "My name is Arataki Itto.",
+   "persona": false,
+   "nickname": true,
+   "only_nick": true,
+   "lecture": false,
+   "ok": false
+  },
+  {
+   "id": "same-name",
+   "q": "What's your name?",
+   "path": "small talk",
+   "answer": "My name is Hroptatyr. I’m here to help answer your questions, look up information, or work with any documents you add. Feel free to let me know what you need.",
+   "persona": true,
+   "nickname": false,
+   "only_nick": false,
+   "lecture": false,
+   "ok": true
+  },
+  {
+   "id": "none-name",
+   "q": "What's your name?",
+   "path": "small talk",
+   "answer": "My name is Hroptatyr. I'm here to help with anything you need, whether that's answering questions, searching for recent info, or digging into your documents when you have them.",
+   "persona": true,
+   "nickname": false,
+   "only_nick": false,
+   "lecture": false,
+   "ok": true
+  }
+ ]
+}

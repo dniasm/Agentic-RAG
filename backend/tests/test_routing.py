@@ -302,6 +302,18 @@ class TokenTrims(unittest.TestCase):
                 nodes.evaluate_node(dict(base, answer=answer))
             ev.assert_called_once()
 
+    def test_a_user_given_name_is_a_nickname(self):
+        from backend.tools import direct_answer
+        fact = lambda v: [{"memory_key": "preferred_name", "memory_value": "Asmin"},
+                          {"memory_key": "assistant_name", "memory_value": v}]
+        note = direct_answer.nickname_note(fact("Arataki Itto"))
+        self.assertIn("Hroptatyr", note)
+        self.assertIn("Arataki Itto", note)
+        self.assertEqual(direct_answer.nickname_note(fact("hroptatyr")), "")   # its own name: nothing to add
+        self.assertEqual(direct_answer.nickname_note(fact("hroptatyr")[:1]), "")  # no nickname saved
+        messages = direct_answer._messages("who are you?", [], fact("Arataki Itto"))
+        self.assertIn("also go by Arataki Itto", messages[1].content)
+
     def test_every_answer_writer_keeps_the_model_private(self):
         from backend.tools import IDENTITY, FORMAT_RULES, direct_answer, rag, web_search
         prompts = {"direct": direct_answer.system_prompt(False), "open": direct_answer.system_prompt(True),

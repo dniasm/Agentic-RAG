@@ -1615,3 +1615,29 @@ The checker fixes cost no tokens; with the new prompt they skip ~2 more answer c
 tokens).
 
 Results: `benchmark/results/checker_eval_nov14.json`; the other checker files were re-scored (`--rescore`).
+
+### 21.20 A name the user gives the assistant is a nickname (14 November)
+
+A user can name the assistant ("can i call you Arataki Itto?"); memory saves it as `assistant_name`. On an account
+named that way before the persona existed, the saved fact won over the persona: "besides the name i gave you, what
+is your actual name?" got "I go by the one you set, Arataki Itto", and "hroptatyr?" got "No, my name is Arataki Itto,
+just as you set it". Decision (user): the nickname stays and the assistant answers to it, but its name is still
+Hroptatyr; asked its name, it says "I'm Hroptatyr, but I also go by Arataki Itto, the name you gave me".
+
+`direct_answer.nickname_note` adds this to the saved-memories message (direct answers and small talk) only when an
+`assistant_name` other than Hroptatyr is saved, so other prompts are unchanged. The first wording also made a plain
+"hey itto, how's it going?" reintroduce itself every time (0/3 without name talk); the note now says to just answer
+when called by the nickname.
+
+`benchmark/run_nickname.py`, router + writer with the user's saved facts, 3 runs each: name questions, the real
+conversation's two turns with its history, a greeting using the nickname, an ordinary question, and accounts with
+no nickname or the nickname "hroptatyr".
+
+| | Before | After |
+|---|---|---|
+| Name questions give both names (itto-name, itto-who, itto-other, real-actual, real-hropt) | 0/10 (2 runs; real-hropt: the nickname only, 2/2) | 15/15 |
+| "Introduce yourself" never gives only the nickname | 1/2 | 3/3 |
+| Greeting by nickname, no name talk | 2/2 | 8/9 |
+| Ordinary question, no name talk / no nickname or "hroptatyr" saved: unchanged | 2/2 / 4/4 | 3/3 / 6/6 |
+
+Results: `results/nickname_before.json`, `nickname_after.json` (`nickname_first_try.json`: the first wording).

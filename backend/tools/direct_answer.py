@@ -251,6 +251,22 @@ def converse(
                                       temperature=settings.chat_temperature))
 
 
+def nickname_note(memories: list[dict]) -> str:
+    """A name the user gave the assistant (saved as assistant_name) is a nickname, not a new identity. Without this
+    note the saved fact won over the persona: on an account that had named it "Arataki Itto", "hroptatyr?" got "No,
+    my name is Arataki Itto, just as you set it" (benchmark/run_nickname.py). Added only when such a name is saved."""
+    nick = next((m["memory_value"].strip() for m in memories if m.get("memory_key") == "assistant_name"), "")
+    if not nick or nick.casefold() == "hroptatyr":
+        return ""
+    return (
+        f'\n\nThe user gave you the nickname "{nick}" (assistant_name). When they call you that, just answer '
+        "normally, without bringing up names. It doesn't replace your name: only when asked your name, who you are, "
+        f'or about either name, say you are Hroptatyr and also go by {nick}, e.g. "I\'m Hroptatyr, but I also go by '
+        f'{nick}, the name you gave me." Earlier replies that gave only the nickname as your name were wrong; '
+        "don't repeat them."
+    )
+
+
 def _messages(
     query: str,
     history: list[dict],
@@ -272,7 +288,7 @@ def _messages(
             "Conversation history provides "
             "the immediate context for follow-up questions. Do not claim to "
             "remember details that are absent from both the supplied history "
-            "and the supplied memories."
+            "and the supplied memories." + nickname_note(memories)
         ),
         *history_to_messages(history),
         HumanMessage(query),
