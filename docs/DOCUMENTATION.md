@@ -703,7 +703,8 @@ question recognised.
 
 `config/usage.py`: a `UsageTracker` (LangChain callback) is attached to each request. Every model call inside the
 graph inherits it; calls outside the graph name their step with `usage_step` metadata (`memory_extract`,
-`episode_summary`). It sums input, output and hidden-reasoning tokens per model and per step.
+`episode_summary`, `knowledge_gate`; before 14 November the gate was counted under `direct`, together with
+the answer). It sums input, output and hidden-reasoning tokens per model and per step.
 
 - Each answer stores its own usage in `messages.meta.usage`.
 - Input tokens served from Groq's prompt cache are recorded as `cached` (half price, and not counted toward Groq's

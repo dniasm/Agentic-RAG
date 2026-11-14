@@ -594,5 +594,33 @@ class GroqKeyRotation(unittest.TestCase):
             self.assertEqual(self.llm.structured(Out).invoke("prompt").x, 1)
 
 
+class GateTokensLoggedSeparately(unittest.TestCase):
+    def test_gate_call_is_its_own_step_inside_the_direct_node(self):
+        from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
+        from langchain_core.messages import AIMessage
+        from langchain_core.runnables import RunnableLambda
+
+        from backend.config.usage import UsageTracker
+        from backend.tools import direct_answer
+
+        def fake_structured(model_cls, **kwargs):
+            chat = GenericFakeChatModel(messages=iter([AIMessage(
+                "x", usage_metadata={"input_tokens": 700, "output_tokens": 50, "total_tokens": 750})]))
+
+            def run(prompt):
+                chat.invoke(prompt)  # stands in for the Groq call inside structured()
+                return model_cls(question_kind="factual", reason="r", time_sensitive=False,
+                                 references_user_material=False, confidence="high")
+            return RunnableLambda(run)
+
+        tracker = UsageTracker()
+        with mock.patch.object(direct_answer, "structured", fake_structured):
+            RunnableLambda(lambda q: direct_answer._run_gate(q)).invoke(
+                "q", {"callbacks": [tracker], "metadata": {"langgraph_node": "direct"}})
+        steps = tracker.summary()["by_step"]
+        self.assertEqual(steps["knowledge_gate"]["input"], 700)
+        self.assertNotIn("direct", steps)
+
+
 if __name__ == "__main__":
     unittest.main()

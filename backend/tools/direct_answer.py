@@ -112,9 +112,10 @@ def _run_gate(
             history=history_text, memories=memory_text, query=query
         )
 
+        # Its own step in the token log: under the node's name ("direct") it was indistinguishable from the answer.
         gate_llm = structured(
             KnowledgeGate, fast=False, backup=True
-        ).with_config(tags=["nostream"])
+        ).with_config(tags=["nostream"], metadata={"usage_step": "knowledge_gate"})
 
         return gate_llm.invoke(prompt)
 
