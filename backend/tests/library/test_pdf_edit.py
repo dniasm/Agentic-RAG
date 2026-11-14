@@ -364,6 +364,8 @@ def test_missing_letters_come_from_a_complete_copy_of_the_font():
 
 def test_a_real_latex_paper_is_edited_in_its_own_fonts(tmp_path):
     src = Path(__file__).parents[3] / "test_corpus" / "files" / "ml" / "1706.03762.pdf"
+    if not src.exists():
+        pytest.skip("test corpus not downloaded (python scripts/fetch_test_corpus.py)")
     copy = tmp_path / "paper.pdf"
     copy.write_bytes(src.read_bytes())
     out = edited(copy, "dominant sequence transduction models", "leading sequence transduction models")

@@ -49,10 +49,13 @@ def setup() -> None:
 
     root = logging.getLogger()
     root.setLevel(logging.INFO)
-    for handler in (everything, major, console):
+    # day7's backend/app.py already prints to the console (logging.basicConfig): a second console handler would
+    # print every line twice
+    has_console = any(type(h) is logging.StreamHandler for h in root.handlers)
+    for handler in (everything, major) if has_console else (everything, major, console):
         root.addHandler(handler)
     logging.getLogger("backend.library").setLevel(logging.DEBUG)    # our own debug lines reach all.log
-    for noisy in ("httpx", "httpcore", "google_genai.models", "google_genai._api_client", "urllib3"):
+    for noisy in ("httpcore", "google_genai.models", "google_genai._api_client", "urllib3"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
 
