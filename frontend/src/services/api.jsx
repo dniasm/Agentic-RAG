@@ -1,5 +1,8 @@
 // Dev: Vite proxies /api to the backend (see vite.config.js). Set VITE_API_URL to call it directly.
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
+
+// Logins used to keep a token in localStorage; the cookie replaced it. Drop the old one once.
+try { localStorage.removeItem('agentic_rag_token'); } catch { /* storage unavailable */ }
 // The login is an HttpOnly cookie the browser sends by itself (scripts can't read it). Called when the backend
 // answers 401, so the app can drop back to the login screen.
 let onUnauthorized = () => {};

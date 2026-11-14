@@ -11,6 +11,9 @@ export default defineConfig({
       '/api': {
         target: 'http://127.0.0.1:8000',
         changeOrigin: true,
+        // Pass the browser's address on (X-Forwarded-For): the login limit counts wrong passwords per address,
+        // and without this every client would be 127.0.0.1.
+        xfwd: true,
         // Backend not running: answer with a clear 503 instead of Vite's bare 500.
         configure: (proxy) => {
           proxy.on('error', (_err, _req, res) => {

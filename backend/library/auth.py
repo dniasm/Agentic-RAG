@@ -92,7 +92,7 @@ def signups_open() -> str:
     return "invite" if _invite_code() else "closed"
 
 
-def sign_up(username: str, password: str, invite: str = "") -> tuple[dict, str]:
+def sign_up(username: str, password: str, invite: str = "", address: str = "") -> tuple[dict, str]:
     """Returns (user, login token). The first account takes the library from before accounts existed."""
     username = (username or "").strip()
     if not USERNAME.match(username):
@@ -102,8 +102,12 @@ def sign_up(username: str, password: str, invite: str = "") -> tuple[dict, str]:
     state = signups_open()
     if state == "closed":
         raise AuthError("Sign-ups are closed. Ask the site's owner for an invite.", 403)
-    if state == "invite" and not hmac.compare_digest((invite or "").strip(), _invite_code()):
-        raise AuthError("That invite code isn't right.", 403)
+    if state == "invite":
+        if _address_throttled(address):
+            raise AuthError("Too many wrong tries. Wait a few minutes and try again.", 429)
+        if not hmac.compare_digest((invite or "").strip(), _invite_code()):
+            _failed("", address)   # wrong invite codes count against the address like wrong passwords
+            raise AuthError("That invite code isn't right.", 403)
     if catalog.user_by_name(username):
         raise AuthError("That username is taken.", 409)
     user = catalog.create_user(username, hash_password(password))
@@ -131,10 +135,16 @@ def _throttled(username: str, address: str) -> bool:
                 or len(_recent(f"@{address}", now)) >= MAX_ADDRESS_FAILURES)
 
 
+def _address_throttled(address: str) -> bool:
+    with _failures_lock:
+        return len(_recent(f"@{address}", time.monotonic())) >= MAX_ADDRESS_FAILURES
+
+
 def _failed(username: str, address: str) -> None:
     with _failures_lock:
         now = time.monotonic()
-        _failures.setdefault(f"{username.lower()}@{address}", []).append(now)
+        if username:   # wrong invite codes have no name: they count for the address only
+            _failures.setdefault(f"{username.lower()}@{address}", []).append(now)
         _failures.setdefault(f"@{address}", []).append(now)
 
 

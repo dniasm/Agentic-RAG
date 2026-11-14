@@ -44,7 +44,7 @@ def auth_state(request: Request):
 @router.post("/signup")
 def sign_up(body: SignUpIn, request: Request):
     try:
-        user, token = auth.sign_up(body.username, body.password, body.invite)
+        user, token = auth.sign_up(body.username, body.password, body.invite, _address(request))
     except auth.AuthError as e:
         raise HTTPException(e.status, str(e)) from e
     return _signed_in(request, user, token)

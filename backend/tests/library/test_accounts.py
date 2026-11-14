@@ -223,3 +223,10 @@ def test_an_address_guessing_many_names_is_stopped(signed_in):
 def app_for_tests():
     from backend.app import app
     return app
+
+
+def test_wrong_invite_codes_are_limited_per_address(signed_in, invite):
+    guesser = browser()
+    for i in range(auth.MAX_ADDRESS_FAILURES):
+        assert sign_up(guesser, f"guess{i}", "wrong-code").status_code == 403
+    assert sign_up(guesser, "late_comer", INVITE).status_code == 429
