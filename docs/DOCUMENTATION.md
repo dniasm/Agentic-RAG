@@ -1550,21 +1550,25 @@ passages the app would pick (as `run_checker.py`), the same for both prompts. Co
 |---|---|---|
 | Answerable questions refused (36) | 1 (the 40-character bug) | 0 |
 | Out-of-scope questions refused (7) | 7 | 7 |
-| Pass the code citation check, so the 120B check is skipped | 26/35 | 32/36 |
-| Same, 11 changed cases × 3 runs | 20/33 | 27/33 |
+| Pass the code citation check, so the 120B check is skipped: first run | 26/35 | 32/36 |
+| Same, every run (11 cases repeated 3–5 times), averaged per question | 27.5/35 | 30.7/36 |
 | Answers saying "excerpts" or "passages" | 2/35 | 0/36 |
-| Tokens in / out (43 questions) | 73,635 / 12,755 | 78,236 / 14,868 |
+| Tokens in / out (43 questions, first run) | 73,635 / 12,755 | 78,236 / 14,868 |
+| Per answer, every run averaged per question: in / out | 1,731 / 355 | 1,835 / 395 |
 
-Output grew mostly as hidden reasoning (visible answers −2% in characters on the 43, +2% on the repeats; output
-tokens +22% on the repeats). Net cost is still lower: an answer check costs ~1,900 tokens, and on the 43 questions 6
-more answers skip it (~11,400 tokens) against ~6,700 extra for writing. Remaining citation-check failures are mostly
+Output grew mostly as hidden reasoning (visible answers about the same length). In tokens the change is about even:
+~145 more per answer (~5,200 on 36) against ~3.2 more answers skipping the ~1,900-token answer check (~6,100). The
+first run alone suggested a clear saving (6 more skips); the repeats show it was partly luck. The gain is mainly in
+the answers: no short answers lost, no "excerpts", more sentences cited. Remaining citation-check failures are mostly
 the checker's: "25 May 2018 [1]" is in the passage, and comparison sentences that paraphrase two passages
-(`cmp-bm25-tfidf` fails 0/3 with the new prompt, 2/3 with the old) can't be matched word for word; that is the next
+(`cmp-bm25-tfidf` fails 0/5 with the new prompt, 3/5 with the old) can't be matched word for word; that is the next
 review (the answer checker). The one real partial answer (`ma-ccs`: the documents don't name the framework or
 database) still doesn't say so with either prompt.
 
 Results: `benchmark/results/rag_prompt_eval.json` (`#2`, `#3` keys are the repeats), old prompt in
-`rag_prompt_old.json`.
+`rag_prompt_old.json`. Two repeat runs wrote this file at the same time and each saved over the other's rows, so it
+holds 65 of the 79 old and 80 new runs; the every-run counts above come from the run logs. Don't start a second run
+while one may still be writing the same file.
 
 ### 21.19 Answer checker: false alarms on correct answers (14 November)
 
@@ -1598,11 +1602,16 @@ that nothing broke, not the gain. Wrong citations are caught 12/22 there with th
 questions the passages often come from the same document and share their words, so a swapped citation still matches.
 
 **Prompt (§21.18) and checker together**, share of document answers that pass the code check and so skip the 120B
-check (answers in high-relevance matches):
+check (answers in high-relevance matches). Averaged per question over the runs kept in `rag_prompt_eval.json` (65
+of ~80 per prompt, see §21.18; with the old checker they give 27.7 and 31.0, close to the 27.5 and 30.7 counted
+from the logs):
 
 | | Old checker | New checker |
 |---|---|---|
-| Old prompt, 35 answers / all 57 runs | 26/35 (74%) / 41/57 | 30/35 / 50/57 |
-| New prompt, 36 answers / all 58 runs | 32/36 / 49/58 | **33/36 (92%) / 53/58 (91%)** |
+| Old prompt (35 answers) | 27.7 (79%) | 31.3 (89%) |
+| New prompt (36 answers) | 31.0 (86%) | **33.0 (92%)** |
+
+The checker fixes cost no tokens; with the new prompt they skip ~2 more answer checks per 36 answers (~3,800
+tokens).
 
 Results: `benchmark/results/checker_eval_nov14.json`; the other checker files were re-scored (`--rescore`).
