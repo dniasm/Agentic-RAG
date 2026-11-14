@@ -607,6 +607,16 @@ class PdfText:
         self._spacing[style.font] = result
         return result
 
+    def hyphenates(self) -> bool:
+        """Whether the document breaks words at line ends (TeX does; most word processors don't by default):
+        only then may a re-wrap break one."""
+        if not hasattr(self, "_hyphenates"):
+            self._hyphenates = any(
+                a.page == b.page and len(a.words[-1].text) > 1 and a.words[-1].text.endswith("-")
+                and line_break_hyphen(a.words[-1].text, b.words[0].text, self.text)
+                for a, b in zip(self.segments, self.segments[1:]) if not a.locked and not b.locked)
+        return self._hyphenates
+
     def sentence_space(self) -> float:
         """How much wider than the other gaps on its line the gap after a sentence is (TeX sets it wider; most
         word processors don't): 1.0 when the document doesn't."""
@@ -1090,14 +1100,16 @@ def _plan_paragraph(pdf: PdfText, para: list[Segment], ranges: list[tuple[int, i
         elif e[1] is not None:
             cur.append(e)
     laid = []      # (old word index or None, typeset letters or None, width, last style)
+    word_chars: list[list[tuple]] = []    # each laid word's letters as (char, style, offset from the baseline)
     for w in words:
         wis = {e[3] for e in w}
         glyphs = list(dict.fromkeys(e[2] for e in w))
         old = old_words[w[0][3]][0] if len(wis) == 1 and None not in wis else None
+        word_chars.append([(e[0], e[1], e[4]) for e in w if e[0] != DROP])
         if old is not None and None not in glyphs and glyphs == old.glyphs and "".join(e[0] for e in w) == old.text:
             laid.append((w[0][3], None, _width(old), old.glyphs[-1].style))
         else:
-            letters, width = pdf.typeset([(e[0], e[1], e[4]) for e in w if e[0] != DROP])
+            letters, width = pdf.typeset(word_chars[-1])
             laid.append((None, letters, width, w[-1][1]))
     if not laid and first == 0:
         raise CantKeepLayout("The edit would leave the paragraph empty.")
@@ -1144,29 +1156,86 @@ def _plan_paragraph(pdf: PdfText, para: list[Segment], ranges: list[tuple[int, i
                / pdf.natural_space(s.words[0].glyphs[-1].style) for s in para[:-1] if justify and len(s.words) >= 3]
     low, high = (min(factors), max(factors)) if factors else (1.0, 1.0)
 
+    # a word may be broken at a line end (with a hyphen) only where the document itself breaks words, and only where
+    # the hyphen will read as a line break (line_break_hyphen: the same rule the text check uses)
+    def cuts_of(k: int) -> list[int]:
+        if not (justify and pdf.hyphenates()) or (bullet and k < 2):
+            return []
+        text = "".join(c for c, _, _ in word_chars[k])
+        core = re.match(r"[a-z]+", text)
+        if not core or len(core.group(0)) < 5:
+            return []
+        core = core.group(0)
+        try:
+            pdf.font_for(word_chars[k][0][1], "-")
+        except CantKeepLayout:
+            return []
+        return [p for p in _hyphenator().positions(core) if 2 <= p <= len(core) - 3
+                and line_break_hyphen(core[:p] + "-", text[p:], pdf.text)]
+
+    # pieces: (word, from char, to char); a word that may be broken is several pieces glued together
+    pieces: list[tuple[int, int, int]] = []
+    for k in range(len(laid)):
+        bounds = [0] + cuts_of(k) + [len(word_chars[k])]
+        pieces += [(k, a, b) for a, b in zip(bounds, bounds[1:])]
+
+    @functools.lru_cache(maxsize=None)
+    def piece(k: int, a: int, b: int, hyphen: bool) -> tuple:
+        """(old word index or None, typeset letters, width, last style) for part of a word, or the whole word."""
+        if a == 0 and b == len(word_chars[k]) and not hyphen:
+            return laid[k]
+        chars = word_chars[k][a:b]
+        chars = chars + [("-", chars[-1][1], chars[-1][2])] if hyphen else chars
+        letters, width = pdf.typeset(chars)
+        return (None, letters, width, chars[-1][1])
+
+    def p_width(i: int, hyphen: bool = False) -> float:
+        return piece(*pieces[i], hyphen)[2]
+
+    def p_gap(i: int) -> float:
+        k, a, _ = pieces[i]
+        return 0.0 if a else gap_before(k)            # within a word: no gap
+
     def in_step(i: int, t: int) -> bool:
-        """Back in step with the old lines at word i starting line t: the rest stays as it is."""
-        return bool(t and t < len(lines) and laid[i][0] is not None and old_words[laid[i][0]][0] is lines[t].words[0]
-                    and [w for w, _, _, _ in laid[i:]] == list(range(laid[i][0], len(old_words))))
+        """Back in step with the old lines at piece i starting line t: the rest stays as it is."""
+        k, a, _ = pieces[i]
+        return bool(not a and t and t < len(lines) and laid[k][0] is not None
+                    and old_words[laid[k][0]][0] is lines[t].words[0]
+                    and [w for w, _, _, _ in laid[k:]] == list(range(laid[k][0], len(old_words))))
 
     def line_start(t: int, i: int) -> tuple[int, float]:
-        """(words placed before the line's spacing starts, where the spacing starts)."""
+        """(pieces placed before the line's spacing starts, where the spacing starts)."""
         if bullet and t == 0:              # a list bullet keeps its place and its gap
-            return 2, lines[0].words[1].x + laid[1][2]
-        return 1, line_left(t) + laid[i][2]
+            return 2, lines[0].words[1].x + p_width(1)
+        return 1, line_left(t) + p_width(i)
+
+    def broken(j: int) -> bool:           # does a line ending before piece j end inside a word?
+        return 0 < j < len(pieces) and pieces[j][1] > 0
+
+    def natural_end(t: int, i: int, j: int, squeeze: float) -> float:
+        lead, x = line_start(t, i)
+        x += sum(p_width(m) + squeeze * p_gap(m) for m in range(i + lead, j))
+        if broken(j):
+            x += p_width(j - 1, True) - p_width(j - 1)
+        return x
+
+    def line_gaps(t: int, i: int, j: int) -> list[float]:
+        lead = line_start(t, i)[0]
+        return [p_gap(m) for m in range(i + lead, j) if p_gap(m) > 0]
 
     def fits(t: int, i: int, j: int, squeeze: float) -> bool:
-        lead, x = line_start(t, i)
+        lead = line_start(t, i)[0]
         if j - i < lead:
             return False
-        return x + sum(laid[k][2] + squeeze * gap_before(k) for k in range(i + lead, j)) <= right + 0.01
+        return natural_end(t, i, j, squeeze) <= right + 0.01
 
-    out_lines: list[list[int]] = []       # indices into laid
+    chosen_lines: list[tuple[int, int]] = []          # (first piece, end piece) of each new line
     converged = None
+    n = len(pieces)
     if not justify:
         # greedy line filling, as a word processor does it
         i, t = 0, 0
-        while i < len(laid):
+        while i < n:
             if in_step(i, t):
                 converged = t
                 break
@@ -1174,16 +1243,17 @@ def _plan_paragraph(pdf: PdfText, para: list[Segment], ranges: list[tuple[int, i
             if not fits(t, i, i + lead, 1.0):
                 raise CantKeepLayout("A word is wider than the paragraph's lines.")
             j = i + lead
-            while j < len(laid) and fits(t, i, j + 1, 1.0):
+            while j < n and fits(t, i, j + 1, 1.0):
                 j += 1
-            out_lines.append(list(range(i, j)))
+            chosen_lines.append((i, j))
             i, t = j, t + 1
     else:
         # all the breaks chosen together, as TeX does: every line's word spacing as close to the paragraph's own
-        # as it can be, and no more lines than before unless the text needs them
+        # as it can be, no more lines than before unless the text needs them, and a word broken only when that
+        # spaces the lines clearly better
         target = statistics.median(factors) if factors else 1.0
         lo, hi = min(SHRINK, 0.95 * low), max(STRETCH, 1.1 * high)
-        n, inf = len(laid), float("inf")
+        inf = float("inf")
 
         @functools.lru_cache(maxsize=None)
         def best(i: int, t: int) -> tuple[float, tuple]:
@@ -1199,19 +1269,20 @@ def _plan_paragraph(pdf: PdfText, para: list[Segment], ranges: list[tuple[int, i
                 if not fits(t, i, j, SHRINK if j < n or runs_on else 1.0):
                     break
                 last_line = j == n and not runs_on
-                lead_, x = line_start(t, i)
-                gaps = [gap_before(k) for k in range(i + lead_, j)]
+                gaps = line_gaps(t, i, j)
                 if last_line:
                     cost = 0.0
                 elif not gaps:
                     cost = 5000.0                # a lone word stretched across: only when nothing else works
                 else:
-                    f = (right - x - sum(laid[k][2] for k in range(i + lead_, j))) / sum(gaps)
+                    f = (right - natural_end(t, i, j, 0.0)) / sum(gaps)
                     if f < lo - 0.01 or f > 1.6 * hi:
                         continue
                     cost = 100 * ((f - target) / target) ** 2
-                    if f > hi:                   # looser than the paragraph's loosest line: as a word processor
-                        cost += 500              # without hyphenation sets it, only when nothing fits better
+                    if f > hi:                   # looser than the paragraph's loosest line: only when nothing
+                        cost += 500              # fits better
+                if broken(j):
+                    cost += 40 + (60 if i and broken(i) else 0)    # a broken word; two lines running: worse
                 if t >= len(lines):
                     cost += 1000                 # a line more than before
                 rest, plan_ = best(j, t + 1)
@@ -1225,9 +1296,23 @@ def _plan_paragraph(pdf: PdfText, para: list[Segment], ranges: list[tuple[int, i
                                  "rest of it.")
         for item in chosen:
             if item == "in step":
-                converged = len(out_lines)
+                converged = len(chosen_lines)
             else:
-                out_lines.append(list(range(*item)))
+                chosen_lines.append(item)
+
+    # each line as the words (or parts of words) it shows: parts of one word on one line are that word again
+    out_lines: list[list[tuple]] = []      # per line: (laid index, from char, to char, ends in a hyphen)
+    for i, j in chosen_lines:
+        items: list[list] = []
+        for m in range(i, j):
+            k, a, b = pieces[m]
+            if items and items[-1][0] == k:
+                items[-1][2] = b
+            else:
+                items.append([k, a, b, False])
+        if broken(j):
+            items[-1][3] = True
+        out_lines.append([tuple(x) for x in items])
 
     total = len(out_lines) + (len(lines) - converged if converged is not None else 0)
     if runs_on and total != len(lines):
@@ -1252,27 +1337,28 @@ def _plan_paragraph(pdf: PdfText, para: list[Segment], ranges: list[tuple[int, i
     last = len(out_lines) - 1
     for t, line in enumerate(out_lines):
         base = line_base(t)
-        gaps = [gap_before(k) for k in line[1:]]
+        parts = [piece(*item) for item in line]
+        gaps = [gap_before(item[0]) for item in line[1:]]
         lead = 2 if bullet and t == 0 else 1             # words placed before the line's spacing starts
         xs = [lines[0].words[0].x, lines[0].words[1].x] if lead == 2 else [line_left(t)]
-        x = xs[-1] + laid[line[lead - 1]][2]
+        x = xs[-1] + parts[lead - 1][2]
         gaps = gaps[lead - 1:]
         stretch = justify and (t < last or converged is not None or runs_on) and len(line) > lead
         if stretch:
-            spare = right - x - sum(laid[k][2] for k in line[lead:])
+            spare = right - x - sum(part[2] for part in parts[lead:])
             factor = spare / sum(gaps)
             if not min(SHRINK, 0.95 * low) - 0.02 <= factor <= 1.6 * max(STRETCH, 1.1 * high) + 0.01:
                 raise CantKeepLayout("Re-wrapped, a line of the paragraph would be set visibly looser or tighter "
                                      "than the rest.")
             gaps = [g * factor for g in gaps]
-        for k, g in zip(line[lead:], gaps):
+        for part, g in zip(parts[lead:], gaps):
             x += g
             xs.append(x)
-            x += laid[k][2]
-        for n, (k, x) in enumerate(zip(line, xs)):
-            wi, letters, _, _ = laid[k]
+            x += part[2]
+        for n, (part, x) in enumerate(zip(parts, xs)):
+            wi, letters, _, _ = part
             if n:
-                prev = laid[line[n - 1]]
+                prev = parts[n - 1]
                 plan.write.append(_Typeset(xs[n - 1] + prev[2], base, " ", prev[3], _space_font()))
             if wi is not None:
                 w, li = old_words[wi]
@@ -1707,9 +1793,12 @@ def _write_checked(path: Path, out: Path, plans: dict[int, _Plan], expected: tup
             raise
 
 
-def replace(path: Path, out: Path, pattern: re.Pattern, new: str, replace_all: bool) -> tuple[int, list[tuple[int, int]], str]:
+def replace(path: Path, out: Path, pattern: re.Pattern, new: str, replace_all: bool,
+            info: dict | None = None) -> tuple[int, list[tuple[int, int]], str]:
     """Write `path` with the pattern's matches (the first, or all) replaced by `new` to `out`, checked.
-    Returns (changes, the matches' (start, end) in the document text, the document text)."""
+    Returns (changes, the matches' (start, end) in the document text, the document text). `info`, when given, gets
+    "layout": "line" (each change stayed on its line), "rewrapped" (a paragraph was set again) or "moved" (and what
+    is below it moved)."""
     pdf = PdfText(path)
     try:
         matches = list(pattern.finditer(pdf.text))
@@ -1773,6 +1862,10 @@ def replace(path: Path, out: Path, pattern: re.Pattern, new: str, replace_all: b
         # where the lower part of a page moves, the re-set paragraph is drawn before it, so it reads in order anyway
         ordered = {n: simple[n] if simple[n].shift is not None else _in_reading_order(pdf, n, page_edits)
                    for n, page_edits in edits.items()}
+        if info is not None:
+            plans = [p for page_edits in edits.values() for _, p in page_edits]
+            info["layout"] = ("moved" if any(p.shift is not None for p in plans)
+                              else "rewrapped" if any(p.ordered for p in plans) else "line")
         expected, at = [], 0                 # the document's text as it should read afterwards
         for m in matches:
             expected += [pdf.text[at:m.start()], new]

@@ -14,7 +14,7 @@ export function createPreview({ els, api, toast }) {
     viewer?.destroy(); viewer = null;
     if (doc.ext === ".pdf") {
       viewer = createPdfViewer({
-        url: `/api/documents/${doc.id}/file?inline=true`,
+        url: `/api/documents/${doc.id}/file?inline=true&v=${Date.now()}`,   /* never a copy from before an edit */
         downloadUrl: `/api/documents/${doc.id}/file`,
         fileName: doc.file_name ?? `${doc.title}.pdf`,
         onError: (e) => toast(`Can't preview: ${e.message}`),

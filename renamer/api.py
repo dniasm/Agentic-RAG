@@ -183,6 +183,19 @@ def delete_document(doc_id: str, user: dict = Depends(current_user)):
     library.delete(doc_id)
 
 
+@app.post("/api/documents/{doc_id}/undo")
+def undo_edit(doc_id: str, user: dict = Depends(current_user)):
+    """Undo the document's most recent edit (the Undo button under an edit in the chat)."""
+    doc = _own_doc(doc_id, user)
+    from renamer import editing
+    try:
+        result = editing.undo(doc["id"])
+    except editing.EditError as e:
+        raise HTTPException(409, str(e)) from e
+    event("undo_button", doc=doc_id, title=doc["title"])
+    return {**result, "documents": list_documents(user)}
+
+
 @app.get("/api/documents/{doc_id}/file")
 def download(doc_id: str, inline: bool = False, user: dict = Depends(current_user)):
     """The stored file; inline=true shows it in the browser (the PDF preview) instead of downloading it."""

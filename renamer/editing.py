@@ -205,15 +205,17 @@ def _pdf_text(path: Path) -> str:
         raise pdf_edit.CantKeepLayout("The PDF's text layout can't be read for an in-place edit.") from e
 
 
-def _apply(doc: dict, op: str, pattern: re.Pattern | None, text: str, replace_all: bool) -> tuple[int, list]:
-    """Write the edited file. Returns (how many places changed, previews of the first few)."""
+def _apply(doc: dict, op: str, pattern: re.Pattern | None, text: str, replace_all: bool,
+           info: dict | None = None) -> tuple[int, list]:
+    """Write the edited file. Returns (how many places changed, previews of the first few). For a PDF, `info` gets
+    how much of its layout changed (pdf_edit.replace)."""
     path = config.LIBRARY_DIR / doc["file_name"]
     tmp = path.with_name(path.name + ".tmp")
     changed, previews = 1, []
     if doc["ext"] == ".pdf":
         if op == "append":
             raise pdf_edit.CantKeepLayout("Text added at the end of a PDF can't yet be laid out to match the rest of it.")
-        changed, spans, content = pdf_edit.replace(path, tmp, pattern, text, replace_all)
+        changed, spans, content = pdf_edit.replace(path, tmp, pattern, text, replace_all, info)
         previews = [_preview(content, a, b, text) for a, b in spans[:MAX_PREVIEWS]]
     elif doc["ext"] == ".docx":
         import docx
@@ -503,7 +505,8 @@ def _edit(source: dict, doc: dict, op: str, find: str, text: str, replace_all: b
     before = _plain_text(path)
     backup = _backup(source)
     try:
-        changed, previews = _apply(doc, op, pattern, text, replace_all)
+        info: dict = {}
+        changed, previews = _apply(doc, op, pattern, text, replace_all, info)
         reloaded = _reindex(doc)
     except pdf_edit.CantKeepLayout:
         backup.unlink(missing_ok=True)          # refused before the file was replaced: nothing to put back
@@ -530,4 +533,5 @@ def _edit(source: dict, doc: dict, op: str, find: str, text: str, replace_all: b
           embedded=reloaded["embedded"], detail=detail,
           converted=converted, summary_refreshed=refreshed)
     return {"status": "edited", "operation": op, "changes": changed, "chunks_reindexed": reloaded["chunks"],
-            "chunks_embedded": reloaded["embedded"], "title": doc["title"], "previews": previews, "converted": converted}
+            "chunks_embedded": reloaded["embedded"], "title": doc["title"], "previews": previews, "converted": converted,
+            "layout": info.get("layout")}

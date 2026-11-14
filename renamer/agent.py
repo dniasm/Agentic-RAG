@@ -251,7 +251,8 @@ def _edit(args: dict, guard: Guard, actions: list) -> dict:
         guard.used_confirmation(doc_id, PDF_CONVERSION)   # after an undo brings the PDF back, ask again
     if result["status"] == "edited":
         actions.append({"type": "edit", "doc_id": doc_id, "title": doc["title"], "operation": result["operation"],
-                        "changes": result["changes"], "previews": result["previews"]})
+                        "changes": result["changes"], "previews": result["previews"],
+                        "layout": result.get("layout"), "ext": doc["ext"]})
     return result
 
 

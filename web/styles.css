@@ -285,6 +285,10 @@ button, textarea, input { font: inherit; color: inherit; }
 .toast.show { opacity: 1; transform: translateX(-50%); }
 .toast { box-shadow: 0 4px 16px rgb(0 0 0 / .12); }   /* taste-skill-ignore: a toast floats over the screen */
 
+/* ---------------------------------------------------------------- buttons under an edit */
+.action-buttons { display: inline-flex; gap: 10px; margin-left: auto; }
+.layout-note { color: var(--warning); }
+
 /* ---------------------------------------------------------------- document preview */
 .preview {
   width: min(880px, calc(100vw - 32px)); height: min(88vh, 1000px); padding: 0; border: 1px solid var(--border);

@@ -448,3 +448,41 @@ def test_a_shorter_ragged_line_pulls_the_next_word_up(layout_pdf):
     assert rows[0].endswith("their") or rows[0].endswith("documents")        # words came up from line two
     assert " ".join(rows) == ("Our team helps people find and change their documents quickly and safely, with every "
                               "change checked and saved.")
+
+
+def test_words_are_broken_only_where_the_document_breaks_words(layout_pdf, tmp_path):
+    out = edited(layout_pdf, "quickly", "very quickly and without any fuss at all")
+    assert not any(t.endswith("-") for *_, t in lines_of(out))           # this document never breaks words
+
+    d = pymupdf.open()                                                    # one that does
+    page = d.new_page(width=612, height=792)
+    justified(page, 100, "Our team builds tools that help people find and change their files".split(), 72, 400)
+    justified(page, 114, "and keeps every one of the important useful project notes docu-".split(), 72, 400)
+    justified(page, 128, "ments safe, searchable and easy to find for everyone who needs".split(), 72, 400)
+    write(page, 72, 142, "them every single day.")
+    path = tmp_path / "hyphenating.pdf"
+    d.save(str(path))
+    assert pdf_edit.PdfText(path).hyphenates()
+    out = edited(path, "find and change", "find, understand, reorganise and change")
+    words = " ".join(" ".join(pdf_edit.document_text(out).split()).replace("- ", "").split())
+    assert "find, understand, reorganise and change" in words               # read back whole, in order
+
+
+# ---------------------------------------------------------------- the edit's layout, shown with Preview and Undo
+def test_an_edit_says_how_much_of_the_layout_changed(pdf_doc, signed_in):
+    out = editing.edit(pdf_doc["id"], "replace", find="March", text="June")
+    assert out["layout"] == "line"
+    r = signed_in.post(f"/api/documents/{pdf_doc['id']}/undo")
+    assert r.status_code == 200 and r.json()["status"] == "undone"
+    assert any(d["id"] == pdf_doc["id"] for d in r.json()["documents"])
+    path = config.LIBRARY_DIR / catalog.get_document(pdf_doc["id"])["file_name"]
+    assert path.read_bytes() == make_pdf(LINES)
+    assert signed_in.post(f"/api/documents/{pdf_doc['id']}/undo").status_code == 409     # nothing left to undo
+    assert signed_in.post("/api/documents/nope/undo").status_code == 404
+
+
+def test_a_rewrap_is_reported(layout_pdf):
+    info = {}
+    pdf_edit.replace(layout_pdf, layout_pdf.with_name("out.pdf"), re.compile("quickly"),
+                     "very quickly and without any fuss at all", False, info)
+    assert info["layout"] in ("rewrapped", "moved")

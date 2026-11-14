@@ -90,6 +90,8 @@ export function createLibrary({ els, api, toast, onPreview = () => {} }) {
 
   return {
     load: poller.now,
+    /** A document by id, as last listed. */
+    get: (id) => docs.find((d) => d.id === id),
     /** New documents from elsewhere (a chat reply), with the changed ones flashed. */
     set(newDocs, flashIds = []) {
       docs = newDocs;

@@ -47,6 +47,17 @@ function startApp(user) {
     api,
     els: { ...chatEls, suggestions: chatEls.welcome },
     sessionKey: `renamer-session-${user.id}`,
+    onPreview: (id) => { const doc = library.get(id); if (doc) preview.show(doc); else toast("That document is gone."); },
+    onUndo: async (id) => {
+      try {
+        const result = await api(`/api/documents/${id}/undo`, postJson({}));
+        library.set(result.documents, [id]);
+        toast(`Undid the edit to “${result.title ?? "the document"}”`);
+      } catch (e) {
+        toast(`Couldn't undo: ${e.message}`);
+        throw e;
+      }
+    },
     onReply: (result) => {
       library.set(result.documents, result.actions.map((a) => a.doc_id));
       if (result.actions.some((a) => a.type === "queue")) queue.refresh();
