@@ -6,7 +6,7 @@ import pytest
 from pypdf import PdfReader
 
 from renamer import config, editing, export, library
-from tests.test_pdf_edit import LINES, make_pdf, pdf_doc  # noqa: F401  (fixture)
+from tests.test_pdf_edit import CROSS, LINES, make_pdf, pdf_doc  # noqa: F401  (fixture)
 
 MARKDOWN = """# Measles Outbreak in Morocco 2023‐2025
 
@@ -72,8 +72,12 @@ def test_the_download_endpoint(md_doc, client):
 def test_an_edited_pdf_comes_back_as_a_pdf_with_the_edit(pdf_doc, client):  # noqa: F811
     r = client.get(f"/api/documents/{pdf_doc['id']}/pdf")
     assert r.content == make_pdf(LINES)                                # still a PDF: the file itself
-    editing.edit(pdf_doc["id"], "replace", find="March", text="June", convert_pdf=True)
+    editing.edit(pdf_doc["id"], "replace", find="March", text="June")             # in place: still the PDF itself
+    r = client.get(f"/api/documents/{pdf_doc['id']}/pdf")
+    stored = config.LIBRARY_DIR / editing.catalog.get_document(pdf_doc["id"])["file_name"]
+    assert r.content == stored.read_bytes() and "June in Kathmandu" in pdf_text(r.content)
+    editing.edit(pdf_doc["id"], "replace", convert_pdf=True, **CROSS)             # converted: laid out again
     r = client.get(f"/api/documents/{pdf_doc['id']}/pdf")
     text = pdf_text(r.content)
-    assert "June in Kathmandu" in text and "March" not in text
+    assert "June in Pokhara" in text and "Kathmandu" not in text   # both edits kept
     assert (config.LIBRARY_DIR / editing.catalog.get_document(pdf_doc["id"])["file_name"]).suffix == ".md"

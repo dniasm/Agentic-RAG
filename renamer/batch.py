@@ -121,7 +121,8 @@ def run_change(change: dict, before_applying=None, giving_up_names: frozenset = 
     if result.get("status") == "unchanged":
         return "not_done", f'"{doc["title"]}" already has that name.', []
     if result.get("reason") == "pdf_conversion":
-        return "not_done", f'"{doc["title"]}" is a PDF. Edit it in the chat first, so you can agree to the conversion.', []
+        return "not_done", (f'"{doc["title"]}" is a PDF, and this change cannot be made in it while keeping its look '
+                            f'({result.get("why", "")}). Make it in the chat, where you can agree to a Markdown copy.'), []
     if result.get("status") == "needs_confirmation":
         others = ", ".join(f'"{c["title"]}"' for c in result["conflicts_with"])
         return "not_done", f'Another document already has the name "{result["new_title"]}" ({others}). Not renamed.', []

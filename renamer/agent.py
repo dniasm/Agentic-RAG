@@ -237,11 +237,12 @@ def _edit(args: dict, guard: Guard, actions: list) -> dict:
         result = editing.edit(doc_id, args.get("operation", ""), find=args.get("find") or "",
                               text=args.get("text") or "", replace_all=bool(args.get("replace_all")),
                               convert_pdf=bool(args.get("convert_pdf")) and guard.confirmed_earlier(doc_id, PDF_CONVERSION))
-    except editing.NeedsConversion:
+    except editing.NeedsConversion as e:
         guard.ask_confirmation(doc_id, PDF_CONVERSION, "pdf_conversion")
-        return {"status": "needs_confirmation", "reason": "pdf_conversion", "document": doc["title"],
-                "next": "The user was asked to agree to converting the PDF to a Markdown copy (layout and images lost; "
-                        "undo restores the PDF). If they agree, call edit_document again with convert_pdf=true."}
+        return {"status": "needs_confirmation", "reason": "pdf_conversion", "document": doc["title"], "why": str(e),
+                "next": "This change can't be made in the PDF while keeping its look (see why). The user was asked to "
+                        "agree to converting the PDF to a Markdown copy instead (layout and images lost; undo restores "
+                        "the PDF). If they agree, call edit_document again with convert_pdf=true."}
     except editing.EditError as e:
         return {"status": "error", "error": str(e)}
     if result["status"] == "ambiguous":   # the instruction goes under the same key as the other tools' instructions
@@ -547,8 +548,10 @@ def _bold(text: str) -> str:
 def _question(r: dict) -> str:
     """A needs_confirmation result as the question to the user."""
     if r["reason"] == "pdf_conversion":
-        return (f'"{_md(r["document"])}" is a PDF. To edit it I would convert it to a Markdown copy of its text: the '
-                "layout and images are lost, but the PDF is kept and undo brings it back. Shall I convert it and make the change?")
+        why = f' {_md(r["why"])}' if r.get("why") else ""
+        return (f'"{_md(r["document"])}" is a PDF, and this change cannot be made in it while keeping its look.{why} '
+                "I can convert it to a Markdown copy of its text and make the change there instead: the layout and "
+                "images are lost, but the PDF is kept and undo brings it back. Shall I do that?")
     n = len(r["conflicts_with"])   # their titles are the new name itself, so say what they are about instead
     about = "; ".join(_md(c["summary"]) for c in r["conflicts_with"] if c["summary"])
     return (f'{"Another document is" if n == 1 else f"{n} other documents are"} already called "{_md(r["new_title"])}"'

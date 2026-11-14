@@ -1,0 +1,1747 @@
+"""Editing a PDF's text in place, so the change looks like the rest of the document.
+
+A PDF has no sentences or paragraphs, only letters drawn at positions. This module works out the structure itself and
+re-typesets as little as possible:
+
+  * Layout. Letters are grouped into rows (a shared baseline), rows into segments (text separated by a wide gap, e.g.
+    a job title on the left and its dates on the right) and segments into words. Each segment's alignment is worked
+    out from the page: justified (a paragraph line ending on the paragraph's right edge), centred, right-aligned (the
+    last of several segments on a row) or left-aligned.
+  * Style. New text takes the font, size and colour of the text it replaces. The font is the one embedded in the PDF
+    when it has every letter needed (only letters the document already uses are trusted, since embedded fonts are
+    usually subsets); otherwise the complete font of the same name, from renamer/fonts, data/fonts or the system's
+    fonts; otherwise one of PDF's 14 standard fonts when the name is one of them. Spacing between letter pairs
+    (kerning) and any letter-spacing are learned from how the document itself sets that font, and ligatures (fi, fl)
+    are used where the document uses them.
+  * Placement. Words that don't change keep their exact letter positions; a changed line is re-spaced the way it was
+    set (a justified line still fills its width, a centred one stays centred, a right-aligned one keeps its right
+    edge). Only the letters that change or move are removed, by redaction that leaves drawings, images and the rest
+    of the text alone.
+  * Check. The saved file is read back and compared with what was intended: every untouched letter still in place,
+    every new letter where it should be in the right font, size and colour, nothing left over, the same drawings,
+    images and links. Anything else and the edit is refused (CantKeepLayout) with the original left as it was.
+
+  * Re-wrapping. When the new text doesn't fit its line (or runs over lines), its paragraph is set again from that
+    line on, the way it was set: same left edges, line spacing and right edge; justified lines are broken all at
+    once as TeX does, keeping the paragraph's own word spacing (wider after a sentence where the document does
+    that), ragged ones filled greedily as a word processor does. Lines that come out as they were stay untouched.
+  * Moving what is below. A paragraph that needs a line more (or one fewer) moves everything below it on the page,
+    down to the body's end, by that many lines: that part of the original page is drawn again lower, so its text,
+    rules, boxes and images look exactly as before. Running headers and footers stay put. Refused when the page
+    has no room left (the body may reach as low as it does on any page), has columns beside the paragraph, or
+    something runs across the boundary.
+
+An edit that can't be made consistently (no room left on the page, columns, a font with no complete copy
+available, a scanned page) raises CantKeepLayout saying why; the caller can then offer the Markdown copy instead.
+"""
+from __future__ import annotations
+
+import functools
+import logging
+import os
+import re
+import statistics
+import struct
+import unicodedata
+from collections import Counter, defaultdict
+from dataclasses import dataclass, field
+from pathlib import Path
+
+import pymupdf
+
+from renamer import config
+
+log = logging.getLogger(__name__)
+
+
+class NeedsRewrap(Exception):
+    """The new text doesn't fit its line as it is set; re-wrapping the paragraph may still keep the look."""
+
+
+class CantKeepLayout(Exception):
+    """The edit can't be made in the PDF without breaking its look. The message says why, for the user."""
+
+
+# ---------------------------------------------------------------- fonts
+FONT_DIRS = [Path(__file__).parent / "fonts", config.DATA_DIR / "fonts",
+             Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts",
+             Path(os.environ.get("LOCALAPPDATA", "")) / "Microsoft" / "Windows" / "Fonts",
+             Path("/usr/share/fonts"), Path("/usr/local/share/fonts"), Path.home() / ".fonts",
+             Path("/Library/Fonts"), Path("/System/Library/Fonts"), Path.home() / "Library" / "Fonts"]
+FONT_SUFFIXES = {".ttf", ".otf", ".pfb", ".pfa", ".ttc"}
+BASE14 = {"helvetica": "helv", "helveticabold": "hebo", "helveticaoblique": "heit", "helveticaboldoblique": "hebi",
+          "timesroman": "tiro", "timesbold": "tibo", "timesitalic": "tiit", "timesbolditalic": "tibi",
+          "courier": "cour", "courierbold": "cobo", "courieroblique": "coit", "courierboldoblique": "cobi",
+          "symbol": "symb", "zapfdingbats": "zadb",
+          # the same designs under the names of their free copies (MuPDF's, Ghostscript's, URW's)
+          "nimbussans": "helv", "nimbussansbold": "hebo", "nimbussansitalic": "heit", "nimbussansbolditalic": "hebi",
+          "nimbussansoblique": "heit", "nimbussansboldoblique": "hebi", "nimbussanl": "helv", "nimbussanlregu": "helv",
+          "nimbussanlbold": "hebo", "nimbusroman": "tiro", "nimbusromanbold": "tibo", "nimbusromanitalic": "tiit",
+          "nimbusromanbolditalic": "tibi", "nimbusromno9lregu": "tiro", "nimbusromno9lmedi": "tibo",
+          "nimbusromno9lreguital": "tiit", "nimbusromno9lmediital": "tibi", "nimbusmono": "cour", "nimbusmonobold": "cobo",
+          "nimbusmonoitalic": "coit", "nimbusmonobolditalic": "cobi", "standardsymbols": "symb", "dingbats": "zadb"}
+LIGATURES = [("ffi", "\ufb03"), ("ffl", "\ufb04"), ("ff", "\ufb00"), ("fi", "\ufb01"), ("fl", "\ufb02")]
+_SUBSET = re.compile(r"^[A-Z]{6}\+")
+
+
+def base_name(name: str) -> str:
+    """A font name without its subset tag: "ZAGFMN+CMR10" -> "CMR10"."""
+    return _SUBSET.sub("", name or "")
+
+
+def font_key(name: str) -> str:
+    """A font name reduced so the spellings of one font agree: "Arial-BoldMT", "Arial,Bold" -> "arialbold";
+    "TimesNewRomanPSMT" -> "timesnewroman"."""
+    name = base_name(name)
+    name = re.sub(r"PS(?=-|,|MT$|$)", "", name)
+    name = re.sub(r"MT$", "", name)
+    key = re.sub(r"[^a-z0-9]", "", name.lower())
+    return key[:-7] if key.endswith("regular") and len(key) > 7 else key
+
+
+def _ps_name(path: Path) -> str | None:
+    """The PostScript name inside a font file (Type 1: /FontName; TrueType/OpenType: name record 6)."""
+    try:
+        with open(path, "rb") as f:
+            head = f.read(4096)
+            if path.suffix.lower() in (".pfb", ".pfa"):
+                m = re.search(rb"/FontName\s*/([^\s/]+)", head)
+                return m.group(1).decode("latin-1") if m else None
+            f.seek(0)
+            data = f.read()
+    except OSError:
+        return None
+    try:
+        offset = struct.unpack(">I", data[12:16])[0] if data[:4] == b"ttcf" else 0   # a collection: its first font
+        tables = struct.unpack(">H", data[offset + 4: offset + 6])[0]
+        for i in range(tables):
+            tag, _, start, _ = struct.unpack(">4sIII", data[offset + 12 + 16 * i: offset + 28 + 16 * i])
+            if tag != b"name":
+                continue
+            _, count, strings = struct.unpack(">HHH", data[start: start + 6])
+            for j in range(count):
+                platform, _, _, name_id, length, off = struct.unpack(">HHHHHH", data[start + 6 + 12 * j: start + 18 + 12 * j])
+                if name_id == 6:
+                    raw = data[start + strings + off: start + strings + off + length]
+                    return raw.decode("utf-16-be" if platform in (0, 3) else "latin-1", errors="ignore")
+    except (struct.error, IndexError):
+        return None
+    return None
+
+
+def _index_folder(folder: Path) -> dict[str, str]:
+    found: dict[str, str] = {}
+    for path in sorted(folder.rglob("*")):
+        if path.suffix.lower() not in FONT_SUFFIXES:
+            continue
+        for name in (_ps_name(path), path.stem):
+            if name:
+                found.setdefault(font_key(name), str(path))
+    return found
+
+
+@functools.cache
+def _folder_index(folder: Path) -> dict[str, str]:
+    """A folder's fonts by font_key of their PostScript name (and file name). A large folder's index (the system's
+    fonts: reading hundreds of files takes seconds) is kept in data/ and rebuilt when the folder changes."""
+    if not folder.is_dir():
+        return {}
+    if folder in FONT_DIRS[:2]:
+        return _index_folder(folder)
+    import hashlib
+    import json
+    store = config.DATA_DIR / "font-index" / (hashlib.sha1(str(folder).encode()).hexdigest()[:16] + ".json")
+    stamp = folder.stat().st_mtime
+    try:
+        saved = json.loads(store.read_text(encoding="utf-8"))
+        if saved["stamp"] == stamp:
+            return saved["fonts"]
+    except (OSError, ValueError, KeyError):
+        pass
+    fonts = _index_folder(folder)
+    try:
+        store.parent.mkdir(parents=True, exist_ok=True)
+        store.write_text(json.dumps({"stamp": stamp, "fonts": fonts}), encoding="utf-8")
+    except OSError:
+        pass
+    return fonts
+
+
+def find_font_file(name: str) -> Path | None:
+    """A complete font file for a PDF font name. The bundled and data folders come first, so they win over a system
+    font of the same name; the system folders are only read when those don't have it."""
+    key = font_key(name)
+    for folder in FONT_DIRS:
+        path = _folder_index(folder).get(key)
+        if path:
+            return Path(path)
+    return None
+
+
+@functools.cache
+def _file_font(path: Path) -> pymupdf.Font:
+    return pymupdf.Font(fontfile=str(path))
+
+
+def _has(font: pymupdf.Font, text: str) -> bool:
+    return all(font.has_glyph(ord(c)) for c in text)
+
+
+# ---------------------------------------------------------------- the layout model
+@dataclass(frozen=True)
+class Style:
+    font: str        # as the PDF names it, subset tag removed
+    size: float
+    color: int
+
+
+@dataclass(eq=False)
+class Glyph:
+    c: str           # the character as extracted (a ligature is one character, e.g. "ﬁ")
+    x: float         # origin: left end of the baseline
+    y: float
+    x1: float        # right edge (the advance)
+    bbox: tuple
+    style: Style
+
+    @property
+    def text(self) -> str:        # what the glyph reads as: a ligature as its letters, a soft hyphen as a hyphen
+        if self.c in "\ufb00\ufb01\ufb02\ufb03\ufb04":
+            return unicodedata.normalize("NFKC", self.c)
+        return "-" if self.c == "\xad" else self.c
+
+
+@dataclass(eq=False)
+class Word:
+    glyphs: list[Glyph]
+
+    @property
+    def text(self) -> str:
+        return "".join(g.text for g in self.glyphs)
+
+    @property
+    def x(self) -> float:
+        return self.glyphs[0].x
+
+    @property
+    def end(self) -> float:
+        return max(g.x1 for g in self.glyphs)
+
+
+@dataclass(eq=False)
+class Segment:
+    page: int
+    words: list[Word]
+    size: float
+    baseline: float
+    locked: bool = False           # vertical or rotated text: not edited
+    align: str = "left"            # left, right, center, justify
+    left_limit: float = 0.0        # how far it may grow on each side
+    right_limit: float = 0.0
+    start: int = 0                 # offset of its text in the document text
+
+    @property
+    def text(self) -> str:
+        return " ".join(w.text for w in self.words)
+
+    @property
+    def x0(self) -> float:
+        return self.words[0].x
+
+    @property
+    def x1(self) -> float:
+        return self.words[-1].end
+
+    @property
+    def top(self) -> float:
+        return min(g.bbox[1] for w in self.words for g in w.glyphs)
+
+    @property
+    def bottom(self) -> float:
+        return max(g.bbox[3] for w in self.words for g in w.glyphs)
+
+
+def _metric_font(doc: pymupdf.Document, name: str, cache: dict) -> pymupdf.Font | None:
+    """A font to measure letters of the PDF font `name` with (embedded, else a complete copy, else standard)."""
+    if name not in cache:
+        cache[name] = None
+        for page in doc:
+            for xref, ext, _type, basefont, *_ in page.get_fonts(full=True):
+                if base_name(basefont) == name and ext not in ("n/a", ""):
+                    try:
+                        buffer = doc.extract_font(xref)[3]
+                        if buffer:
+                            cache[name] = pymupdf.Font(fontbuffer=buffer)
+                            return cache[name]
+                    except Exception:
+                        continue
+        path = find_font_file(name)
+        if path:
+            try:
+                cache[name] = _file_font(path)
+            except Exception:
+                pass
+        if cache[name] is None and font_key(name) in BASE14:
+            cache[name] = pymupdf.Font(BASE14[font_key(name)])
+    return cache[name]
+
+
+def _join_ligatures(glyphs: list[Glyph | None], doc: pymupdf.Document, cache: dict) -> list[Glyph | None]:
+    """MuPDF reads a ligature (one shape for "fi") as an "f" as wide as the whole shape plus an "i" that isn't drawn.
+    Where the "f" measures as the ligature, the two become one glyph again: c = "ﬁ"."""
+    out = list(glyphs)
+    i = 0
+    while i < len(out):
+        a = out[i]
+        if a is not None and a.c == "f":
+            for letters, lig in LIGATURES:
+                follow = out[i + 1: i + len(letters)]
+                if len(follow) != len(letters) - 1 or any(g is None or g.style != a.style for g in follow) \
+                        or "f" + "".join(g.c for g in follow) != letters:
+                    continue
+                font = _metric_font(doc, a.style.font, cache)
+                if font is None or not font.has_glyph(ord(lig)):
+                    break
+                measured, as_lig, as_f = a.x1 - a.x, font.text_length(lig, a.style.size), font.text_length("f", a.style.size)
+                if abs(measured - as_lig) < min(abs(measured - as_f), 0.03 * a.style.size):
+                    out[i] = Glyph(lig, a.x, a.y, a.x1, a.bbox, a.style)
+                    del out[i + 1: i + len(letters)]
+                    break
+        i += 1
+    return out
+
+
+def _page_glyphs(page: pymupdf.Page, cache: dict | None = None) -> tuple[list[list[Glyph | None]], list[list[Glyph]]]:
+    """The page's letters as MuPDF's lines: horizontal lines (None marks a space) and the rest (locked)."""
+    cache = {} if cache is None else cache
+    flat, locked = [], []
+    data = page.get_text("rawdict", flags=pymupdf.TEXT_PRESERVE_LIGATURES | pymupdf.TEXT_PRESERVE_WHITESPACE
+                         | pymupdf.TEXT_MEDIABOX_CLIP)
+    for block in data["blocks"]:
+        for line in block.get("lines", []):
+            horizontal = abs(line["dir"][0] - 1) < 1e-3 and abs(line["dir"][1]) < 1e-3
+            out = []
+            for span in line["spans"]:
+                style = Style(base_name(span["font"]), round(span["size"], 2), span["color"])
+                for ch in span["chars"]:
+                    if ch["c"].isspace():
+                        out.append(None)
+                    else:
+                        out.append(Glyph(ch["c"], ch["origin"][0], ch["origin"][1], ch["bbox"][2], tuple(ch["bbox"]), style))
+            if any(out):
+                (flat if horizontal else locked).append(_join_ligatures(out, page.parent, cache))
+    return flat, locked
+
+
+def _split_words(items: list[Glyph | None], size: float) -> list[Word]:
+    words, cur, prev = [], [], None
+    for g in items:
+        if g is None or (prev is not None and g.x - prev.x1 > 0.15 * size):
+            if cur:
+                words.append(Word(cur))
+            cur = []
+        if g is not None:
+            cur.append(g)
+        prev = g if g is not None else prev
+    if cur:
+        words.append(Word(cur))
+    return words
+
+
+def page_segments(page: pymupdf.Page, number: int, cache: dict | None = None) -> list[list[Segment]]:
+    """The page as rows of segments, top to bottom, left to right, with alignment and room to grow worked out."""
+    lines, locked = _page_glyphs(page, cache)
+    rows: list[list[Glyph | None]] = []
+    keyed = []
+    for line in lines:
+        gs = [g for g in line if g]
+        keyed.append((statistics.median(g.y for g in gs), max(g.style.size for g in gs), line))
+    keyed.sort(key=lambda k: k[0])
+    bases: list[float] = []
+    for base, size, line in keyed:      # lines on one baseline (MuPDF splits a row at wide gaps) become one row
+        if rows and abs(base - bases[-1]) < 0.25 * size:
+            rows[-1].extend([None] + line)
+        else:
+            rows.append(list(line))
+            bases.append(base)
+    out: list[list[Segment]] = []
+    for row, base in zip(rows, bases):
+        gs = sorted((g for g in row if g), key=lambda g: g.x)
+        size = statistics.median(g.style.size for g in gs)
+        segs, cur = [], [gs[0]]
+        for prev, g in zip(gs, gs[1:]):
+            if g.x - prev.x1 > 1.0 * max(prev.style.size, g.style.size):
+                segs.append(cur)
+                cur = []
+            cur.append(g)
+        segs.append(cur)
+        out.append([Segment(number, _split_words(_with_spaces(seg, row), size), size, base) for seg in segs])
+    for line in locked:
+        gs = [g for g in line if g]
+        out.append([Segment(number, [Word(gs)], gs[0].style.size, gs[0].y, locked=True)])
+    _classify(out, page.rect)
+    return out
+
+
+def _with_spaces(sorted_glyphs: list[Glyph], row: list[Glyph | None]) -> list[Glyph | None]:
+    """The segment's letters in order with a None wherever MuPDF had a space between two of them."""
+    after_space = set()
+    prev = None
+    for g in row:
+        if g is None:
+            prev = "space"
+        else:
+            if prev == "space":
+                after_space.add(id(g))
+            prev = g
+    out: list[Glyph | None] = []
+    for i, g in enumerate(sorted_glyphs):
+        if i and id(g) in after_space:
+            out.append(None)
+        out.append(g)
+    return out
+
+
+def _classify(rows: list[list[Segment]], rect: pymupdf.Rect) -> None:
+    """Alignment and limits for every segment on a page."""
+    segs = [s for row in rows for s in row if not s.locked]
+    if not segs:
+        return
+    left, right = min(s.x0 for s in segs), max(s.x1 for s in segs)
+    centre = (left + right) / 2
+    text_rows = [row for row in rows if not row[0].locked]
+
+    def continues(i: int) -> bool:      # does the next row carry on this row's paragraph?
+        if i + 1 >= len(text_rows) or len(text_rows[i]) != 1:
+            return False
+        a, b = text_rows[i][0], text_rows[i + 1][0]
+        return (abs(b.x0 - a.x0) <= 30 and 0.9 * a.size <= b.baseline - a.baseline <= 1.9 * a.size
+                and abs(a.size - b.size) <= 0.5)
+
+    def lined_up(s: Segment) -> str | None:
+        """How the text just above and below lines up with this segment: the edge they share, if any."""
+        votes = Counter()
+        near = [t for t in segs if t is not s and 0.25 * s.size <= abs(t.baseline - s.baseline) <= 4 * s.size
+                and t.x1 >= s.x0 and t.x0 <= s.x1]
+        for side in (-1, 1):            # the two nearest lines above and below: a grid lines up by accident further off
+            lines = sorted({round(t.baseline, 1) for t in near if (t.baseline - s.baseline) * side > 0},
+                           key=lambda b: abs(b - s.baseline))[:2]
+            for b in lines:
+                t = min((t for t in near if round(t.baseline, 1) == b),
+                        key=lambda t: abs((t.x0 + t.x1) - (s.x0 + s.x1)))
+                dl, dr = abs(t.x0 - s.x0), abs(t.x1 - s.x1)
+                if dl < 1.6 and dr < 1.6:
+                    continue               # as wide as this one: says nothing
+                # edges within 1.6pt (italics overhang), a centre within 2.5pt (a footnote mark shifts it) but only
+                # when both edges clearly differ: lines of similar width share a centre by accident
+                fits = {"left": dl / 1.6, "right": dr / 1.6,
+                        "center": abs((t.x0 + t.x1) - (s.x0 + s.x1)) / 2 / 2.5 if min(dl, dr) > 2.5 else 9}
+                best = min(fits, key=fits.get)
+                if fits[best] < 1:
+                    votes[best] += 1
+        if not votes:
+            return None
+        top = max(votes.values())
+        tied = [k for k, n in votes.items() if n == top]
+        return tied[0] if len(tied) == 1 else ("center" if "center" in tied else None)
+
+    edges = Counter(round(row[0].x1 * 2) / 2 for i, row in enumerate(text_rows) if continues(i))
+    justified_edges = [e for e, n in edges.items() if n >= 2]
+    for i, row in enumerate(text_rows):
+        for j, s in enumerate(row):
+            column_right = max([t.x1 for t in segs if abs(t.x0 - s.x0) <= 30] + [s.x1])
+            s.left_limit = row[j - 1].x1 + s.size if j else left
+            s.right_limit = row[j + 1].x0 - s.size if j + 1 < len(row) else max(column_right, s.x1)
+            if len(row) > 1:
+                # columns on one row (a job title and its dates, a grid of authors): the text above and below shows
+                # how each is aligned; failing that, the last is right-aligned and the others left-aligned
+                s.align = lined_up(s) or ("right" if j == len(row) - 1 else "left")
+            elif continues(i) and len(s.words) >= 3 and any(abs(s.x1 - e) <= 0.6 for e in justified_edges):
+                s.align = "justify"
+            elif abs((s.x0 + s.x1) / 2 - centre) < 2 and s.x0 > left + 4:
+                s.align = "center"
+                s.left_limit, s.right_limit = left, right
+            elif lined_up(s) in ("center", "right"):     # e.g. a heading centred over its own column
+                s.align = lined_up(s)
+
+
+# ---------------------------------------------------------------- the document
+@dataclass
+class _Typeset:
+    """One letter to write."""
+    x: float
+    y: float
+    c: str
+    style: Style
+    font: pymupdf.Font
+
+
+@dataclass
+class _Plan:
+    remove: list[Glyph] = field(default_factory=list)
+    write: list[_Typeset] = field(default_factory=list)
+    ordered: bool = False       # write is already in reading order (a re-wrapped paragraph: line by line)
+    segments: list = field(default_factory=list)   # the lines it re-sets, when more than one
+    shift: object = None        # a _Shift: what is below a re-wrapped paragraph moves to make room
+
+
+class PdfText:
+    """A PDF opened for editing: its text (as matched by edits) and its layout."""
+
+    def __init__(self, path: Path):
+        self.path = path
+        self.doc = pymupdf.open(str(path))
+        if self.doc.is_encrypted:
+            raise CantKeepLayout("The PDF is encrypted, so its text can't be changed in place.")
+        self._metrics: dict = {}
+        self.pages = [page_segments(page, n, self._metrics) for n, page in enumerate(self.doc)]
+        parts, offset = [], 0
+        self.segments: list[Segment] = []
+        for n, rows in enumerate(self.pages):
+            if n:
+                parts.append("\n\n")
+                offset += 2
+            for r, row in enumerate(rows):
+                for k, seg in enumerate(row):
+                    if r or k:
+                        parts.append("\n")
+                        offset += 1
+                    seg.start = offset
+                    parts.append(seg.text)
+                    offset += len(seg.text)
+                    self.segments.append(seg)
+        self.text = "".join(parts)
+        self._fonts: dict[tuple[str, str], pymupdf.Font | None] = {}
+        self._embedded: dict[str, pymupdf.Font | None] = {}
+        self._used = defaultdict(set)              # characters the document sets in each font
+        for seg in self.segments:
+            for w in seg.words:
+                for g in w.glyphs:
+                    self._used[g.style.font].add(g.c)
+        self._spacing: dict[str, tuple[dict, float, float]] = {}
+
+    def close(self):
+        self.doc.close()
+
+    def segment_at(self, offset: int) -> Segment | None:
+        for seg in self.segments:
+            if seg.start <= offset < seg.start + len(seg.text):
+                return seg
+        return None
+
+    # ------------------------------------------------------------ fonts for a style
+    def _embedded_font(self, name: str) -> pymupdf.Font | None:
+        if name not in self._embedded:
+            self._embedded[name] = None
+            for page in self.doc:
+                for xref, ext, _type, basefont, *_ in page.get_fonts(full=True):
+                    if base_name(basefont) != name or ext in ("n/a", ""):
+                        continue
+                    try:
+                        buffer = self.doc.extract_font(xref)[3]
+                        if buffer:
+                            self._embedded[name] = pymupdf.Font(fontbuffer=buffer)
+                            return self._embedded[name]
+                    except Exception:   # a font MuPDF can't load on its own: look for a complete copy instead
+                        continue
+        return self._embedded[name]
+
+    def font_for(self, style: Style, text: str) -> pymupdf.Font:
+        """The font to write `text` in `style`: the embedded one when it surely has the letters, else a complete copy."""
+        cached = self._fonts.get((style.font, text))
+        if cached:
+            return cached
+        embedded = self._embedded_font(style.font)
+        if embedded and set(text) <= self._used[style.font] and _has(embedded, text):
+            font = embedded
+        else:
+            font = None
+            path = find_font_file(style.font)
+            if path:
+                try:
+                    candidate = _file_font(path)
+                    font = candidate if _has(candidate, text) else None
+                except Exception:
+                    font = None
+            if font is None and font_key(style.font) in BASE14:
+                candidate = pymupdf.Font(BASE14[font_key(style.font)])
+                font = candidate if _has(candidate, text) else None
+        if font is None:
+            missing = "".join(sorted({c for c in text if c not in self._used[style.font]}))
+            raise CantKeepLayout(
+                f'The PDF sets this text in the font "{style.font}", and no complete copy of that font is available'
+                + (f' for the letters "{missing}"' if missing else "")
+                + ". (A copy can be added to data/fonts.)")
+        self._fonts[(style.font, text)] = font
+        return font
+
+    def spacing(self, style: Style) -> tuple[dict, float, float]:
+        """How the document spaces letters in this font: (kerning by letter pair, letter-spacing, horizontal scale),
+        all in em, learned from its own words."""
+        if style.font in self._spacing:
+            return self._spacing[style.font]
+        pairs, track, scale = defaultdict(list), [], []
+        for seg in self.segments:
+            for w in seg.words:
+                for a, b in zip(w.glyphs, w.glyphs[1:]):
+                    if a.style.font != style.font or a.style != b.style or abs(a.y - b.y) > 0.01:
+                        continue
+                    try:
+                        font = self.font_for(a.style, a.c)
+                    except CantKeepLayout:
+                        continue
+                    advance = font.text_length(a.c, a.style.size)
+                    if advance <= 0:
+                        continue
+                    measured = a.x1 - a.x
+                    if measured > 0:
+                        scale.append(measured / advance)
+                    gap = (b.x - a.x - advance) / a.style.size
+                    pairs[(a.c, b.c)].append(gap)
+                    track.append(gap)
+        kern = {p: statistics.median(v) for p, v in pairs.items()}
+        tracking = statistics.median(track) if track else 0.0
+        if abs(tracking) < 0.002:
+            tracking = 0.0
+        result = (kern, tracking, statistics.median(scale) if scale else 1.0)
+        self._spacing[style.font] = result
+        return result
+
+    def sentence_space(self) -> float:
+        """How much wider than the other gaps on its line the gap after a sentence is (TeX sets it wider; most
+        word processors don't): 1.0 when the document doesn't."""
+        if not hasattr(self, "_sentence_space"):
+            ratios = []
+            for seg in self.segments:
+                gaps = [b.x - a.end for a, b in zip(seg.words, seg.words[1:])]
+                if len(gaps) < 4:
+                    continue
+                usual = statistics.median(gaps)
+                for (a, b), g in zip(zip(seg.words, seg.words[1:]), gaps):
+                    if usual > 0 and a.text.endswith((".", "!", "?")) and b.text[:1].isupper():
+                        ratios.append(g / usual)
+            ratio = statistics.median(ratios) if len(ratios) >= 2 else 1.0
+            self._sentence_space = ratio if ratio > 1.1 else 1.0
+        return self._sentence_space
+
+    def natural_space(self, style: Style) -> float:
+        """The usual gap between words in this font and size, from lines that aren't stretched to a width."""
+        def gaps(only_unjustified: bool):
+            for seg in self.segments:
+                if seg.locked or (only_unjustified and seg.align == "justify"):
+                    continue
+                for a, b in zip(seg.words, seg.words[1:]):
+                    if a.glyphs[-1].style == style:
+                        yield b.x - a.end
+        found = list(gaps(True)) or list(gaps(False))
+        return statistics.median(found) if found else 0.333 * style.size
+
+    # ------------------------------------------------------------ typesetting
+    def typeset(self, chars: list[tuple[str, Style, float]]) -> tuple[list[tuple[float, float, str, Style, pymupdf.Font]], float]:
+        """Letters of one new word as (x from the word's start, baseline, letter, style, font), and its width."""
+        runs: list[list] = []
+        for c, style, y in chars:
+            if runs and runs[-1][0] == style and runs[-1][2] == y:
+                runs[-1][1] += c
+            else:
+                runs.append([style, c, y])
+        out, x = [], 0.0
+        for style, text, y in runs:
+            if any(lig in self._used[style.font] for _, lig in LIGATURES):
+                for letters, lig in LIGATURES:
+                    if lig in self._used[style.font]:
+                        text = text.replace(letters, lig)
+            font = self.font_for(style, text)
+            kern, tracking, scale = self.spacing(style)
+            if abs(scale - 1) > 0.04:
+                raise CantKeepLayout(f'The PDF stretches or squeezes the letters of "{style.font}", which an edit '
+                                     "can't reproduce exactly.")
+            prev = None
+            for c in text:
+                if prev is not None:
+                    x += kern.get((prev, c), tracking) * style.size
+                out.append((x, y, c, style, font))
+                x += font.text_length(c, style.size)
+                prev = c
+        return out, x
+
+
+BULLETS = {"–", "—", "-", "•", "·", "◦", "▪", "*", "○", "■", "►", "‣", "⁃"}
+
+
+def _replace_entries(entries: list[tuple], ranges: list[tuple[int, int, str]]) -> None:
+    """Put each new text in place of entries[a:b], every new word taking the style (and baseline) of the text it
+    replaces. An entry is (char, style, glyph, old word index, baseline); a space or line break has style None."""
+    for a, b, new in sorted(ranges, reverse=True):
+        old = entries[a:b]
+        styled = [(e[1], e[3], e[4]) for e in old if e[1] is not None]
+        if not styled:
+            raise CantKeepLayout("The text to replace has no letters in the PDF.")
+        styles = list(dict.fromkeys((s, y) for s, _, y in styled))
+        new_words = new.split()
+        if len(styles) == 1:
+            per_word = [styles[0]] * len(new_words)
+        else:
+            old_words = list(dict.fromkeys(wi for _, wi, _ in styled))
+            word_styles = [list(dict.fromkeys((s, y) for s, wi2, y in styled if wi2 == wi)) for wi in old_words]
+            if len(old_words) != len(new_words) or any(len(ws) != 1 for ws in word_styles):
+                raise CantKeepLayout("The text being replaced mixes styles (for example bold and regular), so it isn't "
+                                     "clear which style the new text should take. Replace each part separately.")
+            per_word = [ws[0] for ws in word_styles]
+        repl, k = [], 0
+        for token in re.split(r"(\s+)", new):
+            if not token:
+                continue
+            if token.isspace():
+                repl.append((" ", None, None, None, None))
+            else:
+                style, y = per_word[min(k, len(per_word) - 1)]
+                repl.extend((ch, style, None, None, y) for ch in token)
+                k += 1
+        entries[a:b] = repl
+
+
+def _plan_segment(pdf: PdfText, seg: Segment, ranges: list[tuple[int, int, str]]) -> _Plan:
+    """Re-set one segment with the replacements (local start, end, new text) applied."""
+    if seg.locked:
+        raise CantKeepLayout("The text is rotated or vertical in the PDF, which an edit can't re-set.")
+    entries: list[tuple] = []        # (char, style, glyph, old word index, baseline); a space is (" ", None, ...)
+    for wi, w in enumerate(seg.words):
+        if wi:
+            entries.append((" ", None, None, None, None))
+        for g in w.glyphs:
+            for ch in g.text:
+                entries.append((ch, g.style, g, wi, g.y))
+    _replace_entries(entries, ranges)
+
+    # the new words: an old word kept whole, or letters to set
+    words, cur = [], []
+    for e in entries + [(" ", None, None, None, None)]:
+        if e[1] is None:
+            if cur:
+                words.append(cur)
+            cur = []
+        else:
+            cur.append(e)
+    laid = []      # (old word index or None, glyph offsets or typeset letters, width)
+    for w in words:
+        wis = {e[3] for e in w}
+        glyphs = list(dict.fromkeys(e[2] for e in w))
+        if len(wis) == 1 and None not in wis and None not in glyphs and glyphs == seg.words[w[0][3]].glyphs \
+                and "".join(e[0] for e in w) == seg.words[w[0][3]].text:
+            old = seg.words[w[0][3]]
+            laid.append((w[0][3], None, old.end - old.x))
+        else:
+            letters, width = pdf.typeset([(e[0], e[1], e[4]) for e in w])
+            laid.append((None, letters, width))
+    if not laid:
+        if len(_paragraph(pdf, seg)) > 1:
+            raise NeedsRewrap("The edit empties a line inside a paragraph.")
+        return _Plan(remove=[g for w in seg.words for g in w.glyphs])
+
+    def gap(i: int) -> float:       # between laid[i-1] and laid[i]
+        a, b = laid[i - 1][0], laid[i][0]
+        if a is not None and b is not None and b == a + 1:
+            return seg.words[b].x - seg.words[a].end
+        last = seg.words[a].glyphs[-1].style if a is not None else laid[i - 1][1][-1][3]
+        return pdf.natural_space(last)
+
+    n = len(laid)
+    xs = [0.0] * n
+    widths = [w for _, _, w in laid]
+    if seg.align == "justify" and n >= 2:
+        first = 0
+        if laid[0][0] == 0 and seg.words[0].text in BULLETS:     # a list bullet keeps its own fixed gap
+            xs[0], first = seg.words[0].x, 1
+            start = seg.words[0].end + gap(1) if laid[1][0] == 1 else seg.words[0].end + (seg.words[1].x - seg.words[0].end)
+        else:
+            start = seg.x0
+        if n - first < 2:
+            raise NeedsRewrap("The line would be left with a single word stretched across it; the paragraph "
+                                 "would need re-wrapping.")
+        # every gap keeps its share (a wider one after a full stop stays wider); all of them stretch or shrink
+        # together so the line still ends on the paragraph's edge
+        old_gaps = [b.x - a.end for a, b in zip(seg.words[first:], seg.words[first + 1:])]
+        typical = statistics.median(old_gaps) if old_gaps else pdf.natural_space(seg.words[-1].glyphs[-1].style)
+        base = []
+        for i in range(first + 1, n):
+            a, b = laid[i - 1][0], laid[i][0]
+            base.append(seg.words[b].x - seg.words[a].end if a is not None and b is not None and b == a + 1 else typical)
+        factor = (seg.x1 - start - sum(widths[first:])) / sum(base)
+        natural = pdf.natural_space(seg.words[-1].glyphs[-1].style)
+        # as tight or loose as TeX or a word processor would set a line, or as the line already was
+        if not min(0.66 * natural, 0.95 * typical) <= typical * factor <= max(1.45 * natural, 1.1 * typical):
+            raise NeedsRewrap("The new text doesn't fit its justified line without the word spacing looking "
+                                 "visibly different; the paragraph would need re-wrapping.")
+        x = start
+        for i in range(first, n):
+            xs[i] = x
+            x += widths[i] + (base[i - first] * factor if i + 1 < n else 0)
+    elif seg.align == "right":
+        keep = 0
+        while keep < n and laid[n - 1 - keep][0] == len(seg.words) - 1 - keep:
+            keep += 1
+        end = seg.x1
+        for i in range(n - 1, -1, -1):
+            if n - 1 - i < keep:
+                xs[i] = seg.words[laid[i][0]].x
+            else:
+                xs[i] = end - widths[i]
+            end = xs[i] - (gap(i) if i else 0)
+    else:
+        keep = 0
+        while keep < n and laid[keep][0] == keep:
+            keep += 1
+        x = seg.x0
+        for i in range(n):
+            if i < keep:
+                xs[i] = seg.words[i].x
+            else:
+                xs[i] = x if i == 0 else xs[i - 1] + widths[i - 1] + gap(i)
+            x = xs[i]
+        if seg.align == "center":
+            total = xs[-1] + widths[-1] - xs[0]
+            shift = (seg.x0 + seg.x1) / 2 - total / 2 - xs[0]
+            xs = [x + shift for x in xs]
+    lo, hi = xs[0], xs[-1] + widths[-1]
+    if lo < seg.left_limit - 0.01 or hi > seg.right_limit + 0.01:
+        raise NeedsRewrap("The new text is too long for its line in the PDF; the text after it would have to "
+                             "move to the next line.")
+
+    plan, used = _Plan(), set()
+    written = [not (wi is not None and abs(x - seg.words[wi].x) < 0.01) for (wi, _, _), x in zip(laid, xs)]
+    for i, ((wi, letters, _), x) in enumerate(zip(laid, xs)):
+        if i and (written[i - 1] or written[i]):
+            # a real space between a written word and its neighbour (it has no ink), so copied and searched text
+            # reads the words apart; written in line with the letters, so text readers meet it between the words
+            style = laid[i - 1][1][-1][3] if laid[i - 1][1] else seg.words[laid[i - 1][0]].glyphs[-1].style
+            plan.write.append(_Typeset(xs[i - 1] + widths[i - 1], seg.baseline, " ", style, _space_font()))
+        if wi is not None:
+            old = seg.words[wi]
+            if abs(x - old.x) < 0.01:
+                used.add(wi)
+                continue
+            used.add(wi)
+            plan.remove.extend(old.glyphs)
+            for g in old.glyphs:
+                plan.write.append(_Typeset(g.x + x - old.x, g.y, g.c, g.style, pdf.font_for(g.style, g.c)))
+        else:
+            plan.write.extend(_Typeset(x + dx, y, c, style, font) for dx, y, c, style, font in letters)
+    for wi, w in enumerate(seg.words):
+        if wi not in used:
+            plan.remove.extend(w.glyphs)
+    for t in plan.write:
+        if t.c == "\ufffd":
+            raise CantKeepLayout("Some letters on that line can't be read from the PDF, so the line can't be re-set.")
+    return plan
+
+
+# ---------------------------------------------------------------- moving what is below a paragraph
+@dataclass
+class _Shift:
+    """Everything on the page in `region` (text, drawings, images, links) moves down by dy (up when negative)."""
+    region: pymupdf.Rect
+    dy: float
+
+
+def _repeated(pdf: PdfText) -> set[int]:
+    """Segments that repeat on several pages at the same height (running headers and footers, page numbers)."""
+    if not hasattr(pdf, "_repeated_ids"):
+        keyed = defaultdict(set)
+        for s in pdf.segments:
+            keyed[(round(s.baseline), re.sub(r"\d+", "#", s.text))].add(s.page)
+        pdf._repeated_ids = {id(s) for s in pdf.segments
+                             if len(keyed[(round(s.baseline), re.sub(r"\d+", "#", s.text))]) >= 2}
+    return pdf._repeated_ids
+
+
+def _body_bottom_limit(pdf: PdfText) -> float:
+    """How low a page's body text may reach: as low as it reaches on any page; with one page, as far from the
+    bottom as the text starts from the top."""
+    repeated = _repeated(pdf)
+    body = [s for s in pdf.segments if id(s) not in repeated]
+    if len(pdf.doc) > 1:
+        return max(s.bottom for s in body)
+    return pdf.doc[0].rect.height - min(s.top for s in body)
+
+
+def _push(pdf: PdfText, para: list[Segment], left: float, right: float, dy: float) -> _Shift | None:
+    """Make room for a paragraph that grew (dy > 0) or close the gap of one that shrank (dy < 0) by moving
+    everything below it on the page, as a word processor would. None when nothing is below it.
+    CantKeepLayout when that can't be done without changing the rest of the page."""
+    n = para[0].page
+    page = pdf.doc[n]
+    width = page.rect.width
+    mine = {id(s) for s in para}
+    repeated = _repeated(pdf)
+    top, bottom = min(s.top for s in para), max(s.bottom for s in para)
+    others = [s for row in pdf.pages[n] for s in row if id(s) not in mine]
+    footer_top = min([s.top for s in others if id(s) in repeated and s.top >= bottom] + [page.rect.height])
+    below = [s for s in others if s.top >= bottom - 0.5 and s.bottom <= footer_top + 0.5 and id(s) not in repeated
+             and not s.locked]
+    body_left = min([s.x0 for s in below] + [left]) - 1
+    body_right = max([s.x1 for s in below] + [right]) + 1
+    if any(s.top < bottom - 0.5 and s.bottom > top + 0.5 and (s.x1 < left - 1 or s.x0 > right + 1)
+           and s.x1 > body_left and s.x0 < body_right and id(s) not in repeated for s in others):
+        raise CantKeepLayout("The page has text beside the paragraph (columns), so what is below it can't be moved "
+                             "to make room.")
+    # a drawing as far as its ink reaches: a stroke spreads half its width past the path
+    drawings = [pymupdf.Rect(d["rect"]) + (-(d.get("width") or 0) / 2, -(d.get("width") or 0) / 2,
+                                         (d.get("width") or 0) / 2, (d.get("width") or 0) / 2)
+                for d in page.get_drawings()]
+    images = [pymupdf.Rect(i["bbox"]) for i in page.get_image_info()]
+    inside = [r for r in drawings + images if r.y0 >= bottom and r.y1 <= footer_top
+              and r.x1 > body_left and r.x0 < body_right]
+    lowest = max([s.bottom for s in below] + [r.y1 for r in inside] + [bottom])
+    if dy > 0 and lowest + dy > _body_bottom_limit(pdf) + 0.5:
+        raise CantKeepLayout("The new text needs one more line, and the page has no room left at the bottom to move "
+                             "the rest of it down.")
+    if lowest <= bottom:
+        return None
+    # 2pt to spare at the sides: a rule's stroke reaches past its path, and a drawing only counts as inside (and so is
+    # taken away before it is drawn again, moved) when all of it is
+    region = pymupdf.Rect(max(0, min([body_left] + [r.x0 for r in inside]) - 2), bottom + 0.05,
+                          min(width, max([body_right] + [r.x1 for r in inside]) + 2), lowest + 0.5)
+    for r in drawings + images:
+        if not r.intersects(region) and r.width > 0 and r.height > 0:
+            continue
+        crosses = (r.y0 < region.y0 < r.y1 - 0.01) or (r.y0 + 0.01 < region.y1 < r.y1)
+        if crosses and not (r.y0 <= region.y0 and r.y1 >= region.y1):   # a background or frame around it stays
+            raise CantKeepLayout("A drawing or image on the page runs across the text below the paragraph, so it "
+                                 "can't be moved to make room.")
+    for s in others:
+        box = pymupdf.Rect(s.x0, s.top, s.x1, s.bottom)
+        if s.locked and box.intersects(region):
+            raise CantKeepLayout("Rotated text runs into what is below the paragraph, so it can't be moved.")
+        if id(s) not in repeated and s.top < region.y0 < s.bottom and box.intersects(region):
+            raise CantKeepLayout("Text on the page overlaps the paragraph's last line, so what is below it can't be "
+                                 "moved.")
+    for annot in page.annots() or []:
+        if annot.rect.intersects(region):
+            raise CantKeepLayout("The page has annotations or form fields below the paragraph, which can't be moved.")
+    return _Shift(region, dy)
+
+
+# ---------------------------------------------------------------- re-wrapping a paragraph
+SHRINK, STRETCH = 0.85, 2.2      # how much tighter or looser than its usual word gap a justified line may be set
+JOIN = "join"                    # a line break inside a word (it was hyphenated there): no space when re-wrapped
+
+
+def _text_rows(pdf: PdfText, page: int) -> list[list[Segment]]:
+    return [row for row in pdf.pages[page] if not row[0].locked]
+
+
+def _width(w: Word) -> float:
+    return w.end - w.x
+
+
+def _paragraph(pdf: PdfText, seg: Segment) -> list[Segment]:
+    """The lines of the paragraph `seg` is in, top to bottom. Lines belong together when they sit one line apart at
+    a steady spacing, share a size and a left edge (the first may be indented), and the first word of each would
+    not have fitted at the end of the line before it (so the break was a wrap, not the end of a paragraph)."""
+    rows = _text_rows(pdf, seg.page)
+    at = next((i for i, row in enumerate(rows) if row == [seg]), None)
+    if at is None:
+        return [seg]
+
+    def joins(a: Segment, b: Segment, step: float | None) -> bool:
+        if b.locked or abs(a.size - b.size) > 0.5 or b.words[0].text in BULLETS:
+            return False
+        gap = b.baseline - a.baseline
+        if not 0.9 * a.size <= gap <= 1.9 * a.size or (step is not None and abs(gap - step) > 0.6):
+            return False
+        if abs(b.x0 - a.x0) > 30:
+            return False
+        # the column's right edge, from the other lines (a line can't show that it was full by itself)
+        edge = max((s.x1 for row in rows for s in row if s is not a and abs(s.x0 - a.x0) <= 30), default=None)
+        if edge is None or a.x1 > edge + 2:      # 2pt: punctuation may hang past the edge
+            # the column's longest line: full only if it reaches as far as any text on the page does
+            page_edge = max((s.x1 for row in rows for s in row if s is not a), default=0)
+            if page_edge < a.x1 - 2:
+                return False
+            edge = max(edge or 0, a.x1)
+        space = pdf.natural_space(a.words[-1].glyphs[-1].style)
+        return a.x1 + space + _width(b.words[0]) > edge + 0.5
+
+    lines, step = [seg], None
+    i = at
+    while i > 0 and len(rows[i - 1]) == 1 and joins(rows[i - 1][0], lines[0], step):
+        step = lines[0].baseline - rows[i - 1][0].baseline
+        lines.insert(0, rows[i - 1][0])
+        i -= 1
+    i = at
+    while i + 1 < len(rows) and len(rows[i + 1]) == 1 and joins(lines[-1], rows[i + 1][0], step):
+        step = rows[i + 1][0].baseline - lines[-1].baseline
+        lines.append(rows[i + 1][0])
+        i += 1
+    return lines
+
+
+def _room_below(pdf: PdfText, para: list[Segment], left: float, right: float, top: float, bottom: float) -> bool:
+    """Nothing on the page (text, drawings, images) in the band a new line of the paragraph would take, and the band
+    within the area the document's text uses (its lowest line on any page)."""
+    page = pdf.doc[para[0].page]
+    if bottom > max(s.bottom for s in pdf.segments) + 0.5:
+        return False
+    band = pymupdf.Rect(left, top, right, bottom)
+    mine = {id(s) for s in para}
+    for row in pdf.pages[para[0].page]:
+        for s in row:
+            if id(s) not in mine and pymupdf.Rect(s.x0, s.top, s.x1, s.bottom).intersects(band):
+                return False
+    if any(pymupdf.Rect(d["rect"]).intersects(band) for d in page.get_drawings()):
+        return False
+    return not any(pymupdf.Rect(info["bbox"]).intersects(band) for info in page.get_image_info())
+
+
+def _plan_paragraph(pdf: PdfText, para: list[Segment], ranges: list[tuple[int, int, str]]) -> _Plan:
+    """Re-wrap a paragraph with the replacements (start, end, new text; offsets in the paragraph's text) applied.
+
+    Lines above the first change stay as they are. From there the words are laid out again the way the paragraph is
+    set: on the same left edges and baselines, up to its right edge, justified lines still filling the width (word
+    gaps within SHRINK..STRETCH of the usual gap) and the last line ragged. Words that don't change keep their own
+    letters and spacing; only their place moves. Where the new lines come back in step with the old ones, the rest
+    stays untouched. The paragraph may end a line shorter, or take one more line where the space below is empty."""
+    if any(s.locked for s in para):
+        raise CantKeepLayout("The text is rotated or vertical in the PDF, which an edit can't re-set.")
+    text = "\n".join(s.text for s in para)
+    if pdf.text[para[0].start: para[0].start + len(text)] != text:
+        raise CantKeepLayout("The paragraph's text couldn't be lined up with the PDF's layout.")
+    starts = [s.start - para[0].start for s in para]
+    first = max(i for i, st in enumerate(starts) if st <= min(a for a, _, _ in ranges))
+    lines = para[first:]
+    ranges = [(a - starts[first], b - starts[first], new) for a, b, new in ranges]
+
+    # the words from the first changed line on, as entries (char, style, glyph, word index, offset from the baseline)
+    old_words: list[tuple[Word, int]] = []          # (word, its line within `lines`)
+    entries: list[tuple] = []
+    for li, seg in enumerate(lines):
+        if li:
+            prev = lines[li - 1].words[-1].text
+            hyphenated = prev.endswith("-") and len(prev) > 1
+            entries.append(("\n", None, None, JOIN if hyphenated else None, None))
+        for wj, w in enumerate(seg.words):
+            if wj:
+                entries.append((" ", None, None, None, None))
+            wi = len(old_words)
+            old_words.append((w, li))
+            for g in w.glyphs:
+                for ch in g.text:
+                    entries.append((ch, g.style, g, wi, round(g.y - seg.baseline, 2)))
+    _replace_entries(entries, ranges)
+
+    # the words again: an old word kept whole, or letters to set (a word hyphenated across lines is set whole,
+    # keeping its hyphen: a hyphen at a line end can't be told apart from one that belongs to the word)
+    words, cur = [], []
+    for e in entries + [(" ", None, None, None, None)]:
+        if e[1] is None and e[3] != JOIN:
+            if cur:
+                words.append(cur)
+            cur = []
+        elif e[1] is not None:
+            cur.append(e)
+    laid = []      # (old word index or None, typeset letters or None, width, last style)
+    for w in words:
+        wis = {e[3] for e in w}
+        glyphs = list(dict.fromkeys(e[2] for e in w))
+        old = old_words[w[0][3]][0] if len(wis) == 1 and None not in wis else None
+        if old is not None and None not in glyphs and glyphs == old.glyphs and "".join(e[0] for e in w) == old.text:
+            laid.append((w[0][3], None, _width(old), old.glyphs[-1].style))
+        else:
+            letters, width = pdf.typeset([(e[0], e[1], e[4]) for e in w])
+            laid.append((None, letters, width, w[-1][1]))
+    if not laid and first == 0:
+        raise CantKeepLayout("The edit would leave the paragraph empty.")
+
+    # the paragraph's measure and how it is set
+    justify = len(para) >= 2 and all(s.align == "justify" for s in para[:-1])
+    if justify:
+        right = statistics.median(s.x1 for s in para[:-1])
+    else:
+        bounds = [a.x1 + pdf.natural_space(a.words[-1].glyphs[-1].style) + _width(b.words[0]) - 0.01
+                  for a, b in zip(para, para[1:])]
+        right = max(max(s.x1 for s in para), min([s.right_limit for s in para] + bounds))
+    rows = _text_rows(pdf, para[0].page)
+    runs_on = justify and rows[-1] == [para[-1]] and para[-1].x1 >= right - 1   # it carries on on the next page
+    steps = [b.baseline - a.baseline for a, b in zip(para, para[1:])]
+    step = statistics.median(steps) if steps else 1.2 * para[0].size
+    later_left = para[-1].x0 if len(para) > 1 else para[0].x0
+
+    def line_left(t: int) -> float:
+        return lines[t].x0 if t < len(lines) else later_left
+
+    def line_base(t: int) -> float:
+        return lines[t].baseline if t < len(lines) else lines[-1].baseline + step * (t - len(lines) + 1)
+
+    def word_text(k: int) -> str:
+        wi, letters = laid[k][0], laid[k][1]
+        return old_words[wi][0].text if wi is not None else "".join(c for _, _, c, _, _ in letters)
+
+    def gap_before(k: int) -> float:
+        """The gap before laid[k]. A ragged line keeps the gap two words had when they stay neighbours from one old
+        line. Otherwise the paragraph's usual gap, wider after a sentence where the document sets it wider; a justified
+        line then stretches all its gaps alike."""
+        a, b = laid[k - 1][0], laid[k][0]
+        if not justify and a is not None and b is not None and b == a + 1 and old_words[a][1] == old_words[b][1]:
+            return old_words[b][0].x - old_words[a][0].end
+        space = pdf.natural_space(laid[k - 1][3])
+        if word_text(k - 1).endswith((".", "!", "?")) and word_text(k)[:1].isupper():
+            space *= pdf.sentence_space()
+        return space
+
+    bullet = first == 0 and para[0].words[0].text in BULLETS and laid[0][0] == 0 and len(laid) > 1
+    # how loose or tight the paragraph's own justified lines are set: re-wrapped lines may be set as they are
+    factors = [statistics.median(b.x - a.end for a, b in zip(s.words, s.words[1:]))
+               / pdf.natural_space(s.words[0].glyphs[-1].style) for s in para[:-1] if justify and len(s.words) >= 3]
+    low, high = (min(factors), max(factors)) if factors else (1.0, 1.0)
+
+    def in_step(i: int, t: int) -> bool:
+        """Back in step with the old lines at word i starting line t: the rest stays as it is."""
+        return bool(t and t < len(lines) and laid[i][0] is not None and old_words[laid[i][0]][0] is lines[t].words[0]
+                    and [w for w, _, _, _ in laid[i:]] == list(range(laid[i][0], len(old_words))))
+
+    def line_start(t: int, i: int) -> tuple[int, float]:
+        """(words placed before the line's spacing starts, where the spacing starts)."""
+        if bullet and t == 0:              # a list bullet keeps its place and its gap
+            return 2, lines[0].words[1].x + laid[1][2]
+        return 1, line_left(t) + laid[i][2]
+
+    def fits(t: int, i: int, j: int, squeeze: float) -> bool:
+        lead, x = line_start(t, i)
+        if j - i < lead:
+            return False
+        return x + sum(laid[k][2] + squeeze * gap_before(k) for k in range(i + lead, j)) <= right + 0.01
+
+    out_lines: list[list[int]] = []       # indices into laid
+    converged = None
+    if not justify:
+        # greedy line filling, as a word processor does it
+        i, t = 0, 0
+        while i < len(laid):
+            if in_step(i, t):
+                converged = t
+                break
+            lead = line_start(t, i)[0]
+            if not fits(t, i, i + lead, 1.0):
+                raise CantKeepLayout("A word is wider than the paragraph's lines.")
+            j = i + lead
+            while j < len(laid) and fits(t, i, j + 1, 1.0):
+                j += 1
+            out_lines.append(list(range(i, j)))
+            i, t = j, t + 1
+    else:
+        # all the breaks chosen together, as TeX does: every line's word spacing as close to the paragraph's own
+        # as it can be, and no more lines than before unless the text needs them
+        target = statistics.median(factors) if factors else 1.0
+        lo, hi = min(SHRINK, 0.95 * low), max(STRETCH, 1.1 * high)
+        n, inf = len(laid), float("inf")
+
+        @functools.lru_cache(maxsize=None)
+        def best(i: int, t: int) -> tuple[float, tuple]:
+            if i == n:
+                return 0.0, ()
+            if in_step(i, t):
+                return 0.0, ("in step",)
+            if t > len(lines) + 3:
+                return inf, ()
+            found = (inf, ())
+            lead = line_start(t, i)[0]
+            for j in range(i + lead, n + 1):
+                if not fits(t, i, j, SHRINK if j < n or runs_on else 1.0):
+                    break
+                last_line = j == n and not runs_on
+                lead_, x = line_start(t, i)
+                gaps = [gap_before(k) for k in range(i + lead_, j)]
+                if last_line:
+                    cost = 0.0
+                elif not gaps:
+                    cost = 5000.0                # a lone word stretched across: only when nothing else works
+                else:
+                    f = (right - x - sum(laid[k][2] for k in range(i + lead_, j))) / sum(gaps)
+                    if f < lo - 0.01 or f > 1.6 * hi:
+                        continue
+                    cost = 100 * ((f - target) / target) ** 2
+                    if f > hi:                   # looser than the paragraph's loosest line: as a word processor
+                        cost += 500              # without hyphenation sets it, only when nothing fits better
+                if t >= len(lines):
+                    cost += 1000                 # a line more than before
+                rest, plan_ = best(j, t + 1)
+                if cost + rest < found[0]:
+                    found = (cost + rest, ((i, j),) + plan_)
+            return found
+
+        cost, chosen = best(0, 0)
+        if cost == inf:
+            raise CantKeepLayout("Re-wrapped, the paragraph's lines can't all be set as tightly or loosely as the "
+                                 "rest of it.")
+        for item in chosen:
+            if item == "in step":
+                converged = len(out_lines)
+            else:
+                out_lines.append(list(range(*item)))
+
+    total = len(out_lines) + (len(lines) - converged if converged is not None else 0)
+    if runs_on and total != len(lines):
+        raise CantKeepLayout("The paragraph carries on to the next page, so its lines can't be re-wrapped here.")
+    shift = None
+    left = min(line_left(t) for t in range(max(total, len(lines))))
+    if total > len(lines):
+        if not _room_below(pdf, para, left, right, lines[-1].bottom + 0.1,
+                           line_base(total - 1) + 0.35 * para[-1].size + 0.5 * step):
+            shift = _push(pdf, para, left, right, step * (total - len(lines)))
+    elif total < len(lines):
+        try:                               # the gap a shorter paragraph leaves is closed when that can be done
+            shift = _push(pdf, para, left, right, -step * (len(lines) - total))
+        except CantKeepLayout as e:
+            log.info("A re-wrapped paragraph ends a line shorter; the space stays: %s", e)
+
+    plan = _Plan(ordered=True, shift=shift)
+    rewritten = lines[:converged] if converged is not None else lines
+    for seg in rewritten:
+        for w in seg.words:
+            plan.remove.extend(w.glyphs)
+    last = len(out_lines) - 1
+    for t, line in enumerate(out_lines):
+        base = line_base(t)
+        gaps = [gap_before(k) for k in line[1:]]
+        lead = 2 if bullet and t == 0 else 1             # words placed before the line's spacing starts
+        xs = [lines[0].words[0].x, lines[0].words[1].x] if lead == 2 else [line_left(t)]
+        x = xs[-1] + laid[line[lead - 1]][2]
+        gaps = gaps[lead - 1:]
+        stretch = justify and (t < last or converged is not None or runs_on) and len(line) > lead
+        if stretch:
+            spare = right - x - sum(laid[k][2] for k in line[lead:])
+            factor = spare / sum(gaps)
+            if not min(SHRINK, 0.95 * low) - 0.02 <= factor <= 1.6 * max(STRETCH, 1.1 * high) + 0.01:
+                raise CantKeepLayout("Re-wrapped, a line of the paragraph would be set visibly looser or tighter "
+                                     "than the rest.")
+            gaps = [g * factor for g in gaps]
+        for k, g in zip(line[lead:], gaps):
+            x += g
+            xs.append(x)
+            x += laid[k][2]
+        for n, (k, x) in enumerate(zip(line, xs)):
+            wi, letters, _, _ = laid[k]
+            if n:
+                prev = laid[line[n - 1]]
+                plan.write.append(_Typeset(xs[n - 1] + prev[2], base, " ", prev[3], _space_font()))
+            if wi is not None:
+                w, li = old_words[wi]
+                for g in w.glyphs:
+                    plan.write.append(_Typeset(g.x - w.x + x, base + (g.y - lines[li].baseline), g.c, g.style,
+                                               pdf.font_for(g.style, g.c)))
+            else:
+                plan.write.extend(_Typeset(x + dx, base + dy, c, st, font) for dx, dy, c, st, font in letters)
+    if any(t.c == "�" for t in plan.write):
+        raise CantKeepLayout("Some letters in that paragraph can't be read from the PDF, so it can't be re-set.")
+    plan.segments = rewritten
+    return plan
+
+
+@functools.cache
+def _space_font() -> pymupdf.Font:
+    return pymupdf.Font("helv")
+
+
+# ---------------------------------------------------------------- applying and checking
+def _rgb(color: int) -> tuple[float, float, float]:
+    return ((color >> 16) & 255) / 255, ((color >> 8) & 255) / 255, (color & 255) / 255
+
+
+def _glyph_list(page: pymupdf.Page) -> list[Glyph]:
+    lines, locked = _page_glyphs(page)
+    return [g for line in lines + locked for g in line if g]
+
+
+def _redact_rect(g: Glyph) -> pymupdf.Rect:
+    """A small box in the middle of the letter: the letter overlaps it, its neighbours don't."""
+    x0, y0, x1, y1 = g.bbox
+    w, h = max(x1 - x0, 0.2), max(y1 - y0, 0.2)
+    return pymupdf.Rect(x0 + 0.35 * w, y0 + 0.4 * h, x1 - 0.35 * w, y1 - 0.4 * h)
+
+
+def _redact_rects(page: pymupdf.Page, remove: list[Glyph]) -> list[pymupdf.Rect]:
+    """Boxes to redact: one per run of neighbouring letters to remove on a line (each redaction box costs MuPDF time
+    in proportion to the boxes already there), a thin band through their middles so nothing else is touched. A run
+    ends at a letter that stays, or where the letters' height changes (a superscript)."""
+    gone = {(g.c, round(g.x, 2), round(g.y, 2)) for g in remove}
+    stay = defaultdict(list)
+    for g in _glyph_list(page):
+        if (g.c, round(g.x, 2), round(g.y, 2)) not in gone:
+            stay[round(g.y, 1)].append(g.x)
+    rows = defaultdict(list)
+    for g in remove:
+        rows[round(g.y, 1)].append(g)
+    rects = []
+    for y, gs in rows.items():
+        gs.sort(key=lambda g: g.x)
+        run = [gs[0]]
+
+        def close():
+            boxes = [_redact_rect(g) for g in run]
+            rects.append(pymupdf.Rect(boxes[0].x0, max(b.y0 for b in boxes), boxes[-1].x1, min(b.y1 for b in boxes)))
+
+        for g in gs[1:]:
+            a = run[-1]
+            mid_a, mid_g = (a.bbox[1] + a.bbox[3]) / 2, (g.bbox[1] + g.bbox[3]) / 2
+            between = any(a.x < x < g.x for x in stay[y])
+            if between or abs(mid_a - mid_g) > 0.15 * (a.bbox[3] - a.bbox[1]):
+                close()
+                run = []
+            run.append(g)
+        close()
+    return [r for r in rects if r.x1 > r.x0 and r.y1 > r.y0]
+
+
+def _clear_region(page: pymupdf.Page, shift: _Shift) -> None:
+    """Remove everything in shift.region (it is drawn again, moved, by _draw_region)."""
+    page.add_redact_annot(shift.region, fill=False, cross_out=False)
+    page.apply_redactions(images=pymupdf.PDF_REDACT_IMAGE_REMOVE,
+                          graphics=pymupdf.PDF_REDACT_LINE_ART_REMOVE_IF_COVERED, text=pymupdf.PDF_REDACT_TEXT_REMOVE)
+
+
+def _draw_region(page: pymupdf.Page, shift: _Shift, original: pymupdf.Document, links: list[dict]) -> None:
+    """Draw shift.region of the original page again, moved by shift.dy, so text, drawings and images keep exactly
+    their look; its links move with it. Text outside the region is taken out of the copy that is drawn, so text
+    readers don't meet it twice. Drawn last, so it reads after the paragraph above it."""
+    region, dy = shift.region, shift.dy
+    source = pymupdf.open()
+    source.insert_pdf(original, from_page=page.number, to_page=page.number)
+    sp = source[0]
+    for rect in (pymupdf.Rect(sp.rect.x0, sp.rect.y0, sp.rect.x1, region.y0),
+                 pymupdf.Rect(sp.rect.x0, region.y1, sp.rect.x1, sp.rect.y1)):
+        if rect.height > 0:
+            sp.add_redact_annot(rect, fill=False, cross_out=False)
+    sp.apply_redactions(images=pymupdf.PDF_REDACT_IMAGE_NONE, graphics=pymupdf.PDF_REDACT_LINE_ART_NONE,
+                        text=pymupdf.PDF_REDACT_TEXT_REMOVE)
+    page.show_pdf_page(region + (0, dy, 0, dy), source, 0, clip=region, keep_proportion=False)
+    source.close()
+    for link in page.get_links():
+        page.delete_link(link)
+    for link in links:
+        link = {k: v for k, v in link.items() if k != "xref"}
+        if region.contains(link["from"]):
+            link["from"] = link["from"] + (0, dy, 0, dy)
+        page.insert_link(link)
+
+
+def _apply_page(page: pymupdf.Page, plan: _Plan, original: pymupdf.Document | None = None) -> None:
+    if plan.shift is not None:
+        original_links = page.get_links()
+        _clear_region(page, plan.shift)
+        _write_plan(page, plan)
+        _draw_region(page, plan.shift, original, original_links)
+    else:
+        _write_plan(page, plan)
+
+
+def _write_plan(page: pymupdf.Page, plan: _Plan) -> None:
+    links = page.get_links()
+    for rect in _redact_rects(page, plan.remove):
+        page.add_redact_annot(rect, fill=False, cross_out=False)
+    if plan.remove:
+        page.apply_redactions(images=pymupdf.PDF_REDACT_IMAGE_NONE, graphics=pymupdf.PDF_REDACT_LINE_ART_NONE,
+                              text=pymupdf.PDF_REDACT_TEXT_REMOVE)
+    have = {(tuple(round(v, 1) for v in link["from"]), link.get("uri"), link.get("page")) for link in page.get_links()}
+    for link in links:      # links a redaction took with it come back
+        if (tuple(round(v, 1) for v in link["from"]), link.get("uri"), link.get("page")) not in have:
+            page.insert_link({k: v for k, v in link.items() if k != "xref"})
+    fonts_before = {f[0] for f in page.get_fonts(full=True)}
+    runs: list[tuple[int, pymupdf.TextWriter]] = []     # in order: text readers read the letters as written
+    for t in plan.write:
+        if not runs or runs[-1][0] != t.style.color:
+            runs.append((t.style.color, pymupdf.TextWriter(page.rect)))
+        runs[-1][1].append((t.x, t.y), t.c, font=t.font, fontsize=t.style.size)
+    for color, tw in runs:
+        tw.write_text(page, color=_rgb(color))
+    doc = page.parent
+    for xref, *_ in page.get_fonts(full=True):      # the fonts just added: their copy-text maps are corrected
+        if xref in fonts_before:
+            continue
+        for font in [xref] + [int(x) for x in re.findall(r"(\d+) 0 R", doc.xref_get_key(xref, "DescendantFonts")[1])]:
+            kind, ref = doc.xref_get_key(font, "ToUnicode")
+            if kind == "xref":
+                cmap_xref = int(ref.split()[0])
+                cmap = doc.xref_stream(cmap_xref)
+                fixed = _fix_cmap(cmap)
+                if fixed != cmap:
+                    doc.update_stream(cmap_xref, fixed)
+
+
+_LIGATURE_UTF16 = {f"{ord(lig):04x}": "".join(f"{ord(c):04X}" for c in letters) for letters, lig in LIGATURES}
+
+
+def _fix_cmap(cmap: bytes) -> bytes:
+    """MuPDF's copy-text map for a font it adds reads a hyphen as a soft hyphen (invisible when pasted) and a
+    ligature as one character ("ﬁ", which search doesn't match to "fi"). Both are put right: "-", and "f" "i".
+    A range of codes running through one of those ("<0002> <0003> <fb03>": ﬃ, ﬄ) is split into single codes.
+    Only what codes mean is changed, never the codes themselves (a font may well use code 00AD for a letter)."""
+    def fixes(code: int) -> bool:
+        return code == 0x00AD or 0xFB00 <= code <= 0xFB04
+
+    def target(code: int) -> bytes:
+        if code == 0x00AD:
+            return b"<002D>"
+        letters = _LIGATURE_UTF16.get(f"{code:04x}")
+        return b"<" + (letters.encode() if letters else f"{code:04X}".encode()) + b">"
+
+    def ranges(m: re.Match) -> bytes:
+        entries, changed = [], False
+        for a, b, dst in re.findall(rb"<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>\s*(<[0-9A-Fa-f]+>|\[[^\]]*\])", m.group(2)):
+            lo, hi = int(a, 16), int(b, 16)
+            first = int(dst[1:-1], 16) if dst.startswith(b"<") and len(dst) == 6 else None
+            if first is not None and any(fixes(first + k) for k in range(hi - lo + 1)):
+                changed = True
+                width = len(a)
+                entries += [b"<%s> <%s> %s" % (f"{c:0{width}X}".encode(), f"{c:0{width}X}".encode(), target(first + c - lo))
+                            for c in range(lo, hi + 1)]
+            else:
+                entries.append(b"<%s> <%s> %s" % (a, b, dst))
+        if not changed:
+            return m.group(0)
+        return b"%d beginbfrange\n" % len(entries) + b"\n".join(entries) + b"\nendbfrange"
+
+    def chars(m: re.Match) -> bytes:
+        # each entry is "<code> <meaning>": only a meaning (the second of the pair) is replaced
+        return re.sub(rb"(<[0-9A-Fa-f]+>[ \t]*)<([Ff][Bb]0[0-4]|00[Aa][Dd])>",
+                      lambda e: e.group(1) + target(int(e.group(2), 16)), m.group(0))
+
+    cmap = re.sub(rb"(\d+) beginbfrange(.*?)endbfrange", ranges, cmap, flags=re.S)
+    return re.sub(rb"\d+ beginbfchar.*?endbfchar", chars, cmap, flags=re.S)
+
+
+def _check(before: pymupdf.Page, after: pymupdf.Page, plan: _Plan, counts: tuple) -> None:
+    """The saved page is what was intended, or CantKeepLayout."""
+    removed = {(g.c, round(g.x, 2), round(g.y, 2)) for g in plan.remove}
+    shift = plan.shift
+
+    def moved(g: Glyph) -> float:
+        middle = pymupdf.Point((g.bbox[0] + g.bbox[2]) / 2, (g.bbox[1] + g.bbox[3]) / 2)
+        return g.y + shift.dy if shift is not None and shift.region.contains(middle) else g.y
+    expected = [(g.c, g.x, moved(g), None) for g in _glyph_list(before)
+                if (g.c, round(g.x, 2), round(g.y, 2)) not in removed]
+    expected += [(t.c, t.x, t.y, t) for t in plan.write if not t.c.isspace()]
+    actual = _glyph_list(after)
+    buckets = defaultdict(list)
+    for g in actual:
+        buckets[g.c].append(g)
+    for c, x, y, t in expected:
+        match = next((g for g in buckets[c] if abs(g.x - x) < 0.25 and abs(g.y - y) < 0.25), None)
+        if match is None:
+            raise CantKeepLayout(f'Checking the edited page failed: the letter "{c}" is not where it should be.')
+        buckets[c].remove(match)
+        if t is not None:
+            if abs(match.style.size - t.style.size) > 0.05 or match.style.color != t.style.color:
+                raise CantKeepLayout("Checking the edited page failed: the new text's size or colour came out different.")
+            names = {font_key(t.style.font), font_key(t.font.name)}
+            got = font_key(match.style.font)
+            # PDF's standard fonts are drawn with MuPDF's metric-identical copies, named Nimbus, Standard Symbols, Dingbats
+            standard = font_key(t.style.font) in BASE14 and got.startswith(("nimbus", "standardsymbols", "dingbats"))
+            if got not in names and not standard:
+                raise CantKeepLayout(f'Checking the edited page failed: the new text came out in "{match.style.font}" '
+                                     f'instead of "{t.style.font}".')
+    left = [g.c for gs in buckets.values() for g in gs]
+    if left:
+        raise CantKeepLayout(f'Checking the edited page failed: old text was not fully removed ("{"".join(left)[:20]}").')
+    if shift is None:
+        now = (len(after.get_drawings()), len(after.get_images(full=True)), len(after.get_links()))
+        if now != counts:
+            raise CantKeepLayout("Checking the edited page failed: a drawing, image or link on the page changed.")
+        return
+
+    def boxes(page: pymupdf.Page, kind: str) -> list[pymupdf.Rect]:
+        found = [d["rect"] for d in page.get_drawings()] if kind == "d" else [i["bbox"] for i in page.get_image_info()]
+        return [pymupdf.Rect(r) for r in found]
+    for kind in ("d", "i"):            # every drawing and image is where it was, or moved with the region
+        have = boxes(after, kind)
+        for r in boxes(before, kind):
+            want = r + (0, shift.dy, 0, shift.dy) if shift.region.contains(r) else r
+            hit = next((h for h in have if all(abs(a - b) < 0.3 for a, b in zip(h, want))), None)
+            if hit is None:
+                raise CantKeepLayout("Checking the edited page failed: a drawing or image didn't move with the text "
+                                     "below the paragraph.")
+            have.remove(hit)
+    if len(after.get_links()) != counts[2]:
+        raise CantKeepLayout("Checking the edited page failed: a link on the page changed.")
+
+
+def _spaced(items: list[_Typeset]) -> list[_Typeset]:
+    """Letters with a (blank) space wherever two words part on a line, so copied and searched text keeps them apart."""
+    out, prev = [], None
+    for t in items:
+        if t.c.isspace():
+            continue
+        if prev is not None and abs(prev.y - t.y) < 0.5 * t.style.size:
+            end = prev.x + prev.font.text_length(prev.c, prev.style.size)
+            if t.x - end > 0.15 * t.style.size:
+                out.append(_Typeset(end, prev.y, " ", prev.style, _space_font()))
+        out.append(t)
+        prev = t
+    return out
+
+
+def _in_reading_order(pdf: PdfText, n: int, edits: list[tuple[list[Segment], _Plan]]) -> _Plan | None:
+    """The page's edit with the text order kept for text readers (search, copy and paste, the Markdown copy).
+
+    New text can only be added at the end of a page's content, and text readers read a page in content order, so an
+    edited line would read as the page's last. Instead every letter after the edit in content order is removed and
+    written again, in order, exactly where it was and in its own font, size and colour (the check confirms it):
+    the page looks the same and reads in its original order. None when that isn't safe (text after the edit that is
+    outlined, invisible, see-through or not in the layout model): the edit then goes at the end."""
+    page = pdf.doc[n]
+    where: dict[tuple, tuple[Glyph, Segment]] = {}
+    for row in pdf.pages[n]:
+        for seg in row:
+            for w in seg.words:
+                for g in w.glyphs:
+                    where[(round(g.x, 1), round(g.y, 1))] = (g, seg)
+    edited = {id(seg): plan for segs, plan in edits for seg in segs}
+    removed = {id(g) for _, plan in edits for g in plan.remove}
+    sequence, seen, after = [], set(), False
+    for span in page.get_texttrace():
+        for ch in span["chars"]:
+            hit = where.get((round(ch[2][0], 1), round(ch[2][1], 1)))
+            if hit is None:
+                if after and not chr(ch[0]).isspace():
+                    return None             # text the model doesn't know: it can't be written again faithfully
+                continue
+            if id(hit[0]) in seen:
+                continue                    # the second letter of a ligature
+            seen.add(id(hit[0]))
+            after = after or id(hit[0]) in removed or id(hit[1]) in edited
+            if after:
+                if span["type"] != 0 or span["opacity"] != 1:
+                    return None
+                sequence.append(hit)
+    if not sequence:
+        return None
+
+    out, done = _Plan(), set()
+    for g, seg in sequence:
+        if id(seg) in edited:
+            plan = edited[id(seg)]
+            if id(plan) in done:
+                continue
+            done.add(id(plan))
+            gone = {id(x) for x in plan.remove}
+            mine = {id(s) for s, p in ((s, p) for segs, p in edits for s in segs) if p is plan}
+            # the line's letters that stay are written again with it (from the edit point on), all in order
+            later = [h[0] for h in sequence if id(h[1]) in mine and id(h[0]) not in gone]
+            out.remove.extend(plan.remove + later)
+            line = plan.write + [_Typeset(h.x, h.y, h.c, h.style, pdf.font_for(h.style, h.c)) for h in later]
+            line = [t for t in line if not t.c.isspace()]
+            out.write.extend(line if plan.ordered else sorted(line, key=lambda t: t.x))
+        elif id(g) not in removed:
+            out.remove.append(g)
+            out.write.append(_Typeset(g.x, g.y, g.c, g.style, pdf.font_for(g.style, g.c)))
+    out.write = _spaced(out.write)
+    return out
+
+
+# ---------------------------------------------------------------- the whole-result checks
+CHECK_ZOOM = 2.0          # renders at 144 dpi for the picture check
+INK = 48                  # a pixel differs when a colour channel changes by more than this (0-255)
+
+
+def _words(text: str) -> list[str]:
+    """The text as words, with a hyphen at a line end joined to the next word on both sides of the comparison."""
+    return re.sub(r"-\s+", "-", text.replace("\xad", "-")).split()
+
+
+def _check_text(out: Path, expected: str) -> None:
+    """The whole edited document reads as the original with only the change made: no word lost, added, repeated or
+    out of order anywhere (a paragraph worked out wrongly would show up here)."""
+    want, got = _words(expected), _words(document_text(out))
+    if got != want:
+        at = next((i for i, (a, b) in enumerate(zip(want, got)) if a != b), min(len(want), len(got)))
+        near = " ".join(want[max(0, at - 3): at + 3])
+        raise CantKeepLayout(f'Checking the edited document failed: its text no longer reads as intended near "{near}".')
+
+
+def _render(page: pymupdf.Page, dy: float = 0.0):
+    """The page as pixels. With dy: as seen moved up by dy, so what moved down by dy lines up with the original
+    pixel for pixel (the whole-pixel part of the move is a row offset; the rest is rendered, so edges match)."""
+    import numpy as np
+    whole = round(dy * CHECK_ZOOM)
+    rest = dy * CHECK_ZOOM - whole
+    pix = page.get_pixmap(matrix=pymupdf.Matrix(CHECK_ZOOM, 0, 0, CHECK_ZOOM, 0, -rest),
+                          colorspace=pymupdf.csRGB, alpha=False)
+    rows = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, 3).astype(np.int16)
+    if not dy:
+        return rows
+    height = round(page.rect.height * CHECK_ZOOM)
+    out = np.full((height, pix.width, 3), -1000, dtype=np.int16)      # -1000: nothing there to compare
+    for r in range(height):
+        source = r + whole - pix.y
+        if 0 <= source < pix.height:
+            out[r] = rows[source]
+    return out
+
+
+def _mask(shape, rects: list[pymupdf.Rect]):
+    import numpy as np
+    mask = np.zeros(shape[:2], dtype=bool)
+    for r in rects:
+        y0, y1 = max(0, int(r.y0 * CHECK_ZOOM) - 1), min(shape[0], int(r.y1 * CHECK_ZOOM) + 2)
+        x0, x1 = max(0, int(r.x0 * CHECK_ZOOM) - 1), min(shape[1], int(r.x1 * CHECK_ZOOM) + 2)
+        if y1 > y0 and x1 > x0:
+            mask[y0:y1, x0:x1] = True
+    return mask
+
+
+def _changed_boxes(plan: _Plan) -> list[pymupdf.Rect]:
+    """Where letters were removed or written. (A letter written again where it was, to keep the reading order, is
+    left out of the picture check: its faint edge pixels can differ, and the letter check has already confirmed its
+    place and font.)"""
+    boxes = [pymupdf.Rect(g.bbox) + (-1, -1, 1, 1) for g in plan.remove]
+    for t in plan.write:
+        if t.c.isspace():
+            continue
+        width = t.font.text_length(t.c, t.style.size)
+        boxes.append(pymupdf.Rect(t.x - 1, t.y - 1.1 * t.style.size, t.x + width + 1, t.y + 0.4 * t.style.size))
+    return boxes
+
+
+def _check_picture(before: pymupdf.Page, after: pymupdf.Page, plan: _Plan) -> None:
+    """The edited page looks like the original everywhere except where letters changed: rendered and compared
+    pixel by pixel. What moved (to make room below a paragraph) must look exactly as it did, moved."""
+    import numpy as np
+    a, b = _render(before), _render(after)
+    if a.shape != b.shape:
+        raise CantKeepLayout("Checking the edited page failed: the page size changed.")
+    changed = _changed_boxes(plan)
+    skip = _mask(a.shape, changed)
+    shift = plan.shift
+    if shift is not None:
+        band = pymupdf.Rect(shift.region.x0, min(shift.region.y0, shift.region.y0 + shift.dy),
+                            shift.region.x1, max(shift.region.y1, shift.region.y1 + shift.dy))
+        skip |= _mask(a.shape, [band])                       # compared below, moved
+    diff = (np.abs(a - b).max(axis=2) > INK) & ~skip
+    if diff.any():
+        ys, xs = np.nonzero(diff)
+        raise CantKeepLayout(f"Checking the edited page failed: it looks different outside the edit (near "
+                             f"{xs[0] / CHECK_ZOOM:.0f}, {ys[0] / CHECK_ZOOM:.0f} pt).")
+    if shift is None:
+        return
+    moved = _render(after, shift.dy)                         # the edited page, looked at one move up (or down)
+    inside = _mask(a.shape, [shift.region]) & ~_mask(a.shape, changed) \
+        & ~_mask(a.shape, [r + (0, -shift.dy, 0, -shift.dy) for r in changed])
+    diff = (np.abs(a - moved).max(axis=2) > INK) & inside & (moved[:, :, 0] >= 0)
+    if diff.any():
+        ys, xs = np.nonzero(diff)
+        raise CantKeepLayout(f"Checking the edited page failed: what moved below the paragraph doesn't look as it "
+                             f"did (near {xs[0] / CHECK_ZOOM:.0f}, {ys[0] / CHECK_ZOOM:.0f} pt).")
+
+
+def _write_checked(path: Path, out: Path, plans: dict[int, _Plan], expected: str | None = None) -> None:
+    """Apply the plans to a fresh copy of the PDF, save it to `out` and check it: every edited page letter by letter
+    and picture by picture, and (given `expected`) the whole document's text. CantKeepLayout, with `out` removed,
+    when anything isn't what was intended."""
+    with pymupdf.open(str(path)) as original, pymupdf.open(str(path)) as target:
+        counts = {n: (len(original[n].get_drawings()), len(original[n].get_images(full=True)),
+                      len(original[n].get_links())) for n in plans}
+        for n, plan in plans.items():
+            _apply_page(target[n], plan, original)
+        target.save(str(out), garbage=3, deflate=True)
+        try:
+            with pymupdf.open(str(out)) as edited:
+                for n, plan in plans.items():
+                    _check(original[n], edited[n], plan, counts[n])
+                    _check_picture(original[n], edited[n], plan)
+            if expected is not None:
+                _check_text(out, expected)
+        except Exception:
+            out.unlink(missing_ok=True)
+            raise
+
+
+def replace(path: Path, out: Path, pattern: re.Pattern, new: str, replace_all: bool) -> tuple[int, list[tuple[int, int]], str]:
+    """Write `path` with the pattern's matches (the first, or all) replaced by `new` to `out`, checked.
+    Returns (changes, the matches' (start, end) in the document text, the document text)."""
+    pdf = PdfText(path)
+    try:
+        matches = list(pattern.finditer(pdf.text))
+        if not replace_all:
+            matches = matches[:1]
+        if not matches:
+            raise CantKeepLayout("The text couldn't be found in the PDF's layout.")
+        # each match goes to its line, or (when it runs over lines, or its line can't take the new text) to its
+        # paragraph, which is re-wrapped; every other change in that paragraph then goes with it
+        by_segment: dict[int, tuple[Segment, list]] = {}
+        by_paragraph: dict[int, tuple[list[Segment], list]] = {}
+        para_of: dict[int, int] = {}            # id(segment) -> id(its paragraph's first line), once re-wrapped
+
+        def to_paragraph(seg: Segment, ranges: list) -> None:
+            para = _paragraph(pdf, seg)
+            key = id(para[0])
+            entry = by_paragraph.setdefault(key, (para, []))
+            entry[1].extend((a + seg.start - para[0].start, b + seg.start - para[0].start, t) for a, b, t in ranges)
+            for line in para:
+                para_of[id(line)] = key
+                if id(line) in by_segment and line is not seg:
+                    moved = by_segment.pop(id(line))
+                    entry[1].extend((a + line.start - para[0].start, b + line.start - para[0].start, t)
+                                    for a, b, t in moved[1])
+
+        for m in matches:
+            seg = pdf.segment_at(m.start())
+            if seg is None:
+                raise CantKeepLayout("The text couldn't be found in the PDF's layout.")
+            local = [(m.start() - seg.start, min(m.end(), seg.start + len(seg.text)) - seg.start, new)]
+            if m.end() > seg.start + len(seg.text):
+                para = _paragraph(pdf, seg)
+                if m.end() > para[-1].start + len(para[-1].text):
+                    raise CantKeepLayout("The text runs over more than one paragraph of the PDF, which an edit can't "
+                                         "re-set.")
+                to_paragraph(seg, [(m.start() - seg.start, m.end() - seg.start, new)])
+            elif id(seg) in para_of:
+                to_paragraph(seg, local)
+            else:
+                by_segment.setdefault(id(seg), (seg, []))[1].extend(local)
+        edits: dict[int, list[tuple[list[Segment], _Plan]]] = defaultdict(list)
+        for seg, ranges in list(by_segment.values()):
+            if id(seg) in para_of:
+                continue
+            try:
+                edits[seg.page].append(([seg], _plan_segment(pdf, seg, ranges)))
+            except NeedsRewrap:
+                to_paragraph(seg, ranges)
+        edits = {n: [(segs, plan) for segs, plan in page_edits if not any(id(s) in para_of for s in segs)]
+                 for n, page_edits in edits.items()}
+        edits = defaultdict(list, edits)
+        for para, ranges in by_paragraph.values():
+            edits[para[0].page].append((para, _plan_paragraph(pdf, para, ranges)))
+        for n, page_edits in edits.items():
+            if len(page_edits) > 1 and any(p.shift is not None for _, p in page_edits):
+                raise CantKeepLayout("One of the changes moves the rest of its page; make the changes on that page one "
+                                     "at a time.")
+        simple = {n: _Plan([g for _, p in page_edits for g in p.remove], [t for _, p in page_edits for t in p.write],
+                           shift=page_edits[0][1].shift)
+                  for n, page_edits in edits.items()}
+        # where the lower part of a page moves, the re-set paragraph is drawn before it, so it reads in order anyway
+        ordered = {n: simple[n] if simple[n].shift is not None else _in_reading_order(pdf, n, page_edits)
+                   for n, page_edits in edits.items()}
+        expected, at = [], 0                 # the document's text as it should read afterwards
+        for m in matches:
+            expected += [pdf.text[at:m.start()], new]
+            at = m.end()
+        expected = "".join(expected) + pdf.text[at:]
+        try:
+            if any(p is None for p in ordered.values()):
+                raise CantKeepLayout("The page's reading order can't be kept.")
+            _write_checked(path, out, ordered, expected)
+        except CantKeepLayout as e:
+            log.info("Edit of %s: keeping the reading order failed (%s); the edit goes at the end", path.name, e)
+            _write_checked(path, out, simple, expected)
+        return len(matches), [(m.start(), m.end()) for m in matches], pdf.text
+    finally:
+        pdf.close()
+
+
+def document_text(path: Path) -> str:
+    """The text edits are matched against (rows top to bottom, segments left to right)."""
+    pdf = PdfText(path)
+    try:
+        return pdf.text
+    finally:
+        pdf.close()

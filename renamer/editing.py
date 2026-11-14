@@ -1,8 +1,11 @@
 """Editing the text of an ingested document: replace a passage or append text, then re-index it.
 
-  * .txt / .md and .docx are edited in place. A PDF has no editable text, so its first edit (with the user's
-    agreement) converts it to a Markdown copy of its text, which is then edited. Layout and images are lost; the
-    PDF itself is kept in data/versions/ and undo puts it back.
+  * .txt / .md and .docx are edited in place. A PDF is edited in place too (renamer/pdf_edit.py: the new text in
+    the document's own font, size, colour and spacing, checked after writing) when that can be done without breaking
+    its look. When it can't (text that would have to move to another line, a font with no complete copy, text added
+    at the end), the edit is refused with the reason, and with the user's agreement the PDF is converted to a
+    Markdown copy of its text, which is then edited. Layout and images are lost then; the PDF itself is kept in
+    data/versions/ and undo puts it back.
   * Before every edit the current file is copied to data/versions/<doc_id>/, so nothing is lost.
   * Re-indexing uses day7's own loading, cleaning and splitting. Only chunks whose text changed are embedded (one
     Gemini request each); unchanged chunks keep their stored vectors. New chunks are embedded first and only then
@@ -18,7 +21,7 @@ from pathlib import Path
 
 from qdrant_client import models
 
-from renamer import catalog, config, library, titles
+from renamer import catalog, config, library, pdf_edit, titles
 from renamer.logs import event
 from renamer.day7 import ingestion, settings as day7_settings, sparse, vectorstore
 
@@ -33,7 +36,8 @@ class EditError(Exception):
 
 
 class NeedsConversion(EditError):
-    """The document is a PDF and the caller has not agreed to convert it."""
+    """The PDF can't be changed in place without breaking its look (the message says why), and the caller has not
+    agreed to convert it to a Markdown copy."""
 
 
 def _pattern(find: str, ignore_case: bool = False) -> re.Pattern:
@@ -177,6 +181,8 @@ def _count_matches(doc: dict, pattern: re.Pattern) -> tuple[int, list[str]]:
     if doc["ext"] == ".docx":
         import docx
         texts = [p.text for p in _docx_paragraphs(docx.Document(str(path)))]
+    elif doc["ext"] == ".pdf":
+        texts = [_pdf_text(path)]
     else:
         texts = [path.read_text(encoding="utf-8", errors="ignore")]
     count, contexts = 0, []
@@ -188,12 +194,28 @@ def _count_matches(doc: dict, pattern: re.Pattern) -> tuple[int, list[str]]:
     return count, contexts
 
 
+def _pdf_text(path: Path) -> str:
+    """A PDF's text as an in-place edit matches it. A PDF whose layout can't be read the way an edit needs it
+    (encrypted, damaged) can only be converted."""
+    try:
+        return pdf_edit.document_text(path)
+    except pdf_edit.CantKeepLayout:
+        raise
+    except Exception as e:
+        raise pdf_edit.CantKeepLayout("The PDF's text layout can't be read for an in-place edit.") from e
+
+
 def _apply(doc: dict, op: str, pattern: re.Pattern | None, text: str, replace_all: bool) -> tuple[int, list]:
     """Write the edited file. Returns (how many places changed, previews of the first few)."""
     path = config.LIBRARY_DIR / doc["file_name"]
     tmp = path.with_name(path.name + ".tmp")
     changed, previews = 1, []
-    if doc["ext"] == ".docx":
+    if doc["ext"] == ".pdf":
+        if op == "append":
+            raise pdf_edit.CantKeepLayout("Text added at the end of a PDF can't yet be laid out to match the rest of it.")
+        changed, spans, content = pdf_edit.replace(path, tmp, pattern, text, replace_all)
+        previews = [_preview(content, a, b, text) for a, b in spans[:MAX_PREVIEWS]]
+    elif doc["ext"] == ".docx":
         import docx
         d = docx.Document(str(path))
         if op == "append":
@@ -295,8 +317,8 @@ def changed_share(old: str, new: str) -> float:
 def refresh_expected(doc: dict, op: str, find: str, text: str, replace_all: bool) -> bool:
     """Would this edit change enough of the text for _finish to rewrite the summary (a model call)? Worked out on the
     text alone, before anything is touched, so the queue reserves tokens only for the edits that need them."""
-    if doc["ext"] not in EDITABLE:
-        return False                   # a PDF isn't converted in the queue; other types can't be edited
+    if doc["ext"] not in EDITABLE | {".pdf"}:
+        return False                   # other types can't be edited
     old = _plain_text(config.LIBRARY_DIR / doc["file_name"])
     if op == "append":
         new = old.rstrip("\n") + "\n\n" + text
@@ -408,8 +430,9 @@ def edit(doc_id: str, op: str, *, find: str = "", text: str = "", replace_all: b
     """op = "replace" (find -> text) or "append" (text added at the end). Returns what happened.
 
     Raises EditError when nothing was changed. A replace that matches several places and replace_all is False
-    changes nothing and returns {"status": "ambiguous", ...} for the caller to put to the user. A PDF raises
-    NeedsConversion unless convert_pdf is True.
+    changes nothing and returns {"status": "ambiguous", ...} for the caller to put to the user. A PDF is changed in
+    place when its look can be kept; otherwise it raises NeedsConversion (saying why) unless convert_pdf is True,
+    and is then converted to a Markdown copy and edited.
     """
     doc = catalog.get_document(doc_id)
     if not doc:
@@ -422,8 +445,13 @@ def edit(doc_id: str, op: str, *, find: str = "", text: str = "", replace_all: b
         raise EditError("Unknown edit. Use replace or append.")
     if doc["ext"] != ".pdf":
         return _edit(doc, doc, op, find, text, replace_all)
+    try:
+        return _edit(doc, doc, op, find, text, replace_all)
+    except pdf_edit.CantKeepLayout as e:
+        reason = str(e)
+        event("pdf_edit_refused", doc=doc_id, title=doc["title"], reason=reason)
     if not convert_pdf:
-        raise NeedsConversion("A PDF can only be edited as a Markdown copy of its text.")
+        raise NeedsConversion(reason)
     markdown = _pdf_to_markdown(doc)
     try:
         result = _edit(doc, markdown, op, find, text, replace_all)
@@ -432,6 +460,8 @@ def edit(doc_id: str, op: str, *, find: str = "", text: str = "", replace_all: b
         raise
     if result["status"] != "edited":    # nothing changed: the PDF stays as it is
         (config.LIBRARY_DIR / markdown["file_name"]).unlink(missing_ok=True)
+    else:
+        result["conversion_reason"] = reason
     return result
 
 
@@ -457,6 +487,8 @@ def _edit(source: dict, doc: dict, op: str, find: str, text: str, replace_all: b
             if doc["ext"] == ".docx" and _pattern(find, ignore_case=True).search(document_text(doc).replace("\n", " ")):
                 raise EditError("That text runs across more than one paragraph of this Word document, and a change "
                                 "has to stay inside one. Replace it one paragraph at a time.")
+            if doc["ext"] == ".pdf" and _pattern(find, ignore_case=True).search(document_text(doc)):
+                raise pdf_edit.CantKeepLayout("The text couldn't be located in the PDF's page layout.")
             raise EditError("That text isn't in the document. Check the exact wording.")
         if found > 1 and not replace_all:
             return {"status": "ambiguous", "matches": found, "contexts": contexts,
@@ -466,11 +498,16 @@ def _edit(source: dict, doc: dict, op: str, find: str, text: str, replace_all: b
     path = config.LIBRARY_DIR / doc["file_name"]
     if not path.exists():
         raise EditError("The stored file is missing.")
+    if doc["ext"] == ".pdf" and op == "append":
+        raise pdf_edit.CantKeepLayout("Text added at the end of a PDF can't yet be laid out to match the rest of it.")
     before = _plain_text(path)
     backup = _backup(source)
     try:
         changed, previews = _apply(doc, op, pattern, text, replace_all)
         reloaded = _reindex(doc)
+    except pdf_edit.CantKeepLayout:
+        backup.unlink(missing_ok=True)          # refused before the file was replaced: nothing to put back
+        raise
     except Exception as e:
         if converted:
             backup.unlink(missing_ok=True)      # the PDF was never touched; the caller removes the Markdown copy

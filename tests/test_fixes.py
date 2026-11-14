@@ -7,7 +7,7 @@ from langchain_core.messages import AIMessage
 from renamer import agent, batch, catalog, config, editing, library
 from tests.test_agent import turn
 from tests.test_editing import stored
-from tests.test_pdf_edit import pdf_doc  # noqa: F401  (fixture)
+from tests.test_pdf_edit import CROSS, pdf_doc  # noqa: F401  (fixture)
 
 
 class SilentAfter:
@@ -32,12 +32,12 @@ def test_empty_reply_after_an_edit_and_a_queue_does_not_crash(library_docs):
 
 
 def test_pdf_agreement_counts_once(pdf_doc):  # noqa: F811
-    call = {"doc_id": pdf_doc["id"], "operation": "replace", "find": "March", "text": "June"}
+    call = {"doc_id": pdf_doc["id"], "operation": "replace", **CROSS}         # a change that can't keep the layout
     turn("f2", [("find_documents", {"description": "budget.pdf"})], [("edit_document", call)])
     _, results = turn("f2", [("edit_document", {**call, "convert_pdf": True})])
     assert results[-1]["converted"]
     editing.undo(pdf_doc["id"])                               # a PDF again, same chat
-    _, results = turn("f2", [("edit_document", {**call, "find": "Costs", "text": "Spend", "convert_pdf": True})])
+    _, results = turn("f2", [("edit_document", {**call, "find": "Report The launch", "text": "Report. A launch", "convert_pdf": True})])
     assert results[-1]["status"] == "needs_confirmation"      # the old "yes" doesn't cover a new conversion
 
 

@@ -3,7 +3,7 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from renamer import agent, config, editing, titles
 from tests.test_agent import turn
-from tests.test_pdf_edit import pdf_doc  # noqa: F401  (fixture)
+from tests.test_pdf_edit import CROSS, pdf_doc  # noqa: F401  (fixture)
 
 
 class Counting:
@@ -51,9 +51,9 @@ def test_a_name_conflict_question_needs_no_closing_model_call(library_docs):
 
 def test_a_pdf_question_needs_no_closing_model_call(pdf_doc):  # noqa: F811
     model = Counting([("find_documents", {"description": "budget.pdf"})],
-                     [("edit_document", {"doc_id": pdf_doc["id"], "operation": "replace", "find": "March", "text": "June"})])
+                     [("edit_document", {"doc_id": pdf_doc["id"], "operation": "replace", **CROSS})])
     out = agent.chat("o2", "change March to June in the budget", model=model)
-    assert model.calls == 2 and "is a PDF" in out["reply"] and "Shall I convert it" in out["reply"]
+    assert model.calls == 2 and "is a PDF" in out["reply"] and "Shall I do that?" in out["reply"]
 
 
 # ---------------------------------------------------------------- summary refresh
