@@ -6,6 +6,7 @@ import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
 import { ChevronDown, ChevronRight, Info, Loader2 } from 'lucide-react';
 import { formatSeconds } from '../lib/format';
+import { withCitations, withMath } from '../lib/answerText';
 
 const STEP_LABELS = {
   router: 'Read the question',
@@ -24,18 +25,6 @@ const STEP_LABELS = {
   error: 'Error',
 };
 
-// "[2]" in an answer becomes a citation marker in the hue, titled with the passage it points to.
-// Markdown links ("[text](url)") and footnote-like "[2][3]" pairs are left as they are.
-const CITATION = /\[(\d{1,2})\](?!\()/g;
-const withCitations = (text) => text.replace(CITATION, (_, n) => `[\\[${n}\\]](#cite-${n})`);
-
-// Formulas. Documents (Wikipedia articles especially) contain LaTeX and the model copies it, usually as \[ … \]
-// or \( … \), which remark-math doesn't read; in Markdown "\[" is just an escaped bracket. Rewrite those to $$ …
-// $$ outside code. Single-dollar math stays off (remark-math's singleDollarTextMath) so "$5 and $6" stays money.
-const MATH = /\\\[([\s\S]+?)\\\]|\\\(([\s\S]+?)\\\)/g;
-const CODE = /(```[\s\S]*?(?:```|$)|`[^`\n]*`)/;
-const withMath = (text) => text.split(CODE).map((part, i) => (i % 2 ? part : part.replace(MATH,
-  (_, display, inline) => (display != null ? `\n$$\n${display.trim()}\n$$\n` : `$$${inline.trim()}$$`)))).join('');
 const remarkPlugins = [remarkGfm, [remarkMath, { singleDollarTextMath: false }]];
 const rehypePlugins = [[rehypeKatex, { throwOnError: false, strict: false }]];
 
