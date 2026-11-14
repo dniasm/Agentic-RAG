@@ -34,7 +34,8 @@ class DocumentOut(BaseModel):
 
 
 class UploadOut(BaseModel):
-    status: Literal["success", "duplicate"]
+    # processing: indexing runs in the background; GET /documents shows when it is indexed or failed.
+    status: Literal["processing", "duplicate"]
     filename: str
     chunks_indexed: int
     document: DocumentOut

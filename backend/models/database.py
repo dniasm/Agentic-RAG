@@ -253,6 +253,17 @@ def update_document(doc_id: str, **fields) -> None:
         c.execute(f"UPDATE documents SET {cols} WHERE id = :id", {**fields, "id": doc_id})
 
 
+INTERRUPTED = "Indexing was interrupted when the server stopped. Upload the file again."
+
+
+def fail_unfinished_documents() -> int:
+    """At startup: documents still "processing" were being indexed when the server stopped; nothing will finish
+    them, so they are marked failed (uploading the file again retries it)."""
+    with tx() as c:
+        return c.execute("UPDATE documents SET status = 'failed', error = ? WHERE status = 'processing'",
+                         (INTERRUPTED,)).rowcount
+
+
 def find_document_by_hash(user_id: str, file_hash: str) -> dict | None:
     with tx() as c:
         return _one(c.execute("SELECT * FROM documents WHERE user_id = ? AND file_hash = ?", (user_id, file_hash)))

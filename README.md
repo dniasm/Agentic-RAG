@@ -139,8 +139,9 @@ sample data from `frontend/src/dev/fixtures.js` and is not part of the productio
 
 Create an account on the login screen, upload files on **Documents**, then chat.
 
-Unit tests (99, no API calls): `python -m unittest discover backend/tests -p "test_*.py"` (routing, memory, streaming,
-citation check, reranker fallbacks, renaming chats)
+Unit tests (119, no API calls): `python -m unittest discover backend/tests -p "test_*.py"` (routing, memory, streaming,
+citation check, reranker fallbacks, renaming chats, the Voyage rate limit,
+background indexing)
 
 Model experiments (they call the APIs) live in `scripts/experiments/`; run them from the project root,
 e.g. `python -m scripts.experiments.test_gate`.
@@ -177,7 +178,7 @@ and `claude_wiki.docx` are committed. `python benchmark/build_wiki_corpus.py` re
 |---|---|---|
 | POST | `/api/auth/register`, `/api/auth/login` | returns a bearer token |
 | GET | `/api/auth/me` | |
-| GET / POST / DELETE | `/api/documents`, `/api/documents/upload`, `/api/documents/{id}` | PDF, DOCX, TXT, MD; deduplicated by SHA-256 |
+| GET / POST / DELETE | `/api/documents`, `/api/documents/upload`, `/api/documents/{id}` | PDF, DOCX, TXT, MD; deduplicated by SHA-256; indexed in the background (`status: "processing"`) |
 | POST | `/api/chat` | full JSON response (answer, tool, sources, trace, evaluation) |
 | POST | `/api/chat/stream` | SSE stream: `meta` → `step`… → `final` |
 | GET / PATCH / DELETE | `/api/conversations`, `/api/conversations/{id}/messages`, `/api/conversations/{id}` | PATCH `{"title"}` renames a chat |

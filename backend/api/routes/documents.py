@@ -1,5 +1,6 @@
 import logging
 import re
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
@@ -14,6 +15,11 @@ from backend.rag.ingestion import SUPPORTED_EXTENSIONS, IngestionError, file_sha
 log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
+
+# Indexing runs here, after the upload has returned: embedding a long file is paced to Gemini's rate limit and can
+# take minutes, which used to hold the upload request open the whole time. One file at a time: the embedded Qdrant
+# store is not safe for concurrent writers, and the files share Gemini's per-minute limit anyway.
+_ingest_worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ingest")
 
 
 def _safe_name(name: str) -> str:
@@ -49,31 +55,41 @@ def upload_document(file: UploadFile = File(...), user: dict = Depends(get_curre
 
     digest = file_sha256(data)
     existing = db.find_document_by_hash(user["id"], digest)
-    if existing and existing["status"] == "indexed":
-        return UploadOut(status="duplicate", filename=existing["filename"],
-                         chunks_indexed=existing["chunks"], document=existing)
+    if existing and existing["status"] in ("indexed", "processing"):
+        status = "duplicate" if existing["status"] == "indexed" else "processing"
+        return UploadOut(status=status, filename=existing["filename"], chunks_indexed=existing["chunks"],
+                         document=existing)
     if existing:  # a previous attempt failed; retry from scratch
         vectorstore.delete_document_vectors(user["id"], existing["id"])
         db.delete_document(user["id"], existing["id"])
 
-    doc = db.add_document(user["id"], filename, digest, len(data))
+    doc = db.add_document(user["id"], filename, digest, len(data))  # status "processing"
     path = _user_dir(user["id"]) / f"{doc['id']}{ext}"
     path.write_bytes(data)
+    _ingest_worker.submit(_index, user["id"], doc["id"], path, filename)
+    return UploadOut(status="processing", filename=filename, chunks_indexed=0, document=doc)
 
+
+def stop_indexing() -> None:
+    """On shutdown: files still queued stay "processing" and are marked interrupted at the next start."""
+    _ingest_worker.shutdown(wait=False, cancel_futures=True)
+
+
+def _index(user_id: str, doc_id: str, path: Path, filename: str) -> None:
     try:
-        result = ingest_file(path, user_id=user["id"], doc_id=doc["id"], filename=filename)
-    except IngestionError as e:
-        db.update_document(doc["id"], status="failed", error=str(e))
-        raise HTTPException(status_code=422, detail=str(e))
+        result = ingest_file(path, user_id=user_id, doc_id=doc_id, filename=filename)
+    except IngestionError as e:  # e.g. a scanned PDF with no text: the user can act on the message
+        db.update_document(doc_id, status="failed", error=str(e))
+        return
     except Exception as e:
         log.exception("Ingestion failed")
-        vectorstore.delete_document_vectors(user["id"], doc["id"])
-        db.update_document(doc["id"], status="failed", error=str(e)[:300])
-        raise HTTPException(status_code=500, detail=f"Indexing failed: {str(e)[:200]}")
-
-    db.update_document(doc["id"], status="indexed", pages=result["pages"], chunks=result["chunks"])
-    doc = db.get_document(user["id"], doc["id"])
-    return UploadOut(status="success", filename=filename, chunks_indexed=result["chunks"], document=doc)
+        vectorstore.delete_document_vectors(user_id, doc_id)
+        db.update_document(doc_id, status="failed", error=f"Indexing failed: {str(e)[:250]}")
+        return
+    if db.get_document(user_id, doc_id) is None:  # removed while it was being indexed
+        vectorstore.delete_document_vectors(user_id, doc_id)
+        return
+    db.update_document(doc_id, status="indexed", pages=result["pages"], chunks=result["chunks"])
 
 
 @router.delete("/{doc_id}", status_code=204)

@@ -309,7 +309,7 @@ Most backend folders contain an empty `__init__.py`; it only lets Python import 
 | `dependencies.py` | `get_current_user`: reads the bearer token on each request and returns the user, or a 401. |
 | `routes/auth.py` | `POST /auth/register`, `POST /auth/login`, `GET /auth/me`. |
 | `routes/chat.py` | `POST /chat` and `POST /chat/stream` (SSE): loads history, facts, past-conversation summaries and document names, runs the agent in its own thread, saves the answer, and queues memory work and token logging in the background. Also lists, renames and deletes conversations and serves `/stats`. |
-| `routes/documents.py` | Lists, uploads (size check, filename cleanup, dedup by hash, ingestion) and deletes documents. |
+| `routes/documents.py` | Lists, uploads (size check, filename cleanup, dedup by hash; ingestion on a background worker) and deletes documents. |
 | `routes/health.py` | `GET /health`: reports the configured models and web-search providers. |
 
 #### `backend/config/` — settings and model clients
@@ -388,6 +388,7 @@ Most backend folders contain an empty `__init__.py`; it only lets Python import 
 | `test_citations.py` | The code citation check. |
 | `test_rerank.py` | Reranker zones and the fallback when Voyage can't score. |
 | `test_conversations.py` | Renaming chats; a fresh database has no old `user_memory` table. |
+| `test_documents.py` | Uploads return before indexing; indexed / failed / removed-while-indexing / interrupted-by-restart outcomes. |
 | `test_stream.py` | The SSE stream ends with `final`, and the answer is saved even if the client disconnects. |
 
 #### Runtime folders (created automatically, not committed)
@@ -652,21 +653,27 @@ the migration is just marked done.
 
 ## 9. Ingestion pipeline
 
-`POST /api/documents/upload` → `routes/documents.py::upload_document` → `rag/ingestion.py::ingest_file`.
+`POST /api/documents/upload` → `routes/documents.py::upload_document`, which returns as soon as the file is saved
+(`status: "processing"`); `_index` → `rag/ingestion.py::ingest_file` then runs on a background worker, one file at a
+time (the embedded Qdrant store is not safe for concurrent writers). The Documents page checks `GET /documents`
+every 2 s while a file is still processing. Steps 4–8 run in the background.
 
 1. **Validate** — extension in `{.pdf, .docx, .txt, .md}`; size ≤ `MAX_UPLOAD_MB` (reads at most limit+1 bytes);
    filename sanitised.
-2. **Deduplicate** — SHA-256 of the bytes. Same user, already indexed → `status: "duplicate"`. A failed copy is cleaned up and re-ingested.
+2. **Deduplicate** — SHA-256 of the bytes. Same user, already indexed → `status: "duplicate"`; still being indexed → that
+   document, `status: "processing"`, and no second job. A failed copy is cleaned up and re-ingested.
 3. **Record** — a `documents` row with `status="processing"`; the file is saved as `backend/documents/<user_id>/<doc_id><ext>`.
 4. **Load** — PDF: one document per page (page numbers kept for citations); DOCX: paragraphs + table rows; TXT/MD as-is.
-   `_clean` removes null bytes, re-joins hyphenated line breaks, collapses whitespace. No text → `IngestionError` (422).
+   `_clean` removes null bytes, re-joins hyphenated line breaks, collapses whitespace. No text → `IngestionError`: the document is marked failed with that message.
 5. **Chunk** — 1,000 chars / 200 overlap, splitting on paragraphs → lines → sentences → words; chunks ≤ 20 chars dropped.
 6. **Embed** — `embed_paced`: Gemini `RETRIEVAL_DOCUMENT`, batches of 90, waiting when the free tier's per-minute limit is hit.
 7. **Upsert** — Qdrant points with ids `uuid5(doc_id:chunk_index)`, a `dense` vector and a `bm25` sparse vector, and
    payload `{page_content, metadata: {user_id, doc_id, source, page, chunk_index, start_index}}`.
-8. **Finish** — `indexed` with page/chunk counts, or `failed` with the error (partial vectors removed).
+8. **Finish** — `indexed` with page/chunk counts, or `failed` with the error (partial vectors removed). A document
+   removed while it was being indexed has its vectors removed when indexing ends.
 
-Deleting a document removes its vectors, the stored file and the DB row.
+Deleting a document removes its vectors, the stored file and the DB row. Files still processing when the server
+stops are marked failed at the next start ("Indexing was interrupted…"); uploading the file again retries it.
 
 ---
 
@@ -879,7 +886,7 @@ Base URL `http://localhost:8000/api`. All endpoints except `health`, `auth/regis
 | `POST /auth/login` | `{"username", "password"}` | same — `401` on bad credentials |
 | `GET /auth/me` | — | `{"id", "username"}` |
 | `GET /documents` | — | `[DocumentOut]` newest first |
-| `POST /documents/upload` | multipart `file` | `{"status": "success" \| "duplicate", "filename", "chunks_indexed", "document"}` — `400`, `413`, `422`, `500` |
+| `POST /documents/upload` | multipart `file` | `{"status": "processing" \| "duplicate", "filename", "chunks_indexed", "document"}` — `400`, `413`; indexing errors appear on the document (`status: "failed"`, `error`) |
 | `DELETE /documents/{id}` | — | `204` |
 | `POST /chat` | `{"message", "conversation_id"?}` | `ChatResponse` (below) |
 | `POST /chat/stream` | same | SSE (below) |
@@ -931,7 +938,7 @@ App.jsx ── session, health polling, conversations, documents, routing
 | `services/api.jsx` | Token in `localStorage` (`agentic_rag_token`); `request()` adds the bearer token and handles errors (401 → login); `streamMessage()` reads the SSE stream (`onMeta`, `onStatus`, `onStep`, `onDraft`, `onFinal`). |
 | `pages/Login.jsx` | Sign-in / sign-up with the backend's rules, offline notice, and an example answer. |
 | `pages/Chat.jsx` | New chat with suggestions based on your documents; otherwise the conversation and composer. |
-| `pages/Documents.jsx` | Drop zone + picker, type/size checks, upload progress, status list, delete with inline confirmation. |
+| `pages/Documents.jsx` | Drop zone + picker, type/size checks, upload progress, status list (re-checked every 2 s while a file is indexing), delete with inline confirmation. |
 | `pages/Overview.jsx` | Key numbers, where answers came from, document library. |
 | `components/Sidebar.jsx` | New chat, chats grouped by recency (a dot marks one still answering; rename inline with the pencil or a double-click, Enter saves, Escape cancels; inline delete confirmation), navigation, theme switch, user and log out. |
 | `components/Message.jsx` | Answer with notices, Markdown and citation marks; a provenance line (source, checked or not, time); **Sources** and **Steps** disclosures; live status/steps/draft while pending. |
@@ -957,6 +964,7 @@ same origin as the API, or set `VITE_API_URL`.
 | `test_citations.py` | The code citation check: uncited claims, invalid `[n]`, unsupported claims, numbers, lists under a cited lead-in |
 | `test_rerank.py` | Reranker zones; fallback to the LLM check when Voyage can't score |
 | `test_conversations.py` | Renaming chats (title trimmed, empty or too long rejected, other users' chats not found); fresh databases skip the old memory table |
+| `test_documents.py` | Background indexing: upload returns `processing`, then indexed or failed; no second job for the same file; vectors removed if the document was deleted meanwhile; restart marks unfinished ones failed |
 
 **Benchmarks** (`benchmark/`, see each script's docstring; retrieval ones need the backend stopped):
 
@@ -995,7 +1003,7 @@ Experiments that call the APIs live in `scripts/experiments/` (run from the root
 | Opinion questions going to documents/web | Check the `direct_answer` step under **Steps**: the gate's `question_kind` and reason. `run_direct_gate.py` reproduces it. |
 | Memory not recalled from past chats | `VOYAGE_API_KEY` missing, Voyage unavailable, or no Voyage request slot free within `VOYAGE_RECALL_MAX_WAIT` (all logged); facts still work. |
 | Steps show "chunks judged relevant" instead of "Reranked … with Voyage" | Voyage failed (usually its rate limit: the free tier without a payment method allows 3 requests / 10,000 tokens per minute) and the LLM check was used. The shared limiter (`config/voyage.py`) keeps a slot for the reranker, so this should only happen when another process uses the same Voyage key. Add a payment method on Voyage and raise `VOYAGE_REQUESTS_PER_MINUTE`. |
-| Upload returns 422 "No extractable text" | Scanned/image-only PDF. OCR it first. |
+| A document shows Failed: "No extractable text" | Scanned/image-only PDF. OCR it first. |
 | Web search returns nothing | DuckDuckGo blocking or rate limiting. Add a `TAVILY_API_KEY`. |
 
 ---
@@ -1027,7 +1035,7 @@ every schema in 7.8. Changing `VOYAGE_RERANK_MODEL` requires recalibrating `VOYA
 - **Free-tier limits** — each Groq model allows 8,000 tokens/minute and 200,000/day; Gemini embeddings 1,000/day.
 - **Tokens cannot be revoked** — logout only removes the browser's copy; tokens live in `localStorage`.
 - **Single-process embedded Qdrant** — use a Qdrant server for multiple workers.
-- **Synchronous ingestion** — large files block the upload request until indexed.
+- **One file indexed at a time** — uploads queue on one background worker; a large file delays those after it.
 - **No OCR** — image-only PDFs cannot be indexed.
 - **LLM judges are fallible** — the gate, grading and evaluation reduce, but don't eliminate, wrong routes and
   ungrounded answers.

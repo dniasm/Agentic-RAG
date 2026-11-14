@@ -5,6 +5,7 @@ import { formatCount, formatDay, formatSize } from '../lib/format';
 
 const ACCEPTED = ['.pdf', '.docx', '.txt', '.md'];
 const MAX_MB = 20;
+const POLL_MS = 2000;
 const plural = (n, word) => `${formatCount(n)} ${word}${n === 1 ? '' : 's'}`;
 
 function Status({ doc }) {
@@ -76,6 +77,17 @@ export default function Documents({ onChanged }) {
 
   useEffect(() => { load(); }, []);
 
+  // Indexing runs on the server after the upload returns: check back while any file is still being indexed.
+  const indexing = documents.filter((d) => d.status === 'processing').map((d) => d.id).join(',');
+  const indexingBefore = useRef('');
+  useEffect(() => {
+    if (indexingBefore.current && indexing !== indexingBefore.current) onChanged?.(); // one finished
+    indexingBefore.current = indexing;
+    if (!indexing) return undefined;
+    const timer = setTimeout(load, POLL_MS);
+    return () => clearTimeout(timer);
+  }, [indexing, documents]);
+
   const uploadOne = async (file) => {
     const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
     if (!ACCEPTED.includes(ext)) return { ok: false, text: `${file.name}: only PDF, DOCX, TXT and MD files can be added.` };
@@ -86,7 +98,7 @@ export default function Documents({ onChanged }) {
         ok: true,
         text: data.status === 'duplicate'
           ? `${data.filename} was already added (${formatCount(data.chunks_indexed)} passages).`
-          : `${data.filename} is ready: ${formatCount(data.chunks_indexed)} passages to answer from.`,
+          : `${data.filename} is being indexed. It's listed below and can be asked about once it shows Ready.`,
       };
     } catch (err) {
       return { ok: false, text: `${file.name}: ${err.message}` };
