@@ -1,6 +1,6 @@
 """The document library's HTTP API, mounted by backend/app.py at /api/library (until stages 4-6 unify the routes).
 
-Every endpoint except health and the sign-in ones needs a login (a cookie, see backend/library/auth.py), and works only
+Every endpoint needs a login (the app's cookie: backend/api/routes/auth.py), and works only
 in that user's library: another user's document, chat or batch answers as if it did not exist.
 """
 import logging
@@ -8,11 +8,12 @@ import threading
 from pathlib import Path
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
-from backend.library import agent, auth, batch, catalog, config, export, library, logs
+from backend.api.dependencies import get_current_user
+from backend.library import agent, batch, catalog, config, export, library, logs
 from backend.library.logs import event
 
 router = APIRouter(prefix="/library", tags=["Library"])
@@ -51,11 +52,7 @@ def shutdown() -> None:
 
 
 # ---------------------------------------------------------------- who is asking
-def current_user(request: Request) -> dict:
-    user = auth.user_for(request.cookies.get(auth.COOKIE))
-    if not user:
-        raise HTTPException(401, "Please log in.")
-    return user
+current_user = get_current_user   # the one login (cookie), from backend/api/dependencies.py
 
 
 def _own_doc(doc_id: str, user: dict) -> dict:
@@ -65,65 +62,9 @@ def _own_doc(doc_id: str, user: dict) -> dict:
     return doc
 
 
-def _signed_in(request: Request, user: dict, token: str) -> JSONResponse:
-    response = JSONResponse({"user": auth.public(user)})
-    response.set_cookie(auth.COOKIE, token, max_age=auth.LOGIN_DAYS * 86400, path="/", httponly=True,
-                        samesite="lax", secure=request.url.scheme == "https")   # https through the tunnel
-    return response
-
-
-class SignUpIn(BaseModel):
-    username: str = Field(max_length=64)
-    password: str = Field(max_length=256)
-    invite: str = Field(default="", max_length=128)
-
-
-class LogInIn(BaseModel):
-    username: str = Field(max_length=64)
-    password: str = Field(max_length=256)
-
-
 class ChatIn(BaseModel):
     session_id: str = Field(min_length=6, max_length=64)
     message: str = Field(min_length=1, max_length=4000)
-
-
-@router.get("/health")
-def health():
-    return {"ok": True}
-
-
-@router.get("/auth/state")
-def auth_state(request: Request):
-    """Signed in or not, and whether a new account can be made ("first", "invite" or "closed")."""
-    user = auth.user_for(request.cookies.get(auth.COOKIE))
-    return {"user": auth.public(user) if user else None, "signups": auth.signups_open()}
-
-
-@router.post("/auth/signup")
-def sign_up(body: SignUpIn, request: Request):
-    try:
-        user, token = auth.sign_up(body.username, body.password, body.invite)
-    except auth.AuthError as e:
-        raise HTTPException(e.status, str(e)) from e
-    return _signed_in(request, user, token)
-
-
-@router.post("/auth/login")
-def log_in(body: LogInIn, request: Request):
-    try:
-        user, token = auth.log_in(body.username, body.password)
-    except auth.AuthError as e:
-        raise HTTPException(e.status, str(e)) from e
-    return _signed_in(request, user, token)
-
-
-@router.post("/auth/logout")
-def log_out(request: Request):
-    auth.log_out(request.cookies.get(auth.COOKIE))
-    response = JSONResponse({"ok": True})
-    response.delete_cookie(auth.COOKIE, path="/")
-    return response
 
 
 # ---------------------------------------------------------------- the user's library

@@ -3,14 +3,15 @@
   * Passwords are stored as salted PBKDF2-SHA256 hashes (600,000 rounds), never as text.
   * A login is a random token in an HttpOnly cookie; the catalog keeps only the token's SHA-256, so a copied database
     holds no token anyone can use. Logins last LOGIN_DAYS.
-  * Wrong passwords are throttled: after MAX_FAILURES for a name within FAILURE_WINDOW, that name waits.
+  * Wrong passwords are throttled: after MAX_FAILURES for a name from one address within FAILURE_WINDOW, that
+    name waits there; after MAX_ADDRESS_FAILURES from one address, that address waits.
   * The first account can always be made, and the library from before accounts existed becomes its own. After that a
-    sign-up needs the invite code (RENAMER_SIGNUP_CODE in .env): the site is public through the tunnel, and every
+    sign-up needs the invite code (SIGNUP_CODE in .env): the site is public through the tunnel, and every
     account spends the owner's Groq, Gemini and Voyage allowances. With no code set, sign-ups are closed.
+  * One login for the whole app (day7's chat and the library): backend/api/routes/auth.py serves these at /api/auth/*.
 """
 import hashlib
 import hmac
-import os
 import re
 import secrets
 import threading
@@ -22,8 +23,9 @@ from backend.library.logs import event
 
 ROUNDS = 600_000
 LOGIN_DAYS = 30
-MAX_FAILURES, FAILURE_WINDOW = 5, 15 * 60
-COOKIE = "renamer_login"
+MAX_FAILURES, FAILURE_WINDOW = 5, 15 * 60   # wrong passwords for one name from one address
+MAX_ADDRESS_FAILURES = 20                    # wrong passwords from one address, any names
+COOKIE = "login"
 USERNAME = re.compile(r"^[A-Za-z0-9_.-]{3,32}$")
 MIN_PASSWORD = 8
 
@@ -80,8 +82,7 @@ def _new_login(user: dict) -> str:
 
 
 def _invite_code() -> str:
-    """Read when needed: the project's .env is loaded after config is imported."""
-    return config.SIGNUP_CODE or os.environ.get("RENAMER_SIGNUP_CODE", "")
+    return config.SIGNUP_CODE
 
 
 def signups_open() -> str:
@@ -115,27 +116,36 @@ def sign_up(username: str, password: str, invite: str = "") -> tuple[dict, str]:
     return user, _new_login(user)
 
 
-def _throttled(username: str) -> bool:
+def _recent(key: str, now: float) -> list[float]:
+    recent = [t for t in _failures.get(key, []) if now - t < FAILURE_WINDOW]
+    _failures[key] = recent
+    return recent
+
+
+def _throttled(username: str, address: str) -> bool:
+    """A name is locked only for the address that keeps guessing it, so knowing someone's username is not enough
+    to lock them out; an address that guesses many names is stopped as a whole."""
     now = time.monotonic()
     with _failures_lock:
-        recent = [t for t in _failures.get(username.lower(), []) if now - t < FAILURE_WINDOW]
-        _failures[username.lower()] = recent
-        return len(recent) >= MAX_FAILURES
+        return (len(_recent(f"{username.lower()}@{address}", now)) >= MAX_FAILURES
+                or len(_recent(f"@{address}", now)) >= MAX_ADDRESS_FAILURES)
 
 
-def _failed(username: str) -> None:
+def _failed(username: str, address: str) -> None:
     with _failures_lock:
-        _failures.setdefault(username.lower(), []).append(time.monotonic())
+        now = time.monotonic()
+        _failures.setdefault(f"{username.lower()}@{address}", []).append(now)
+        _failures.setdefault(f"@{address}", []).append(now)
 
 
-def log_in(username: str, password: str) -> tuple[dict, str]:
+def log_in(username: str, password: str, address: str = "") -> tuple[dict, str]:
     username = (username or "").strip()
-    if _throttled(username):
+    if _throttled(username, address):
         raise AuthError("Too many wrong passwords. Wait a few minutes and try again.", 429)
     user = catalog.user_by_name(username)
     if not user or not check_password(password or "", user["password_hash"]):
-        _failed(username)
-        event("login_failed", username=username[:40])
+        _failed(username, address)
+        event("login_failed", username=username[:40], address=address)
         raise AuthError("Wrong username or password.", 401)
     event("login", user=user["id"])
     return user, _new_login(user)

@@ -12,6 +12,9 @@ import pytest
 
 from backend.library import catalog, config, library, titles
 from backend.rag import ingestion, rerank, retrieval, sparse, vectorstore  # noqa: F401
+from backend.models import database as db
+
+db.init_db()   # day7's tables too (the app's startup does this; TestClient without `with` skips it)
 
 
 def fake_vector(text: str) -> list[float]:
@@ -70,7 +73,7 @@ def signed_in():
     from fastapi.testclient import TestClient
     from backend.app import app
     client = TestClient(app)
-    r = client.post("/api/library/auth/signup", json={"username": "tester", "password": "correct horse"})
+    r = client.post("/api/auth/signup", json={"username": "tester", "password": "correct horse"})
     assert r.status_code == 200, r.text
     client.user = r.json()["user"]
     return client

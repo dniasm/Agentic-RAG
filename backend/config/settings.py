@@ -138,8 +138,6 @@ class Settings(BaseSettings):
 
     # --- Auth / persistence ---
     database_path: str = str(BACKEND_DIR / "data" / "app.db")
-    jwt_secret: str = ""                # auto-generated & persisted when empty
-    jwt_expire_minutes: int = 60 * 24
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
     # --- Document library (backend/library) ---

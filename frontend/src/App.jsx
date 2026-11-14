@@ -5,7 +5,7 @@ import Login from './pages/Login';
 import Chat from './pages/Chat';
 import Documents from './pages/Documents';
 import Overview from './pages/Overview';
-import { apiService, auth, setUnauthorizedHandler } from './services/api';
+import { apiService, setUnauthorizedHandler } from './services/api';
 import { hrefFor, navigate, useRoute } from './lib/route';
 import { forgetConversation } from './state/chatStore';
 
@@ -13,7 +13,8 @@ const PAGE_TITLES = { chat: 'Chat', documents: 'Documents', overview: 'Overview'
 
 export default function App() {
   const [user, setUser] = useState(null);
-  const [checkingSession, setCheckingSession] = useState(Boolean(auth.getToken()));
+  const [checkingSession, setCheckingSession] = useState(true);
+  const [signups, setSignups] = useState('closed');
   const [systemOnline, setSystemOnline] = useState(false);
   const [conversations, setConversations] = useState([]);
   const [documents, setDocuments] = useState(null);
@@ -39,21 +40,21 @@ export default function App() {
     return () => { cancelled = true; clearTimeout(timer); };
   }, []);
 
-  // Restore the saved session once the backend is reachable. A backend that is merely down must not log
-  // the user out: only a real 401 clears the token (handled in api.jsx).
+  // Restore the session (the login cookie) once the backend is reachable. A backend that is merely down must not
+  // log the user out: only a real 401 does (handled in api.jsx).
   useEffect(() => {
     if (!systemOnline) return;
-    if (user || !auth.getToken()) {
-      setCheckingSession(false);
-      return;
-    }
     let cancelled = false;
-    apiService.me()
-      .then((u) => { if (!cancelled) setUser(u); })
+    apiService.authState()
+      .then((state) => {
+        if (cancelled) return;
+        setSignups(state.signups);
+        if (state.user) setUser(state.user);
+      })
       .catch(() => {})
       .finally(() => { if (!cancelled) setCheckingSession(false); });
     return () => { cancelled = true; };
-  }, [systemOnline]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [systemOnline]);
 
   const refreshConversations = useCallback(async () => {
     try { setConversations(await apiService.getConversations()); } catch { /* shown on the next refresh */ }
@@ -104,7 +105,7 @@ export default function App() {
     );
   }
 
-  if (!user) return <Login onAuthenticated={setUser} systemOnline={systemOnline} />;
+  if (!user) return <Login onAuthenticated={setUser} systemOnline={systemOnline} signups={signups} />;
 
   const indexed = documents?.filter((d) => d.status === 'indexed') ?? null;
   const activeTitle = route.page === 'chat'

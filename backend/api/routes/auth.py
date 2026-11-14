@@ -1,39 +1,70 @@
-import sqlite3
-
-from fastapi import APIRouter, Depends, HTTPException, status
+"""Sign-up, log-in and log-out for the whole app: an HttpOnly cookie holding a random token (backend/library/auth.py
+keeps only its hash), an invite code after the first account, and a limit on wrong passwords."""
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 
 from backend.api.dependencies import get_current_user
-from backend.api.security import create_access_token, hash_password, verify_password
-from backend.models import database as db
-from backend.models.schemas import Credentials, TokenOut, UserOut
+from backend.library import auth
+from backend.models.schemas import UserOut
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
 
-def _token_for(user: dict) -> TokenOut:
-    return TokenOut(
-        access_token=create_access_token(user["id"], user["username"]),
-        user=UserOut(id=user["id"], username=user["username"]),
-    )
+class SignUpIn(BaseModel):
+    username: str = Field(max_length=64)
+    password: str = Field(max_length=256)
+    invite: str = Field(default="", max_length=128)
 
 
-@router.post("/register", response_model=TokenOut, status_code=status.HTTP_201_CREATED)
-def register(body: Credentials):
-    if db.get_user_by_username(body.username):
-        raise HTTPException(status_code=409, detail="Username already taken")
+class LogInIn(BaseModel):
+    username: str = Field(max_length=64)
+    password: str = Field(max_length=256)
+
+
+def _address(request: Request) -> str:
+    return request.client.host if request.client else ""
+
+
+def _signed_in(request: Request, user: dict, token: str) -> JSONResponse:
+    response = JSONResponse({"user": auth.public(user)})
+    # Secure only over https: through the tunnel that needs uvicorn --proxy-headers (see docs/LIBRARY.md)
+    response.set_cookie(auth.COOKIE, token, max_age=auth.LOGIN_DAYS * 86400, path="/", httponly=True,
+                        samesite="lax", secure=request.url.scheme == "https")
+    return response
+
+
+@router.get("/state")
+def auth_state(request: Request):
+    """Signed in or not, and whether a new account can be made ("first", "invite" or "closed")."""
+    user = auth.user_for(request.cookies.get(auth.COOKIE))
+    return {"user": auth.public(user) if user else None, "signups": auth.signups_open()}
+
+
+@router.post("/signup")
+def sign_up(body: SignUpIn, request: Request):
     try:
-        user = db.create_user(body.username, hash_password(body.password))
-    except sqlite3.IntegrityError:
-        raise HTTPException(status_code=409, detail="Username already taken")
-    return _token_for(user)
+        user, token = auth.sign_up(body.username, body.password, body.invite)
+    except auth.AuthError as e:
+        raise HTTPException(e.status, str(e)) from e
+    return _signed_in(request, user, token)
 
 
-@router.post("/login", response_model=TokenOut)
-def login(body: Credentials):
-    user = db.get_user_by_username(body.username)
-    if not user or not verify_password(body.password, user["password_hash"]):
-        raise HTTPException(status_code=401, detail="Invalid username or password")
-    return _token_for(user)
+@router.post("/login")
+def log_in(body: LogInIn, request: Request):
+    try:
+        user, token = auth.log_in(body.username, body.password, _address(request))
+    except auth.AuthError as e:
+        raise HTTPException(e.status, str(e)) from e
+    return _signed_in(request, user, token)
+
+
+@router.post("/logout")
+def log_out(request: Request):
+    auth.log_out(request.cookies.get(auth.COOKIE))
+    response = JSONResponse({"ok": True})
+    response.delete_cookie(auth.COOKIE, path="/")
+    return response
 
 
 @router.get("/me", response_model=UserOut)

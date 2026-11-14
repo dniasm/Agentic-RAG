@@ -1,32 +1,18 @@
 // Dev: Vite proxies /api to the backend (see vite.config.js). Set VITE_API_URL to call it directly.
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
-const TOKEN_KEY = 'agentic_rag_token';
-
-export const auth = {
-  getToken() {
-    try { return localStorage.getItem(TOKEN_KEY); } catch { return null; }
-  },
-  setToken(token) {
-    try { localStorage.setItem(TOKEN_KEY, token); } catch { /* storage unavailable */ }
-  },
-  clear() {
-    try { localStorage.removeItem(TOKEN_KEY); } catch { /* storage unavailable */ }
-  },
-};
-
-// Called when the backend rejects our token so the app can drop back to the login screen.
+// The login is an HttpOnly cookie the browser sends by itself (scripts can't read it). Called when the backend
+// answers 401, so the app can drop back to the login screen.
 let onUnauthorized = () => {};
 export const setUnauthorizedHandler = (fn) => { onUnauthorized = fn; };
 
 async function request(path, { method = 'GET', body, headers = {}, raw = false } = {}) {
-  const token = auth.getToken();
   const isForm = body instanceof FormData;
   let res;
   try {
     res = await fetch(`${API_BASE_URL}${path}`, {
       method,
+      credentials: 'include', // the login cookie, also when VITE_API_URL points at another origin
       headers: {
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(body && !isForm ? { 'Content-Type': 'application/json' } : {}),
         ...headers,
       },
@@ -39,10 +25,7 @@ async function request(path, { method = 'GET', body, headers = {}, raw = false }
     throw err;
   }
 
-  if (res.status === 401 && token) {
-    auth.clear();
-    onUnauthorized();
-  }
+  if (res.status === 401 && !path.startsWith('/auth/')) onUnauthorized();
   if (!res.ok) {
     let detail = `Request failed (${res.status})`;
     try {
@@ -51,7 +34,7 @@ async function request(path, { method = 'GET', body, headers = {}, raw = false }
       else if (Array.isArray(data.detail)) detail = data.detail.map((d) => d.msg).join(', ');
     } catch { /* non-JSON error body */ }
     const err = new Error(detail);
-    err.status = res.status; // callers can tell "bad token" (401) from "backend down" (503)
+    err.status = res.status; // callers can tell "not logged in" (401) from "backend down" (503)
     throw err;
   }
   if (raw) return res;
@@ -64,22 +47,21 @@ export const apiService = {
     return request('/health');
   },
 
-  // ---------- auth
-  async login(username, password) {
-    const data = await request('/auth/login', { method: 'POST', body: { username, password } });
-    auth.setToken(data.access_token);
-    return data.user;
+  // ---------- auth (the cookie is set and cleared by the server)
+  async authState() {
+    return request('/auth/state'); // { user | null, signups: 'first' | 'invite' | 'closed' }
   },
-  async register(username, password) {
-    const data = await request('/auth/register', { method: 'POST', body: { username, password } });
-    auth.setToken(data.access_token);
-    return data.user;
+  async login(username, password) {
+    return (await request('/auth/login', { method: 'POST', body: { username, password } })).user;
+  },
+  async register(username, password, invite = '') {
+    return (await request('/auth/signup', { method: 'POST', body: { username, password, invite } })).user;
   },
   async me() {
     return request('/auth/me');
   },
-  logout() {
-    auth.clear();
+  async logout() {
+    try { await request('/auth/logout', { method: 'POST' }); } catch { /* logged out locally either way */ }
   },
 
   // ---------- chat

@@ -5,20 +5,9 @@ from pydantic import BaseModel, Field
 
 
 # ---------------------------------------------------------------- auth
-class Credentials(BaseModel):
-    username: str = Field(min_length=3, max_length=32, pattern=r"^[A-Za-z0-9_.-]+$")
-    password: str = Field(min_length=6, max_length=128)
-
-
 class UserOut(BaseModel):
     id: str
     username: str
-
-
-class TokenOut(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-    user: UserOut
 
 
 # ---------------------------------------------------------------- documents

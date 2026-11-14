@@ -1,25 +1,13 @@
 """Shared FastAPI dependencies."""
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi import HTTPException, Request, status
 
-from backend.api.security import decode_access_token
-from backend.models import database as db
-
-_bearer = HTTPBearer(auto_error=False)
+from backend.library import auth
 
 
-def get_current_user(creds: HTTPAuthorizationCredentials | None = Depends(_bearer)) -> dict:
-    unauthorized = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Not authenticated",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    if creds is None or creds.scheme.lower() != "bearer":
-        raise unauthorized
-    payload = decode_access_token(creds.credentials)
-    if not payload:
-        raise unauthorized
-    user = db.get_user(payload["sub"])
+def get_current_user(request: Request) -> dict:
+    """The signed-in user, from the HttpOnly login cookie (backend/library/auth.py). Every route but health and
+    sign-in uses it, the chat stream and the library's routes included."""
+    user = auth.user_for(request.cookies.get(auth.COOKIE))
     if not user:
-        raise unauthorized
-    return {"id": user["id"], "username": user["username"]}
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Please log in.")
+    return auth.public(user)
