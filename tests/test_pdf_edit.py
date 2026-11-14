@@ -407,3 +407,44 @@ def test_what_moved_must_look_as_it_did(stacked_pdf, monkeypatch):
     monkeypatch.setattr(pdf_edit, "_draw_region", drawn_a_bit_off)
     with pytest.raises(pdf_edit.CantKeepLayout, match="Checking the edited page failed"):
         edited(stacked_pdf, "and that is all.", LONGER)
+
+
+# ---------------------------------------------------------------- words broken over two lines
+def test_a_line_end_hyphen_is_told_apart_from_a_real_one():
+    text = "We set an example here. A well-known tool."
+    assert pdf_edit.line_break_hyphen("exam-", "ple", text)              # the document has "example"
+    assert not pdf_edit.line_break_hyphen("well-", "known", text)        # ... and "well-known" within a line
+    assert pdf_edit.line_break_hyphen("docu-", "ments", "")              # the dictionary allows docu|ments
+    assert not pdf_edit.line_break_hyphen("real-", "time", "")           # a common compound
+    assert not pdf_edit.line_break_hyphen("Phelan-", "McDermid", "")     # a capital after it: a name
+    assert not pdf_edit.line_break_hyphen("2026-", "10", "")
+
+
+def test_a_broken_word_is_rejoined_without_its_hyphen(tmp_path):
+    d = pymupdf.open()
+    page = d.new_page(width=612, height=792)
+    justified(page, 100, "Our team builds tools that help people find and change their files".split(), 72, 400)
+    justified(page, 114, "and keeps every one of the important useful project notes docu-".split(), 72, 400)
+    write(page, 72, 128, "ments safe and easy to find.")
+    path = tmp_path / "broken.pdf"
+    d.save(str(path))
+    out = edited(path, "every one of the important", "all the")
+    text = " ".join(pdf_edit.document_text(out).split())
+    assert "notes documents safe" in text and "docu-" not in text
+
+
+def test_a_shorter_ragged_line_pulls_the_next_word_up(layout_pdf):
+    """The ragged last line of the fixture's paragraph is too short to show this; a ragged paragraph is made."""
+    d = pymupdf.open()
+    page = d.new_page(width=612, height=792)
+    for i, line in enumerate(["Our team builds tools that help people find and change",
+                              "their documents quickly and safely, with every change",
+                              "checked and saved."]):
+        write(page, 72, 100 + 14 * i, line)
+    path = layout_pdf.with_name("ragged.pdf")
+    d.save(str(path))
+    out = edited(path, "builds tools that help people", "helps people")
+    rows = [t for *_, t in lines_of(out)]
+    assert rows[0].endswith("their") or rows[0].endswith("documents")        # words came up from line two
+    assert " ".join(rows) == ("Our team helps people find and change their documents quickly and safely, with every "
+                              "change checked and saved.")

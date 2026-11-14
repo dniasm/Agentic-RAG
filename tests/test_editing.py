@@ -64,7 +64,10 @@ def test_append_grows_the_index_and_shrinking_drops_old_chunks(library_docs):
     assert grown > before and "Zebrafish" in chunk_texts(doc["id"])
     editing.edit(doc["id"], "replace", find="Zebrafish are striped. " * 200, text="", replace_all=True)
     assert catalog.get_document(doc["id"])["chunks"] == before
-    assert vectorstore.count_user_vectors(config.OWNER) == sum(d["chunks"] for d in catalog.list_documents())
+    client = vectorstore.get_client()           # (day7 dropped its count helper: counted here)
+    stored = client.count(library.day7_settings.collection_name, count_filter=vectorstore.user_filter(config.OWNER),
+                          exact=True).count
+    assert stored == sum(d["chunks"] for d in catalog.list_documents())
 
 
 def test_failed_embedding_puts_the_file_back(library_docs, monkeypatch):

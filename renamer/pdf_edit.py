@@ -807,6 +807,15 @@ def _plan_segment(pdf: PdfText, seg: Segment, ranges: list[tuple[int, int, str]]
     if lo < seg.left_limit - 0.01 or hi > seg.right_limit + 0.01:
         raise NeedsRewrap("The new text is too long for its line in the PDF; the text after it would have to "
                              "move to the next line.")
+    if seg.align == "left" and hi < seg.x1 - 0.01:
+        # a ragged line got shorter: if the next line's first word now fits after it, the paragraph is re-wrapped,
+        # as a word processor would pull that word up
+        para = _paragraph(pdf, seg)
+        at = next((i for i, s in enumerate(para) if s is seg), len(para) - 1)
+        if at + 1 < len(para):
+            nxt = para[at + 1].words[0]
+            if hi + pdf.natural_space(nxt.glyphs[0].style) + _width(nxt) <= max(s.x1 for s in para) + 0.01:
+                raise NeedsRewrap("The line got shorter, and the next line's first word now fits on it.")
 
     plan, used = _Plan(), set()
     written = [not (wi is not None and abs(x - seg.words[wi].x) < 0.01) for (wi, _, _), x in zip(laid, xs)]
@@ -925,6 +934,42 @@ def _push(pdf: PdfText, para: list[Segment], left: float, right: float, dy: floa
 # ---------------------------------------------------------------- re-wrapping a paragraph
 SHRINK, STRETCH = 0.85, 2.2      # how much tighter or looser than its usual word gap a justified line may be set
 JOIN = "join"                    # a line break inside a word (it was hyphenated there): no space when re-wrapped
+DROP = "\x00"                    # a letter not written again: the hyphen of a word broken at a line end
+
+
+# first parts of compounds that keep their hyphen ("well-known", "real-time") when nothing in the document says otherwise
+COMPOUND_FIRST = {"self", "non", "multi", "pre", "post", "co", "re", "anti", "semi", "well", "high", "low", "long",
+                  "short", "real", "so", "full", "half", "state", "end", "cross", "open", "two", "three", "one", "first",
+                  "second", "third", "top", "user", "data", "time", "fine", "large", "small", "deep", "fast", "read",
+                  "write", "follow", "up", "out", "in", "on", "off", "under", "over", "sub", "inter", "mid", "ex",
+                  "all", "built", "hand", "life", "world", "day", "year", "month", "week", "age", "best", "most"}
+
+
+@functools.cache
+def _hyphenator():
+    import pyphen
+    return pyphen.Pyphen(lang="en_US")
+
+
+def line_break_hyphen(left: str, right: str, text: str) -> bool:
+    """Whether the hyphen ending `left` at a line end only split a word for the line break ("exam-" + "ple"), as
+    opposed to belonging to it ("well-" + "known"). The document is asked first: the hyphenated form elsewhere in a
+    line means a real hyphen, the joined word elsewhere means a break. Failing that, a common compound start keeps its
+    hyphen, and otherwise a hyphenation dictionary says whether the word may be broken there."""
+    if left.endswith("\xad"):
+        return True
+    a = re.search(r"[A-Za-z]+$", left[:-1])
+    b = re.match(r"[a-z]+", right)
+    if not left.endswith("-") or not a or not b:
+        return False                      # "2026-", "Phelan-" + "McDermid": not a broken word
+    a, b = a.group(0), b.group(0)
+    if f"{a}-{b}" in text:                # the hyphenated form within a line
+        return False
+    if re.search(rf"(?<![A-Za-z]){a}{b}(?![a-z])", text, re.I):
+        return True
+    if a.lower() in COMPOUND_FIRST:
+        return False
+    return len(a) in _hyphenator().positions((a + b).lower())
 
 
 def _text_rows(pdf: PdfText, page: int) -> list[list[Segment]]:
@@ -956,8 +1001,9 @@ def _paragraph(pdf: PdfText, seg: Segment) -> list[Segment]:
         edge = max((s.x1 for row in rows for s in row if s is not a and abs(s.x0 - a.x0) <= 30), default=None)
         if edge is None or a.x1 > edge + 2:      # 2pt: punctuation may hang past the edge
             # the column's longest line: full only if it reaches as far as any text on the page does
+            # (else nothing shows where the measure is: it carries on unless it ends a sentence)
             page_edge = max((s.x1 for row in rows for s in row if s is not a), default=0)
-            if page_edge < a.x1 - 2:
+            if page_edge < a.x1 - 2 and a.words[-1].text.endswith((".", "!", "?", ":")):
                 return False
             edge = max(edge or 0, a.x1)
         space = pdf.natural_space(a.words[-1].glyphs[-1].style)
@@ -1019,6 +1065,9 @@ def _plan_paragraph(pdf: PdfText, para: list[Segment], ranges: list[tuple[int, i
         if li:
             prev = lines[li - 1].words[-1].text
             hyphenated = prev.endswith("-") and len(prev) > 1
+            if hyphenated and line_break_hyphen(prev, seg.words[0].text, pdf.text):
+                e = entries[-1]                 # the hyphen only split the word: it goes when the word is rejoined
+                entries[-1] = (DROP, e[1], e[2], e[3], e[4])
             entries.append(("\n", None, None, JOIN if hyphenated else None, None))
         for wj, w in enumerate(seg.words):
             if wj:
@@ -1031,7 +1080,7 @@ def _plan_paragraph(pdf: PdfText, para: list[Segment], ranges: list[tuple[int, i
     _replace_entries(entries, ranges)
 
     # the words again: an old word kept whole, or letters to set (a word hyphenated across lines is set whole,
-    # keeping its hyphen: a hyphen at a line end can't be told apart from one that belongs to the word)
+    # without its hyphen when that only broke the word: line_break_hyphen)
     words, cur = [], []
     for e in entries + [(" ", None, None, None, None)]:
         if e[1] is None and e[3] != JOIN:
@@ -1048,7 +1097,7 @@ def _plan_paragraph(pdf: PdfText, para: list[Segment], ranges: list[tuple[int, i
         if old is not None and None not in glyphs and glyphs == old.glyphs and "".join(e[0] for e in w) == old.text:
             laid.append((w[0][3], None, _width(old), old.glyphs[-1].style))
         else:
-            letters, width = pdf.typeset([(e[0], e[1], e[4]) for e in w])
+            letters, width = pdf.typeset([(e[0], e[1], e[4]) for e in w if e[0] != DROP])
             laid.append((None, letters, width, w[-1][1]))
     if not laid and first == 0:
         raise CantKeepLayout("The edit would leave the paragraph empty.")
@@ -1543,15 +1592,18 @@ CHECK_ZOOM = 2.0          # renders at 144 dpi for the picture check
 INK = 48                  # a pixel differs when a colour channel changes by more than this (0-255)
 
 
-def _words(text: str) -> list[str]:
-    """The text as words, with a hyphen at a line end joined to the next word on both sides of the comparison."""
-    return re.sub(r"-\s+", "-", text.replace("\xad", "-")).split()
+def _words(text: str, original: str) -> list[str]:
+    """The text as words. A word broken over two lines counts as one: without its hyphen when that only broke it
+    (line_break_hyphen, judged against the original document), else with it."""
+    def rejoin(m: re.Match) -> str:
+        return m[1] + m[2] if line_break_hyphen(m[1] + "-", m[2], original) else m[1] + "-" + m[2]
+    return re.sub(r"(\S+)-\s*\n\s*(\S+)", rejoin, text.replace("\xad", "-")).split()
 
 
-def _check_text(out: Path, expected: str) -> None:
+def _check_text(out: Path, expected: str, original: str) -> None:
     """The whole edited document reads as the original with only the change made: no word lost, added, repeated or
     out of order anywhere (a paragraph worked out wrongly would show up here)."""
-    want, got = _words(expected), _words(document_text(out))
+    want, got = _words(expected, original), _words(document_text(out), original)
     if got != want:
         at = next((i for i, (a, b) in enumerate(zip(want, got)) if a != b), min(len(want), len(got)))
         near = " ".join(want[max(0, at - 3): at + 3])
@@ -1633,7 +1685,7 @@ def _check_picture(before: pymupdf.Page, after: pymupdf.Page, plan: _Plan) -> No
                              f"did (near {xs[0] / CHECK_ZOOM:.0f}, {ys[0] / CHECK_ZOOM:.0f} pt).")
 
 
-def _write_checked(path: Path, out: Path, plans: dict[int, _Plan], expected: str | None = None) -> None:
+def _write_checked(path: Path, out: Path, plans: dict[int, _Plan], expected: tuple[str, str] | None = None) -> None:
     """Apply the plans to a fresh copy of the PDF, save it to `out` and check it: every edited page letter by letter
     and picture by picture, and (given `expected`) the whole document's text. CantKeepLayout, with `out` removed,
     when anything isn't what was intended."""
@@ -1649,7 +1701,7 @@ def _write_checked(path: Path, out: Path, plans: dict[int, _Plan], expected: str
                     _check(original[n], edited[n], plan, counts[n])
                     _check_picture(original[n], edited[n], plan)
             if expected is not None:
-                _check_text(out, expected)
+                _check_text(out, *expected)
         except Exception:
             out.unlink(missing_ok=True)
             raise
@@ -1729,10 +1781,10 @@ def replace(path: Path, out: Path, pattern: re.Pattern, new: str, replace_all: b
         try:
             if any(p is None for p in ordered.values()):
                 raise CantKeepLayout("The page's reading order can't be kept.")
-            _write_checked(path, out, ordered, expected)
+            _write_checked(path, out, ordered, (expected, pdf.text))
         except CantKeepLayout as e:
             log.info("Edit of %s: keeping the reading order failed (%s); the edit goes at the end", path.name, e)
-            _write_checked(path, out, simple, expected)
+            _write_checked(path, out, simple, (expected, pdf.text))
         return len(matches), [(m.start(), m.end()) for m in matches], pdf.text
     finally:
         pdf.close()

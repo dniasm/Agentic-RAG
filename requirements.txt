@@ -19,3 +19,4 @@ voyageai
 pytest
 fpdf2>=2.8   # PDF downloads of edited documents
 pymupdf>=1.26  # editing PDFs in place (AGPL); fonts for it are in renamer/fonts
+pyphen>=0.17   # rejoining words a PDF broke over two lines
