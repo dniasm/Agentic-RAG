@@ -55,6 +55,53 @@ class Rename(unittest.TestCase):
         self.assertEqual(db.get_conversation(self.other["id"], theirs["id"])["title"], "private")
 
 
+class Stats(unittest.TestCase):
+    def setUp(self):
+        self._old_path, self._old_conn = settings.database_path, db._conn
+        settings.database_path = os.path.join(tempfile.mkdtemp(), "stats.db")
+        db._conn = None
+        db.init_db()
+        self.uid = db.create_user("stats_test", "x")["id"]
+        self.conv = db.create_conversation(self.uid, "c")["id"]
+
+    def tearDown(self):
+        db._conn.close()
+        db._conn, settings.database_path = self._old_conn, self._old_path
+
+    def answers(self):
+        db.add_message(self.conv, "user", "q")
+        db.add_message(self.conv, "assistant", "a1", "rag", {"latency_ms": 1000, "rewritten_queries": ["q2"],
+                                                            "evaluation": {"sufficient": True}})
+        db.add_message(self.conv, "assistant", "a2", "rag", {"latency_ms": 3000, "evaluation": {"sufficient": False}})
+        db.add_message(self.conv, "assistant", "a3", "direct", {})
+
+    def expected(self):
+        return {"queries": 3, "by_tool": {"rag": 2, "direct": 1}, "queries_rewritten": 1, "answers_evaluated": 2,
+                "answers_sufficient": 1, "avg_latency_ms": 2000}
+
+    def test_stats_come_from_the_columns(self):
+        self.answers()
+        with db.tx() as c:  # the JSON is no longer read
+            c.execute("UPDATE messages SET meta = 'not json'")
+        stats = db.user_stats(self.uid)
+        self.assertEqual({k: stats[k] for k in self.expected()}, self.expected())
+
+    def test_older_databases_are_backfilled_from_meta_once(self):
+        self.answers()
+        with db.tx() as c:  # as before 14 November: columns empty, migration not run
+            c.execute("UPDATE messages SET latency_ms = NULL, rewritten = 0, sufficient = NULL")
+            c.execute("DELETE FROM migrations WHERE name = 'message_stats_v1'")
+        db.init_db()
+        stats = db.user_stats(self.uid)
+        self.assertEqual({k: stats[k] for k in self.expected()}, self.expected())
+
+    def test_empty_account(self):
+        stats = db.user_stats(self.uid)
+        self.assertEqual((stats["queries"], stats["queries_rewritten"], stats["answers_evaluated"],
+                          stats["answers_sufficient"], stats["avg_latency_ms"], stats["by_tool"]),
+                         (0, 0, 0, 0, 0, {}))
+
+
 class FreshDatabase(unittest.TestCase):
     def test_no_old_memory_table_and_migration_marked_done(self):
         path = os.path.join(tempfile.mkdtemp(), "fresh.db")
@@ -71,7 +118,7 @@ class FreshDatabase(unittest.TestCase):
         done = con.execute("SELECT name FROM migrations").fetchall()
         con.close()
         self.assertNotIn("user_memory", tables)
-        self.assertEqual(done, [("user_facts_v1",)])
+        self.assertEqual(sorted(done), [("message_stats_v1",), ("user_facts_v1",)])
 
 
 if __name__ == "__main__":

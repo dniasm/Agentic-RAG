@@ -387,7 +387,7 @@ Most backend folders contain an empty `__init__.py`; it only lets Python import 
 | `test_memory.py` | Key normalisation, merge rules (replace / collect / forget / corrections), storage, the one-time migration (temporary database). |
 | `test_citations.py` | The code citation check. |
 | `test_rerank.py` | Reranker zones and the fallback when Voyage can't score. |
-| `test_conversations.py` | Renaming chats; a fresh database has no old `user_memory` table. |
+| `test_conversations.py` | Renaming chats; `/stats` from the message columns and the one-time backfill; a fresh database has no old `user_memory` table. |
 | `test_documents.py` | Uploads return before indexing; indexed / failed / removed-while-indexing / interrupted-by-restart outcomes. |
 | `test_stream.py` | The SSE stream ends with `final`, and the answer is saved even if the client disconnects. |
 
@@ -769,7 +769,7 @@ placeholders and filter by `user_id`.
 | Documents | `add_document`, `update_document`, `find_document_by_hash`, `list_documents`, `get_document`, `delete_document` |
 | Conversations | `create_conversation`, `get_conversation`, `list_conversations`, `rename_conversation` (title only; the chat keeps its place), `delete_conversation` |
 | Messages | `add_message`, `list_messages(conv_id, limit)` |
-| Stats | `user_stats` |
+| Stats | `user_stats` (SQL aggregates over the `messages` stat columns; no JSON parsing) |
 
 ### `tools/`
 | Module | Functions | Notes |
@@ -848,7 +848,7 @@ users ──< documents
 | `user_memory` | `id`, `user_id`, `memory_key`, `memory_value`, … | Pre-migration backup, no longer written; only in databases from before 1 November |
 | `documents` | `id`, `user_id`, `filename`, `file_hash`, `size_bytes`, `pages`, `chunks`, `status`, `error`, `created_at` | `UNIQUE(user_id, file_hash)` |
 | `conversations` | `id`, `user_id`, `title`, `created_at`, `updated_at` | cascade on user delete |
-| `messages` | `id`, `conversation_id`, `role`, `content`, `tool`, `meta` (JSON), `created_at` | cascade on conversation delete |
+| `messages` | `id`, `conversation_id`, `role`, `content`, `tool`, `meta` (JSON), `created_at`, `latency_ms`, `rewritten`, `sufficient` | cascade on conversation delete; the last three are copied out of `meta` when an answer is saved, so `/stats` is plain SQL (filled from `meta` once in databases from before 14 November) |
 
 `messages.meta` for assistant messages:
 

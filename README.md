@@ -139,7 +139,7 @@ sample data from `frontend/src/dev/fixtures.js` and is not part of the productio
 
 Create an account on the login screen, upload files on **Documents**, then chat.
 
-Unit tests (119, no API calls): `python -m unittest discover backend/tests -p "test_*.py"` (routing, memory, streaming,
+Unit tests (122, no API calls): `python -m unittest discover backend/tests -p "test_*.py"` (routing, memory, streaming,
 citation check, reranker fallbacks, renaming chats, the Voyage rate limit,
 background indexing)
 

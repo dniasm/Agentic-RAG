@@ -64,7 +64,11 @@ CREATE TABLE IF NOT EXISTS messages (
     content TEXT NOT NULL,
     tool TEXT,
     meta TEXT,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    -- Copied out of meta for /stats, which used to parse every message's JSON (see _STAT_COLUMNS).
+    latency_ms INTEGER,
+    rewritten INTEGER NOT NULL DEFAULT 0,
+    sufficient INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_conv_user ON conversations(user_id, updated_at);
@@ -102,6 +106,7 @@ def init_db() -> None:
     with tx() as c:
         c.executescript(SCHEMA)
         _migrate_memory_to_facts(c)
+        _add_message_stat_columns(c)
 
 
 def _migrate_memory_to_facts(c) -> None:
@@ -121,6 +126,39 @@ def _migrate_memory_to_facts(c) -> None:
                 (uuid.uuid4().hex, row["user_id"], row["memory_key"], value, row["created_at"], row["updated_at"]),
             )
     c.execute("INSERT INTO migrations (name, applied_at) VALUES ('user_facts_v1', ?)", (_now(),))
+
+
+# Stat columns of `messages`, taken from each answer's meta when it is saved.
+_STAT_COLUMNS = {"latency_ms": "INTEGER", "rewritten": "INTEGER NOT NULL DEFAULT 0", "sufficient": "INTEGER"}
+
+
+def _stats_from_meta(meta: dict) -> dict:
+    """latency_ms; rewritten (0/1: the question was reworded to search); sufficient (None if the answer wasn't
+    evaluated, else 0/1)."""
+    evaluation = meta.get("evaluation")
+    return {
+        "latency_ms": meta.get("latency_ms") or None,
+        "rewritten": 1 if meta.get("rewritten_queries") else 0,
+        "sufficient": None if not evaluation else int(bool(evaluation.get("sufficient"))),
+    }
+
+
+def _add_message_stat_columns(c) -> None:
+    """Databases from before 14 November: add the stat columns and fill them from the stored meta, once."""
+    have = {row["name"] for row in c.execute("PRAGMA table_info(messages)")}
+    for name, kind in _STAT_COLUMNS.items():
+        if name not in have:
+            c.execute(f"ALTER TABLE messages ADD COLUMN {name} {kind}")
+    if c.execute("SELECT 1 FROM migrations WHERE name = 'message_stats_v1'").fetchone():
+        return
+    for row in c.execute("SELECT id, meta FROM messages WHERE role = 'assistant'").fetchall():
+        try:
+            meta = json.loads(row["meta"] or "{}")
+        except ValueError:
+            continue
+        c.execute("UPDATE messages SET latency_ms = :latency_ms, rewritten = :rewritten, sufficient = :sufficient "
+                  "WHERE id = :id", {**_stats_from_meta(meta), "id": row["id"]})
+    c.execute("INSERT INTO migrations (name, applied_at) VALUES ('message_stats_v1', ?)", (_now(),))
 
 
 def _decode_values(raw: str) -> list[str]:
@@ -332,9 +370,10 @@ def add_message(conv_id: str, role: str, content: str, tool: str | None = None, 
            "tool": tool, "meta": json.dumps(meta or {}), "created_at": _now()}
     with tx() as c:
         c.execute(
-            "INSERT INTO messages (id, conversation_id, role, content, tool, meta, created_at) "
-            "VALUES (:id, :conversation_id, :role, :content, :tool, :meta, :created_at)",
-            msg,
+            "INSERT INTO messages (id, conversation_id, role, content, tool, meta, created_at, latency_ms, rewritten, "
+            "sufficient) VALUES (:id, :conversation_id, :role, :content, :tool, :meta, :created_at, :latency_ms, "
+            ":rewritten, :sufficient)",
+            {**msg, **_stats_from_meta(meta or {})},
         )
         c.execute("UPDATE conversations SET updated_at = ? WHERE id = ?", (msg["created_at"], conv_id))
     return {**msg, "meta": meta or {}}
@@ -363,35 +402,28 @@ def user_stats(user_id: str) -> dict:
             (user_id,),
         ))
         convs = _one(c.execute("SELECT COUNT(*) n FROM conversations WHERE user_id = ?", (user_id,)))
-        rows = _all(c.execute(
-            "SELECT m.tool, m.meta FROM messages m JOIN conversations c ON c.id = m.conversation_id "
+        answers = _one(c.execute(
+            "SELECT COUNT(*) n, SUM(m.rewritten) rewritten, COUNT(m.sufficient) evaluated, "
+            "COALESCE(SUM(m.sufficient), 0) sufficient, AVG(m.latency_ms) latency "
+            "FROM messages m JOIN conversations c ON c.id = m.conversation_id "
             "WHERE c.user_id = ? AND m.role = 'assistant'",
             (user_id,),
         ))
-
-    by_tool: dict[str, int] = {}
-    rewritten = evaluated = sufficient = 0
-    latencies = []
-    for r in rows:
-        by_tool[r["tool"] or "unknown"] = by_tool.get(r["tool"] or "unknown", 0) + 1
-        meta = json.loads(r["meta"] or "{}")
-        if meta.get("rewritten_queries"):
-            rewritten += 1
-        ev = meta.get("evaluation")
-        if ev:
-            evaluated += 1
-            sufficient += 1 if ev.get("sufficient") else 0
-        if meta.get("latency_ms"):
-            latencies.append(meta["latency_ms"])
+        by_tool = {r["tool"]: r["n"] for r in c.execute(
+            "SELECT COALESCE(m.tool, 'unknown') tool, COUNT(*) n FROM messages m "
+            "JOIN conversations c ON c.id = m.conversation_id "
+            "WHERE c.user_id = ? AND m.role = 'assistant' GROUP BY 1",
+            (user_id,),
+        )}
 
     return {
         "documents": docs["n"],
         "chunks": docs["chunks"],
         "conversations": convs["n"],
-        "queries": len(rows),
+        "queries": answers["n"],
         "by_tool": by_tool,
-        "queries_rewritten": rewritten,
-        "answers_evaluated": evaluated,
-        "answers_sufficient": sufficient,
-        "avg_latency_ms": int(sum(latencies) / len(latencies)) if latencies else 0,
+        "queries_rewritten": answers["rewritten"] or 0,
+        "answers_evaluated": answers["evaluated"],
+        "answers_sufficient": answers["sufficient"],
+        "avg_latency_ms": int(answers["latency"] or 0),
     }
