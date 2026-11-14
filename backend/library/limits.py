@@ -65,6 +65,25 @@ WINDOW = TokenWindow(config.TPM_LIMIT * key_count(), config.TPM_WINDOW_SECONDS) 
 BACKUP_WINDOW = TokenWindow(config.BACKUP_TPM_LIMIT * key_count(), config.TPM_WINDOW_SECONDS)  # the 20B: limited apart
 
 
+def _count_chat_tokens(step: str, model: str, tokens: int) -> None:
+    """day7's chat calls the same models on the same keys: their tokens count against the same windows, or a batch
+    would start while the chat has used the minute up. The document agent's own calls (step "manage") are
+    recorded by the agent itself."""
+    if step == "manage":
+        return
+    window = WINDOW if model == config.AGENT_MODEL else BACKUP_WINDOW if model == config.BACKUP_MODEL else None
+    if window is not None:
+        window.record(tokens)
+
+
+def _listen() -> None:
+    from backend.config import usage
+    usage.on_tokens(_count_chat_tokens)
+
+
+_listen()
+
+
 def window_for(message) -> TokenWindow:
     """The window a reply's tokens count against: the backup model's own, or the main one."""
     model = (getattr(message, "response_metadata", None) or {}).get("model_name") or ""

@@ -56,6 +56,7 @@ def to_sources(docs: list[dict]) -> list[dict]:
     return [
         {
             "type": "document",
+            "doc_id": d.get("doc_id"),
             "title": d["source"],
             "document": d["source"],
             "page": d.get("page"),

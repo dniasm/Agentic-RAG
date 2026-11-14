@@ -150,7 +150,8 @@ def next_source(state: AgentState) -> str | None:
 class Route(BaseModel):
     # Kept short: the rules live in ROUTER_PROMPT. These descriptions are sent with every message too (in the
     # output schema), and used to repeat the prompt (~240 tokens).
-    message_type: Literal["small_talk", "information_request"] = Field(description="See MESSAGE TYPE.")
+    message_type: Literal["small_talk", "information_request", "document_action"] = Field(
+        description="See MESSAGE TYPE.")
     # Kept in full: with only "See SOURCE." here, questions about the uploaded projects went to model knowledge
     # 3 times in 5 (5/5 to the documents with this description).
     source_preference: Literal["auto", "documents", "web", "model_knowledge"] = Field(
@@ -172,6 +173,8 @@ MESSAGE TYPE
   themselves, and questions about the assistant itself ("who are you?", "what can you do?").
 - information_request: everything else, including follow-ups, coding, calculations, how-tos, and challenges
   such as "why?" or "are you sure?" that ask for clarification or verification.
+- document_action: a request to change the user's uploaded documents (rename, edit, undo, queue, export).
+  Summarising or asking about them is information_request.
 
 SOURCE
 - model_knowledge: explanations, coding, calculations, reasoning, opinions, general questions, and follow-ups
@@ -275,12 +278,38 @@ def _code_route(state: AgentState) -> tuple | None:
       (with no history the message is already standalone).
     Returns (kind, preference, clear, confidence_required, standalone, reason) or None."""
     query = state["query"].strip()
+    managed = manage_in_code(state)
+    if managed:
+        return "document_action", "auto", True, False, query, managed
     if len(query) <= 40 and _PLAIN_SMALL_TALK.match(query):
         return "small_talk", "auto", True, False, query, "Plain greeting, thanks or goodbye (decided in code)."
     docs = state.get("doc_names", [])
-    if docs and not state.get("history") and asks_for_documents(query, docs):
+    if docs and not state.get("history") and asks_for_documents(query, docs) and not _ACTION_WORD.search(query):
         return ("information_request", "documents", True, True, query,
                 "First message, explicitly asks for the user's documents (decided in code).")
+    return None
+
+
+# A message naming a document that asks for a change goes to the router (it may be a document action), not
+# straight to the documents in code.
+_ACTION_WORD = re.compile(r"\b(?:re-?name|re-?title|retitle|replace|append|undo|edit|delete|remove|export|download|"
+                          r"convert|fix|update|queue|cancel|change\s+the\s+(?:name|title))\b", re.I)
+_BARE_UNDO = re.compile(r"^\s*(?:please\s+)?undo(?:\s+(?:that|it|this|the\s+last(?:\s+(?:change|edit|rename))?))?"
+                        r"(?:\s+please)?[\s.!]*$", re.I)
+_QUEUE_STATUS = re.compile(r"^\s*(?:what'?s\s+(?:in\s+)?the\s+queue|queue\s+status|(?:how'?s|how\s+is)\s+the\s+"
+                           r"(?:queue|batch)(?:\s+going)?|is\s+the\s+(?:batch|queue)\s+(?:done|finished))[\s?.!]*$", re.I)
+
+
+def manage_in_code(state: AgentState) -> str | None:
+    """The few messages that go to the document agent without the router, with the reason; None otherwise.
+    Kept narrow on purpose: "rename" alone is not one ("how do I rename a file in Linux?" is a question)."""
+    query = state["query"]
+    if state.get("agent_pending"):
+        return "The document agent asked a question last turn; this is the answer (decided in code)."
+    if _BARE_UNDO.match(query):
+        return "A bare undo (decided in code)."
+    if _QUEUE_STATUS.match(query):
+        return "Asks about the queued document tasks (decided in code)."
     return None
 
 
@@ -304,6 +333,7 @@ def router_node(state: AgentState) -> dict:
     review_context = (
         "Review the intake classification. Correct genuine errors without "
         "replacing valid decisions with a generic default.\n"
+        "Use document_action only for requests to change the uploaded documents. "
         "Use model_knowledge for ordinary self-contained questions, documents "
         "when the user wants their uploaded material, and web for current or "
         "explicitly online information. Preserve conversational context.\n\n"
@@ -355,7 +385,11 @@ def _route_update(state: AgentState, kind: str, pref: str, clear: bool, confiden
         reason = f"The message explicitly asks for the user's documents (router had chosen {pref}). {reason}"
         pref = "documents"
 
-    if kind == "small_talk":
+    if kind == "document_action":
+        intent = "manage"
+        detail = f"A change to the user's documents: the document agent handles it. {reason}"
+
+    elif kind == "small_talk":
         intent = "greeting"
         detail = f"Small talk. {reason}"
 
@@ -423,6 +457,41 @@ def _route_update(state: AgentState, kind: str, pref: str, clear: bool, confiden
             ),
             *review_steps,
         ],
+    }
+
+
+# ============================================================
+# 1b. Document actions (the library's agent)
+# ============================================================
+
+def manage_node(state: AgentState) -> dict:
+    """Rename, edit, undo, queue or export through the library's agent (backend/library/agent.py), in this
+    conversation's agent session. Each tool call is shown as it happens. No answer check: the agent's replies
+    about its own actions are written from what the tools did."""
+    from backend.evaluation.reviewer import emit_live
+    from backend.library import agent
+
+    steps: list[dict] = []
+
+    def on_step(name: str, args: dict, result: dict) -> None:
+        step = _step("manage", f"{name}: {result.get('status', 'done')}", tool=name, args=args,
+                     status=result.get("status"))
+        steps.append(step)
+        emit_live(step)
+
+    try:
+        out = agent.chat(state["conversation_id"], state["query"], owner=state["user_id"], on_step=on_step,
+                         context_doc_ids=state.get("cited_doc_ids") or [])
+    except PermissionError:
+        out = {"reply": "That chat belongs to another user.", "actions": [], "failed": True}
+    return {
+        "answer": out["reply"],
+        "tool": "manage_documents",
+        "actions": out.get("actions", []),
+        "sources": [],
+        "evaluation": None,
+        "trace": [*steps, _step("manage", f"{len(out.get('actions', []))} change(s) made.",
+                                failed=out.get("failed", False))],
     }
 
 

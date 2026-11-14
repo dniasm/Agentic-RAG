@@ -48,7 +48,7 @@ EDIT_REFRESH_TOKENS = 2200   # the summary refresh after an edit or undo (measur
 BATCH_MAX_TASKS = 50
 BATCH_TASK_MAX_CHARS = 600
 
-# Voyage's free tier allows about 3 rerank calls a minute. Past that, find uses cosine scores at once instead of
-# making a call that fails. Results of find are reused until the library changes (or FIND_CACHE_SECONDS pass).
-VOYAGE_CALLS_PER_MINUTE = settings.library_voyage_calls_per_minute
+# Voyage's free tier allows about 3 requests a minute, shared with day7's reranker and memory: find asks day7's
+# limiter (backend/config/voyage.py, priority FIND) and uses cosine scores at once when it is busy. Results of find
+# are reused until the library changes (or FIND_CACHE_SECONDS pass).
 FIND_CACHE_SECONDS = 600

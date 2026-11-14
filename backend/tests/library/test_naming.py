@@ -29,3 +29,22 @@ def test_name_similarity():
     assert naming.name_similarity("Word2vec Neural Word Embedings", "Word2vec Neural Word Embeddings") >= 0.9  # typo
     assert naming.name_similarity("word2vec", "Word2vec Neural Word Embeddings") < 0.9                       # partial
     assert naming.name_similarity("budget", "Support Vector Machines") < 0.4
+
+
+
+def test_the_real_title_writer_runs(monkeypatch):
+    """conftest replaces titles._ask_model in every test; a fresh copy of the module runs the real one, so a broken
+    import in it (as the deleted bridge once was) fails here instead of silently falling back to the filename."""
+    import importlib.util
+
+    from backend.config import llm
+    from backend.library import titles
+    spec = importlib.util.spec_from_file_location("titles_copy", titles.__file__)
+    fresh = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(fresh)
+
+    class Fake:
+        def invoke(self, prompt, config=None):
+            return fresh.DocProfile(title="Written By The Model", summary="s", keywords=[])
+    monkeypatch.setattr(llm, "structured", lambda *a, **k: Fake())
+    assert fresh._ask_model("prompt").title == "Written By The Model"

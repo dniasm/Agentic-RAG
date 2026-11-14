@@ -18,7 +18,7 @@ from backend.memory.store import (
     search_memories,
     delete_conversation_memories,
 )
-from backend.library import catalog
+from backend.library import agent, catalog
 from backend.models import database as db
 from backend.models.schemas import (
     ChatRequest,
@@ -101,7 +101,7 @@ _STREAM_END = object()  # marks the end of an answer's event stream
 def _prepare(
     req: ChatRequest,
     user: dict,
-) -> tuple[dict, list[dict], list[dict], list[str]]:
+) -> tuple[dict, list[dict], list[dict], list[str], dict]:
     if req.conversation_id:
         conv = db.get_conversation(user["id"], req.conversation_id)
         if not conv:
@@ -112,13 +112,17 @@ def _prepare(
     else:
         conv = db.create_conversation(user["id"], req.message)
 
-    history = [
-        {"role": m["role"], "content": m["content"]}
-        for m in db.list_messages(
-            conv["id"],
-            limit=settings.history_turns,
-        )
-    ]
+    recent = db.list_messages(conv["id"], limit=settings.history_turns)
+    history = [{"role": m["role"], "content": m["content"]} for m in recent]
+    last_answer = next((m for m in reversed(recent) if m["role"] == "assistant"), None)
+    context = {
+        "conversation_id": conv["id"],
+        # the document agent waits for an answer to its question: the router is skipped
+        "agent_pending": bool(req.conversation_id) and agent.has_open_question(conv["id"]),
+        # "rename that one": the documents the previous answer was based on
+        "cited_doc_ids": [src["doc_id"] for src in (last_answer or {}).get("meta", {}).get("sources", [])
+                          if src.get("doc_id")],
+    }
 
     # Exact facts and preferences from SQLite.
     _wait_for_memory(user["id"], conv["id"])
@@ -157,11 +161,11 @@ def _prepare(
     except Exception:
         log.exception("Semantic memory retrieval failed")
 
-    doc_names = [d["title"] for d in catalog.list_documents(status="indexed", owner=user["id"])]
+    doc_names = catalog.indexed_titles(user["id"])
 
     db.add_message(conv["id"], "user", req.message)
 
-    return conv, history, memories, doc_names
+    return conv, history, memories, doc_names, context
 
 
 def _persist(
@@ -183,6 +187,7 @@ def _persist(
         "rewritten_queries": state.get("rewritten_queries", []),
         "evaluation": state.get("evaluation"),
         "trace": state.get("trace", []),
+        "actions": state.get("actions", []),   # document changes: Preview / Undo buttons, also after a reload
         "latency_ms": latency_ms,
         "usage": tracker.summary(),  # the answer's tokens; memory extraction runs after this is saved
     }
@@ -251,7 +256,7 @@ def _remember_exchange(user_id: str, conv_id: str, user_message: str, history: l
     if (
         answer
         and len(question) >= 20
-        and state.get("tool") not in ("greeting", "no_results")
+        and state.get("tool") not in ("greeting", "no_results", "manage_documents")
         and state.get("intent") != "error"
     ):
         try:
@@ -341,40 +346,51 @@ def _error_state(e: Exception) -> dict:
 # ----------------------------------------------------------------
 # Chat
 
+_conversation_locks: dict[str, threading.Lock] = {}
+_conversation_locks_guard = threading.Lock()
+
+
+def _conversation_lock(conv_id: str | None) -> threading.Lock:
+    """One message at a time per conversation, on every route: two quick messages must not race on its
+    history or on the document agent's session. A new conversation has no id yet and needs none."""
+    if not conv_id:
+        return threading.Lock()
+    with _conversation_locks_guard:
+        return _conversation_locks.setdefault(conv_id, threading.Lock())
+
 @router.post("/chat", response_model=ChatResponse)
 def chat(req: ChatRequest, user: dict = Depends(get_current_user)):
-    conv, history, memories, doc_names = _prepare(req, user)
-    started = time.perf_counter()
-    tracker = UsageTracker()
+    with _conversation_lock(req.conversation_id):
+        conv, history, memories, doc_names, context = _prepare(req, user)
+        started = time.perf_counter()
+        tracker = UsageTracker()
 
-    try:
-        state = run_agent(
-            req.message,
-            user,
-            history,
-            memories,
-            doc_names,
-            callbacks=[tracker],
-        )
-    except Exception as e:
-        state = _error_state(e)
+        try:
+            state = run_agent(
+                req.message,
+                user,
+                history,
+                memories,
+                doc_names,
+                callbacks=[tracker],
+                context=context,
+            )
+        except Exception as e:
+            state = _error_state(e)
 
-    return _persist(
-        conv,
-        state,
-        started,
-        user["id"],
-        req.message,
-        history,
-        tracker,
-        len(memories),
-    )
+        return _persist(conv, state, started, user["id"], req.message, history, tracker, len(memories))
 
 
 @router.post("/chat/stream")
 def chat_stream(req: ChatRequest, user: dict = Depends(get_current_user)):
     """Stream metadata, status, trace steps, answer drafts, and final result."""
-    conv, history, memories, doc_names = _prepare(req, user)
+    lock = _conversation_lock(req.conversation_id)
+    lock.acquire()   # released by the worker thread when the answer is saved
+    try:
+        conv, history, memories, doc_names, context = _prepare(req, user)
+    except BaseException:
+        lock.release()
+        raise
     started = time.perf_counter()
     tracker = UsageTracker()
 
@@ -396,6 +412,7 @@ def chat_stream(req: ChatRequest, user: dict = Depends(get_current_user)):
                 memories,
                 doc_names,
                 callbacks=[tracker],
+                context=context,
             ):
                 if kind == "final":
                     final = payload
@@ -436,6 +453,7 @@ def chat_stream(req: ChatRequest, user: dict = Depends(get_current_user)):
                 ),
             ))
         finally:
+            lock.release()
             events_q.put(_STREAM_END)
 
     threading.Thread(target=produce, name=f"chat-{conv['id'][:8]}", daemon=True).start()

@@ -9,11 +9,14 @@ Each call names its priority:
 
     RERANK  documents for the answer being written: waits up to VOYAGE_RERANK_MAX_WAIT seconds, then the caller
             falls back to the LLM relevance check (as on any Voyage failure)
+    FIND    the document agent looking for a document ("rename the GDPR doc"): never waits; busy means it ranks
+            by cosine similarity at once (VOYAGE_FIND_MAX_WAIT, 0)
     RECALL  past conversations for the message being answered: waits up to VOYAGE_RECALL_MAX_WAIT, then the
             message is answered without them
     SAVE    storing an exchange in the background: waits up to VOYAGE_SAVE_MAX_WAIT
 
-RECALL and SAVE only take a slot while VOYAGE_RERANK_RESERVE more are free, and never ahead of a waiting RERANK, so
+FIND, RECALL and SAVE only take a slot while VOYAGE_RERANK_RESERVE more are free, and never ahead of a waiting
+higher priority, so
 the reranker always finds a slot. With a payment method Voyage allows far more: raise VOYAGE_REQUESTS_PER_MINUTE.
 """
 import threading
@@ -24,8 +27,8 @@ from typing import Callable, TypeVar
 
 from backend.config.settings import settings
 
-RERANK, RECALL, SAVE = 0, 1, 2
-_NAMES = ("rerank", "recall", "save")
+RERANK, FIND, RECALL, SAVE = 0, 1, 2, 3
+_NAMES = ("rerank", "find", "recall", "save")
 
 T = TypeVar("T")
 
@@ -42,7 +45,7 @@ class RateLimiter:
         self.reserve = max(0, min(reserve, self.per_minute - 1))
         self.window = window
         self._sent: deque[float] = deque()
-        self._waiting = [0, 0, 0]
+        self._waiting = [0] * len(_NAMES)   # callers waiting, per priority
         self._cond = threading.Condition()
 
     def _free(self, now: float) -> int:
@@ -89,7 +92,8 @@ def client():
 
 def call(priority: int, fn: Callable[[object], T]) -> T:
     """Run fn(client) once a request slot is free, or raise VoyageBusy."""
-    wait = (settings.voyage_rerank_max_wait, settings.voyage_recall_max_wait, settings.voyage_save_max_wait)[priority]
+    wait = (settings.voyage_rerank_max_wait, settings.voyage_find_max_wait, settings.voyage_recall_max_wait,
+            settings.voyage_save_max_wait)[priority]
     if not limiter().acquire(priority, wait):
         raise VoyageBusy(f"no Voyage request slot free within {wait:g} s ({_NAMES[priority]})")
     return fn(client())

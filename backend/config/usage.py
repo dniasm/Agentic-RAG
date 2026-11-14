@@ -37,6 +37,16 @@ def _cached_tokens(msg, usage: dict) -> int:
     return int(cached or 0)
 
 
+# Called with (step, model, tokens) after every model call a tracker sees: the document library's batch queue paces
+# itself by Groq's tokens per minute, and must count the chat's calls too (backend/library/limits.py).
+_token_listeners: list = []
+
+
+def on_tokens(listener) -> None:
+    if listener not in _token_listeners:
+        _token_listeners.append(listener)
+
+
 class UsageTracker(BaseCallbackHandler):
     def __init__(self):
         self._lock = threading.Lock()
@@ -59,6 +69,11 @@ class UsageTracker(BaseCallbackHandler):
                     model = (getattr(msg, "response_metadata", None) or {}).get("model_name", "?")
                     reasoning = (usage.get("output_token_details") or {}).get("reasoning", 0) or 0
                     cached = _cached_tokens(msg, usage)
+                    for listener in _token_listeners:
+                        try:
+                            listener(step, model, usage.get("input_tokens", 0) + usage.get("output_tokens", 0))
+                        except Exception:
+                            log.exception("token listener failed")
                     for bucket in (self.by_model[model], self.by_step[step]):
                         bucket["calls"] += 1
                         bucket["input"] += usage.get("input_tokens", 0)

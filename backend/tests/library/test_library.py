@@ -91,7 +91,7 @@ def test_empty_library():
 
 def test_find_without_the_reranker_uses_cosine(library_docs, monkeypatch):
     from backend.rag import rerank
-    monkeypatch.setattr(rerank, "score", lambda query, hits: None)
+    monkeypatch.setattr(rerank, "score", lambda query, hits, priority=None: None)
     result = library.find("Mikolov skip-gram continuous bag of words")
     assert result["scorer"] == "cosine"
     assert result["candidates"][0]["doc_id"] == library_docs["w2v.txt"]["id"]

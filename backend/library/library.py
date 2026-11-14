@@ -17,6 +17,7 @@ from qdrant_client import models
 
 from backend.library import catalog, config, limits, naming, titles
 from backend.library.logs import event
+from backend.config import voyage
 from backend.rag import ingestion, rerank, retrieval, vectorstore
 from backend.config.settings import settings as day7_settings
 
@@ -259,12 +260,8 @@ def _content_scores(description: str, docs: list[dict], owner: str) -> tuple[dic
     hits = [h for h in hits if h.get("doc_id") in known]
     items = hits + [{"content": profile_text(d), "doc_id": d["id"], "profile": True} for d in docs]
 
-    scored = None
-    if _VOYAGE.used() < config.VOYAGE_CALLS_PER_MINUTE:
-        _VOYAGE.record(1)
-        scored = rerank.score(description, items)
-    else:
-        log.info("Voyage's minute is used up (%d calls): cosine scores for %r", _VOYAGE.used(), description[:80])
+    # day7's Voyage limiter, below answer reranking: when no slot is free, None at once and cosine scores below
+    scored = rerank.score(description, items, priority=voyage.FIND)
     scores: dict[str, float] = {}
     evidence: dict[str, str] = {}
     if scored is not None:
@@ -298,7 +295,6 @@ def snippet(text: str, limit: int = 180) -> str:
     return text if len(text) <= limit else text[:limit].rsplit(" ", 1)[0] + "…"
 
 
-_VOYAGE = limits.TokenWindow(config.VOYAGE_CALLS_PER_MINUTE, 60.0)   # rerank calls in the last minute (1 per call)
 _FIND_CACHE: dict = {}   # (description, catalog version) -> (time, result)
 
 

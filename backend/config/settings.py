@@ -84,6 +84,7 @@ class Settings(BaseSettings):
     voyage_requests_per_minute: int = 3
     voyage_rerank_reserve: int = 1      # slots recall and saves leave free for the reranker
     voyage_rerank_max_wait: float = 10.0  # seconds a rerank waits for a slot before the LLM relevance check
+    voyage_find_max_wait: float = 0.0     # the document agent's find: busy means cosine scores at once
     voyage_recall_max_wait: float = 3.0   # seconds memory recall waits, then answers without past conversations
     voyage_save_max_wait: float = 120.0   # seconds a background episode save waits
     # rerank-2.5's score scale: unrelated passages still score ~0.3. Measured best scores (74 questions):
@@ -148,7 +149,6 @@ class Settings(BaseSettings):
     library_agent_reasoning: str = "low"
     library_tpm_limit: int = 8000         # Groq free tier, tokens per minute, 120B
     library_backup_tpm_limit: int = 8000  # the 20B's own limit
-    library_voyage_calls_per_minute: int = 3
 
 
 @lru_cache

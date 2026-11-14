@@ -48,6 +48,7 @@ class ChatResponse(BaseModel):
     rewritten_queries: list[str] = []
     evaluation: dict[str, Any] | None = None
     trace: list[dict[str, Any]] = []
+    actions: list[dict[str, Any]] = []   # document changes (rename, edit, ...): Preview / Undo buttons
     latency_ms: int
 
 

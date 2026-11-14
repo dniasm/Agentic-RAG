@@ -128,7 +128,7 @@ def counting_rerank(monkeypatch):
     from backend.rag import rerank
     calls, real = [], rerank.score
 
-    def score(query, hits):
+    def score(query, hits, priority=None):
         calls.append(query)
         return real(query, hits)
     monkeypatch.setattr(rerank, "score", score)
@@ -145,14 +145,26 @@ def test_a_repeated_search_is_answered_from_the_cache_until_the_library_changes(
     assert len(calls) == 2                                                     # the library changed: searched again
 
 
-def test_past_voyages_minute_find_uses_cosine_without_calling_it(library_docs, monkeypatch):
+def test_find_leaves_the_rerank_reserve_free_and_falls_back_to_cosine(library_docs, monkeypatch):
+    """find shares day7's Voyage limiter (3 a minute, 1 kept for answer reranking) and never waits for it."""
+    from backend.config import voyage
     from backend.library import library
-    monkeypatch.setattr(library, "_VOYAGE", library.limits.TokenWindow(3, 60.0))
-    calls = counting_rerank(monkeypatch)
-    for q in ("word embeddings", "data protection fines", "margin classifier"):
+    from backend.rag import rerank
+    limiter = voyage.RateLimiter(3, reserve=1)
+    monkeypatch.setattr(voyage, "limiter", lambda: limiter)
+    calls, real = [], rerank.score
+
+    def score(query, hits, priority=voyage.RERANK):   # the fake reranker, behind the real limiter
+        if not limiter.acquire(priority, timeout=0):
+            return None
+        calls.append((query, priority))
+        return real(query, hits)
+    monkeypatch.setattr(rerank, "score", score)
+    for q in ("word embeddings", "data protection fines"):
         assert library.find(q)["scorer"] != "cosine"
-    result = library.find("neural networks for words")
-    assert len(calls) == 3 and result["scorer"] == "cosine"                   # the fourth didn't try Voyage
+    assert library.find("margin classifier")["scorer"] == "cosine"     # the last slot is the reranker's
+    assert [p for _, p in calls] == [voyage.FIND, voyage.FIND]
+    assert limiter.acquire(voyage.RERANK, timeout=0)                   # and it is still there
 
 
 class Checked(Counting):

@@ -44,7 +44,6 @@ def fallback_profile(filename: str, text: str) -> DocProfile:
 
 
 def _ask_model(prompt: str) -> DocProfile:
-    from backend.library import day7  # noqa: F401  (sets day7's environment first)
     from backend.config.llm import structured
 
     from backend.library import limits

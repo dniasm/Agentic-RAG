@@ -25,7 +25,7 @@ def fake_vector(text: str) -> list[float]:
     return [x / norm for x in v]
 
 
-def fake_rerank(query: str, hits: list[dict]):
+def fake_rerank(query: str, hits: list[dict], priority=None):
     words = set(sparse.tokenize(query))
     for h in hits:
         found = len(words & set(sparse.tokenize(h["content"]))) / (len(words) or 1)
@@ -47,8 +47,7 @@ def fakes(monkeypatch):
     monkeypatch.setattr(retrieval.embedding_cache, "embed_query", fake_vector)
     monkeypatch.setattr(rerank, "score", fake_rerank)
     monkeypatch.setattr(titles, "_ask_model", fake_title)
-    # every test starts with Voyage's minute unused and no remembered searches
-    monkeypatch.setattr(library, "_VOYAGE", library.limits.TokenWindow(10_000, 60.0))
+    # every test starts with no remembered searches
     library._FIND_CACHE.clear()
     yield
     for d in catalog.list_documents():

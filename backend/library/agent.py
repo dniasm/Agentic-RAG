@@ -119,6 +119,11 @@ class Guard:
         for doc_id in doc_ids:
             self.listed.setdefault(doc_id, self.turn)
 
+    def saw_list_before(self, doc_ids: list[str]) -> None:
+        """Documents the user saw before this message (in day7's previous answer)."""
+        for doc_id in doc_ids:
+            self.listed[doc_id] = min(self.listed.get(doc_id, self.turn - 1), self.turn - 1)
+
     def identification_problem(self, doc_id: str) -> str | None:
         shown_now = self.needs_user.get(doc_id) == self.turn
         resolved = self.resolved.get(doc_id)
@@ -611,8 +616,32 @@ def default_model() -> "GroqAgentModel":
     return _default_model
 
 
-def chat(session_id: str, message: str, model=None, batch: bool = False, owner: str = config.OWNER) -> dict:
-    """One user message in. Returns {"reply", "actions", "tokens"}; the session is saved."""
+def _context_docs(doc_ids: list[str] | None, owner: str) -> list[dict]:
+    """The documents of the previous answer (only the owner's, at most 5)."""
+    return [d for d in (catalog.get_document(i) for i in dict.fromkeys(doc_ids or [])) if d and d["owner"] == owner][:5]
+
+
+def _context_note(docs: list[dict]) -> str:
+    if not docs:
+        return ""
+    named = "; ".join(f'"{d["title"]}" [id {d["id"]}]' for d in docs)
+    return f"\n\n(Documents the previous answer in this chat was based on: {named})"
+
+
+def has_open_question(session_id: str) -> bool:
+    """The agent asked something on its last turn ("Rename these 3?", "Which one do you mean?") and waits for the
+    answer: day7's chat sends the next message here without asking its router (a "yes" would read as small talk)."""
+    session = catalog.load_session(session_id)
+    guard = session["guard"] or {}
+    return bool(guard.get("pending")) or session["turn"] in (guard.get("needs_user") or {}).values()
+
+
+def chat(session_id: str, message: str, model=None, batch: bool = False, owner: str = config.OWNER,
+         on_step=None, context_doc_ids: list[str] | None = None) -> dict:
+    """One user message in. Returns {"reply", "actions", "tokens"}; the session is saved.
+
+    on_step(name, args, result) is called after each tool call (day7's chat shows them live). context_doc_ids:
+    documents the previous answer in the conversation was based on, so "rename that one" needs no new search."""
     model = model or default_model()
 
     session = catalog.load_session(session_id)
@@ -627,7 +656,10 @@ def chat(session_id: str, message: str, model=None, batch: bool = False, owner: 
     event("chat", session=session_id[:8], turn=session["turn"], chars=len(message), queued_task=batch)
     log.debug("user message (%s turn %d): %s", session_id[:8], session["turn"], message[:500])
     history = _trim(messages_from_dict(session["llm_messages"]))
-    new = [HumanMessage(message)]
+    context_docs = _context_docs(context_doc_ids, owner)
+    # the user saw these in the previous answer: like a list shown before this message, they count as identified
+    guard.saw_list_before([d["id"] for d in context_docs])
+    new = [HumanMessage(message + _context_note(context_docs))]
     actions: list = []
     reply = ""
 
@@ -666,6 +698,11 @@ def chat(session_id: str, message: str, model=None, batch: bool = False, owner: 
                 log.exception("Tool %s failed", call["name"])
                 result = {"error": f"{type(e).__name__}: {str(e)[:200]}"}
             results.append(result)
+            if on_step:
+                try:
+                    on_step(call["name"], call.get("args") or {}, result)
+                except Exception:
+                    log.exception("on_step failed")
             log.debug("tool %s args=%s -> %s", call["name"], json.dumps(call.get("args") or {}, ensure_ascii=False)[:600],
                       json.dumps(result, ensure_ascii=False, default=str)[:800])
             new.append(ToolMessage(json.dumps(result, ensure_ascii=False), tool_call_id=call["id"]))

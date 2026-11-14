@@ -122,6 +122,7 @@ def _db() -> sqlite3.Connection:
     if _conn is not None and _conn_path != path:
         _conn.close()
         _conn = None
+        _titles.clear()
     if _conn is None:
         path.parent.mkdir(parents=True, exist_ok=True)
         _conn_path = path
@@ -176,6 +177,7 @@ def reset_connection() -> None:
         if _conn is not None:
             _conn.close()
         _conn = None
+        _titles.clear()
 
 
 @contextmanager
@@ -203,8 +205,8 @@ def add_document(*, title: str, original_name: str, file_name: str, ext: str, sh
                  owner: str = config.OWNER) -> dict:
     doc_id = uuid.uuid4().hex[:12]
     t = now()
-    _changed()
     with tx() as c:
+        _changed()   # under the transaction's lock: no one reads the new version with the old rows
         c.execute(
             "INSERT INTO documents (id, title, original_name, file_name, ext, sha256, original_sha256, size_bytes, "
             "owner, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'processing', ?, ?)",
@@ -218,8 +220,8 @@ def update_document(doc_id: str, **fields) -> None:
         fields["keywords"] = json.dumps(fields["keywords"], ensure_ascii=False)
     fields["updated_at"] = now()
     cols = ", ".join(f"{k} = ?" for k in fields)
-    _changed()
     with tx() as c:
+        _changed()   # under the transaction's lock: no one reads the new version with the old rows
         c.execute(f"UPDATE documents SET {cols} WHERE id = ?", (*fields.values(), doc_id))
 
 
@@ -248,17 +250,30 @@ def list_documents(status: str | None = None, owner: str | None = None) -> list[
         return [_doc(r) for r in _db().execute(sql + " ORDER BY created_at, id", args).fetchall()]
 
 
+_titles: dict[str, tuple[int, list[str]]] = {}   # owner -> (catalog version, titles of indexed documents)
+
+
+def indexed_titles(owner: str) -> list[str]:
+    """Titles of the owner's indexed documents. day7's chat reads them on every message; they are read again
+    only after the catalog changed (version())."""
+    with _lock:   # the same lock as every write: the version and the rows are read together
+        cached = _titles.get(owner)
+        if not cached or cached[0] != _version:
+            cached = _titles[owner] = (_version, [d["title"] for d in list_documents(status="indexed", owner=owner)])
+        return list(cached[1])
+
+
 def delete_document(doc_id: str) -> None:
-    _changed()
     with tx() as c:
+        _changed()   # under the transaction's lock: no one reads the new version with the old rows
         c.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
         c.execute("DELETE FROM renames WHERE doc_id = ?", (doc_id,))
         c.execute("DELETE FROM edits WHERE doc_id = ?", (doc_id,))
 
 
 def record_rename(doc_id: str, old_title: str, new_title: str, reason: str) -> None:
-    _changed()
     with tx() as c:
+        _changed()   # under the transaction's lock: no one reads the new version with the old rows
         c.execute("INSERT INTO renames (doc_id, old_title, new_title, reason, at) VALUES (?, ?, ?, ?, ?)",
                   (doc_id, old_title, new_title, reason, now()))
 

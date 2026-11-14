@@ -51,6 +51,9 @@ def route_after_router(state: AgentState) -> str:
     if intent == "greeting":
         return "greeting"
 
+    if intent == "manage":
+        return "manage"
+
     if intent == "direct":
         return "direct"
 
@@ -173,6 +176,7 @@ def build_graph():
 
     graph.add_node("router", nodes.router_node)
     graph.add_node("greeting", nodes.greeting_node)
+    graph.add_node("manage", nodes.manage_node)
     graph.add_node("direct", nodes.direct_node)
     graph.add_node("rewrite", nodes.rewrite_node)
     graph.add_node("retrieve", nodes.retrieve_node)
@@ -190,10 +194,11 @@ def build_graph():
     graph.add_conditional_edges(
         "router",
         route_after_router,
-        ["greeting", "direct", "rewrite", "retrieve", "web_search"],
+        ["greeting", "manage", "direct", "rewrite", "retrieve", "web_search"],
     )
 
     graph.add_edge("greeting", END)
+    graph.add_edge("manage", END)   # no answer check: the agent's reply is written from what its tools did
 
     graph.add_conditional_edges(
         "direct",
@@ -262,8 +267,10 @@ def _initial_state(
     history: list[dict],
     memories: list[dict],
     doc_names: list[str],
+    context: dict | None = None,
 ) -> AgentState:
     return {
+        **(context or {}),   # conversation_id, agent_pending, cited_doc_ids (see backend/api/routes/chat.py)
         "query": query,
         "user_id": user["id"],
         "username": user["username"],
@@ -300,13 +307,14 @@ def run_agent(
     memories: list[dict],
     doc_names: list[str],
     callbacks: list | None = None,
+    context: dict | None = None,
 ) -> AgentState:
     config = {"recursion_limit": _RECURSION_LIMIT}
     if callbacks:
         config["callbacks"] = callbacks
 
     return get_graph().invoke(
-        _initial_state(query, user, history, memories, doc_names),
+        _initial_state(query, user, history, memories, doc_names, context),
         config,
     )
 
@@ -317,6 +325,7 @@ def run_agent(
 
 STATUS_LABELS = {
     "router": "Reading your message…",
+    "manage": "Working on your documents…",
     "rewrite": "Rewording the question…",
     "retrieve": "Searching your documents…",
     "grade": "Checking which passages are relevant…",
@@ -356,11 +365,12 @@ def stream_agent(
     memories: list[dict],
     doc_names: list[str],
     callbacks: list | None = None,
+    context: dict | None = None,
 ) -> Iterator[tuple[str, dict]]:
     """Yield status, trace, draft, and final events for the UI."""
     from backend.tools import clean_answer
 
-    state: dict = _initial_state(query, user, history, memories, doc_names)
+    state: dict = _initial_state(query, user, history, memories, doc_names, context)
     sent_steps: set[str] = set()
     draft, draft_node, last_len, last_time = "", None, 0, 0.0
 
