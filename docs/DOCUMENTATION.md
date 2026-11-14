@@ -1522,3 +1522,46 @@ Two smaller cuts, the same day:
 - **Short exchanges stored without a summary** (`routes/chat.py`, `EPISODE_RAW_MAX_CHARS` = 400). When question +
   answer are at most 400 characters, the exchange is saved as it is, about the size of a summary, and the memory
   model isn't called: 116 of the 281 stored exchanges that got a summary were this short.
+
+### 21.18 Document-answer prompt (14 November)
+
+`tools/rag.py`. The old prompt said "Be concise and well structured" (the shared format rules already ask for
+concise prose and no headings by default), gave the citation rule twice, and called the passages "excerpts", which
+answers repeated to the user. The new one, 602 tokens instead of 499:
+
+- cite at the end of every sentence or list item that uses a passage, including a sentence that introduces or sums
+  up a list (these were the usual reason the code citation check failed, so the 120B check ran);
+- copy numbers, dates, amounts and names as the documents write them;
+- partial answers say in one sentence what the documents don't cover; disagreeing passages are both given, cited;
+- earlier messages are context for what the user means, not a source of facts;
+- say "the documents", never "excerpts" or "passages". The user turn's heading is now "Passages from the user's
+  documents:" (`CONTEXT_INTRO`).
+
+A "no LaTeX" rule was tried and dropped: the Wikipedia passages contain LaTeX and the model copied it anyway (2/2).
+
+**Bug fixed with it:** `generate` treated any reply under 40 characters as "no answer", so "BM stands for “best
+matching” [1]." (37 characters, correct) was thrown away and the user was told the documents don't cover it. Length
+now matters only when the sentinel is in the reply.
+
+Benchmark `benchmark/run_rag_prompt.py`: 43 questions (6 per answer shape, seed 5, plus all 7 out-of-scope), the
+passages the app would pick (as `run_checker.py`), the same for both prompts. Code checks only.
+
+| | Old | New |
+|---|---|---|
+| Answerable questions refused (36) | 1 (the 40-character bug) | 0 |
+| Out-of-scope questions refused (7) | 7 | 7 |
+| Pass the code citation check, so the 120B check is skipped | 26/35 | 32/36 |
+| Same, 11 changed cases × 3 runs | 20/33 | 27/33 |
+| Answers saying "excerpts" or "passages" | 2/35 | 0/36 |
+| Tokens in / out (43 questions) | 73,635 / 12,755 | 78,236 / 14,868 |
+
+Output grew mostly as hidden reasoning (visible answers −2% in characters on the 43, +2% on the repeats; output
+tokens +22% on the repeats). Net cost is still lower: an answer check costs ~1,900 tokens, and on the 43 questions 6
+more answers skip it (~11,400 tokens) against ~6,700 extra for writing. Remaining citation-check failures are mostly
+the checker's: "25 May 2018 [1]" is in the passage, and comparison sentences that paraphrase two passages
+(`cmp-bm25-tfidf` fails 0/3 with the new prompt, 2/3 with the old) can't be matched word for word; that is the next
+review (the answer checker). The one real partial answer (`ma-ccs`: the documents don't name the framework or
+database) still doesn't say so with either prompt.
+
+Results: `benchmark/results/rag_prompt_eval.json` (`#2`, `#3` keys are the repeats), old prompt in
+`rag_prompt_old.json`.

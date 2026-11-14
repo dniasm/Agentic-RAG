@@ -128,6 +128,13 @@ class RagSentinel(unittest.TestCase):
     def test_bare_sentinel_means_no_answer(self):
         self.assertIsNone(self._generate(rag.NO_ANSWER))
 
+    def test_short_answer_is_kept(self):
+        # A 37-character answer used to be dropped as "no answer" (benchmark wiki-bm-stands, 2026-11-14).
+        self.assertEqual(self._generate("BM stands for “best matching” [1]."), "BM stands for “best matching” [1].")
+        self.assertIsNone(self._generate(rag.NO_ANSWER + "."))
+        self.assertIsNone(self._generate("  "))
+        self.assertIsNone(self._generate("Sorry. " + rag.NO_ANSWER))
+
     def test_partial_answer_with_sentinel_is_kept(self):
         reply = ("The project was supervised by Mr. Pratik Joshi [1] and used an SVM classifier [2]. "
                  + rag.NO_ANSWER)
