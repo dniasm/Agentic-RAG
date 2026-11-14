@@ -86,6 +86,45 @@ def document_text(doc: dict) -> str:
     return "\n\n".join(p.page_content for p in pages)
 
 
+OUTLINE_MAX = 40   # headings sent to the agent
+_MD_HEADING = re.compile(r"^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$")
+_NUMBERED = re.compile(r"^(\d+(\.\d+)*\.?|[IVX]+\.)\s+[A-Z]")
+
+
+def _looks_like_heading(line: str) -> bool:
+    """A plain-text line that reads as a heading: short, no closing punctuation, and in capitals ("AT A GLANCE"),
+    numbered ("2.1 Results") or bold on its own ("**Results**"). PDFs keep no heading styles, so this is a guess."""
+    line = line.strip().strip("*").strip()
+    letters = [c for c in line if c.isalpha()]
+    if not 3 <= len(line) <= 80 or len(letters) < 3 or line[-1] in ".,;:)":
+        return False
+    return line.isupper() or bool(_NUMBERED.match(line))
+
+
+def outline(doc: dict) -> list[str]:
+    """The document's headings, in order: Word heading styles, Markdown "#" lines, or (a PDF, plain text, or a file
+    without either) lines that look like headings. At most OUTLINE_MAX."""
+    path = config.LIBRARY_DIR / doc["file_name"]
+    found: list[str] = []
+    if doc["ext"] == ".docx":
+        import docx
+        paragraphs = [p for p in docx.Document(str(path)).paragraphs if p.text.strip()]
+        found = [p.text.strip() for p in paragraphs
+                 if (p.style.name or "").lower().startswith(("heading", "title"))]
+        lines = [p.text for p in paragraphs]
+    else:
+        lines = document_text(doc).splitlines()
+        if doc["ext"] == ".md":
+            found = [m.group(1) for m in map(_MD_HEADING.match, lines) if m]
+    if not found:
+        found = [line.strip().strip("*").strip() for line in lines if _looks_like_heading(line)]
+    out = []
+    for h in found:
+        if not out or out[-1] != h:
+            out.append(h)
+    return out[:OUTLINE_MAX]
+
+
 PASSAGE_BEFORE, PASSAGE_AFTER = 100, 900
 
 

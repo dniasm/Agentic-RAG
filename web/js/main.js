@@ -10,6 +10,7 @@ import { createAuth } from "./app/auth.js";
 import { createChat } from "./app/chat.js";
 import { createLibrary } from "./app/library.js";
 import { createMeter } from "./app/meter.js";
+import { createPreview } from "./app/preview.js";
 import { createQueue } from "./app/queue.js";
 
 let started = false;
@@ -24,8 +25,12 @@ function startApp(user) {
     try { await api("/api/auth/logout", postJson({})); } finally { location.reload(); }
   });
 
+  const preview = createPreview({
+    api, toast, els: elements({ dialog: "preview", title: "preview-title", body: "preview-body", close: "preview-close" }),
+  });
+
   const library = createLibrary({
-    api, toast,
+    api, toast, onPreview: preview.show,
     els: elements({ panel: "library", list: "doc-list", count: "doc-count", empty: "empty-library",
                     fileInput: "file-input", toggle: "toggle-library" }),
   });

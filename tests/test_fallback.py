@@ -35,7 +35,7 @@ def models(monkeypatch):
     monkeypatch.setattr(limits, "BACKUP_WINDOW", limits.TokenWindow(8000, 60.0, clock=clock))
     made = {}
 
-    def llm(name, retries):
+    def llm(name, retries, key=0):
         made[name] = made.get(name) or Fake(name)
         made[name].retries = retries
         return made[name]
@@ -126,10 +126,25 @@ def test_the_backup_stopping_early_with_a_false_claim_is_retried_on_the_main_mod
     made[config.AGENT_MODEL] = Script(config.AGENT_MODEL, [
         ([("rename_document", {"doc_id": glove, "new_title": "GloVe Primer"})], "")])
     answers = iter(["MORE", "DONE"])
-    monkeypatch.setattr(agent, "_checker", lambda: type("C", (), {"invoke": lambda self, p: AIMessage(next(answers))})())
+    monkeypatch.setattr(agent, "_checker", lambda key=0: type("C", (), {"invoke": lambda self, p: AIMessage(next(answers))})())
     limits.WINDOW.record(7000)                                           # the 120B is full: the 20B starts
     model = agent.GroqAgentModel()
     model.sleep = lambda s: setattr(clock, "t", clock.t + s)
     out = agent.chat("fb3", "rename both to Primer titles", model=model)
     assert [a["new_title"] for a in out["actions"]] == ["SVM Primer", "GloVe Primer"]
     assert "GloVe Primer" in out["reply"] and "Both documents have been renamed" not in out["reply"]
+
+
+def test_a_rate_limited_key_hands_the_call_to_the_next_key(models, monkeypatch):
+    """day7's key rotation: the 120B on key 2 before the 20B takes over."""
+    from renamer.day7 import llm as day7_llm
+    monkeypatch.setattr(day7_llm, "groq_keys", lambda: ["k1", "k2"])
+    keys = {}
+
+    def make(name, retries, key=0):
+        keys[(name, key)] = keys.get((name, key)) or Fake(name, error=rate_limited() if key == 0 else None)
+        return keys[(name, key)]
+    monkeypatch.setattr(agent, "_llm", make)
+    reply = agent.GroqAgentModel().invoke(["hi"])
+    assert reply.response_metadata["model_name"] == config.AGENT_MODEL
+    assert keys[(config.AGENT_MODEL, 0)].calls == keys[(config.AGENT_MODEL, 1)].calls == 1

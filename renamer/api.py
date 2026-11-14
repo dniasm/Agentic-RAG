@@ -184,12 +184,32 @@ def delete_document(doc_id: str, user: dict = Depends(current_user)):
 
 
 @app.get("/api/documents/{doc_id}/file")
-def download(doc_id: str, user: dict = Depends(current_user)):
+def download(doc_id: str, inline: bool = False, user: dict = Depends(current_user)):
+    """The stored file; inline=true shows it in the browser (the PDF preview) instead of downloading it."""
     doc = _own_doc(doc_id, user)
     path = config.LIBRARY_DIR / doc["file_name"]
     if not path.exists():
         raise HTTPException(404, "File not found")
-    return FileResponse(path, filename=Path(doc["file_name"]).name)
+    return FileResponse(path, filename=Path(doc["file_name"]).name,
+                        content_disposition_type="inline" if inline else "attachment")
+
+
+PREVIEW_MAX_CHARS = 200_000
+
+
+@app.get("/api/documents/{doc_id}/preview")
+def preview(doc_id: str, user: dict = Depends(current_user)):
+    """The document's text for the preview window (a PDF is shown from /file?inline=true instead)."""
+    doc = _own_doc(doc_id, user)
+    if not (config.LIBRARY_DIR / doc["file_name"]).exists():
+        raise HTTPException(404, "File not found")
+    from renamer import editing
+    try:
+        text = editing.document_text(doc)
+    except Exception as e:
+        raise HTTPException(500, f"Couldn't read this document: {str(e)[:200]}") from e
+    return {"title": doc["title"], "ext": doc["ext"], "text": text[:PREVIEW_MAX_CHARS],
+            "truncated": len(text) > PREVIEW_MAX_CHARS}
 
 
 @app.get("/api/documents/{doc_id}/pdf")

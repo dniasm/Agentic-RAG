@@ -54,8 +54,15 @@ def tokens_of(message) -> int:
     return int(usage.get("total_tokens") or (usage.get("input_tokens", 0) + usage.get("output_tokens", 0)) or 0)
 
 
-WINDOW = TokenWindow(config.TPM_LIMIT, config.TPM_WINDOW_SECONDS)                 # the 120B (and the title writer)
-BACKUP_WINDOW = TokenWindow(config.BACKUP_TPM_LIMIT, config.TPM_WINDOW_SECONDS)   # the 20B: Groq limits each model apart
+def key_count() -> int:
+    """Groq keys from separate accounts (GROQ_API_KEY ... _4): each has its own per-model limit, so they add up."""
+    from renamer.day7 import llm
+    return max(1, len(llm.groq_keys()))
+
+
+# Pooled over every key: a call goes to a key with room (day7's key pool skips limited ones).
+WINDOW = TokenWindow(config.TPM_LIMIT * key_count(), config.TPM_WINDOW_SECONDS)                # the 120B (and titles)
+BACKUP_WINDOW = TokenWindow(config.BACKUP_TPM_LIMIT * key_count(), config.TPM_WINDOW_SECONDS)  # the 20B: limited apart
 
 
 def window_for(message) -> TokenWindow:

@@ -44,6 +44,8 @@ def fake_title(prompt: str) -> titles.DocProfile:
 
 @pytest.fixture(autouse=True)
 def fakes(monkeypatch):
+    from renamer.day7 import llm
+    llm.key_pool.reset()   # no rate-limited key carried over from another test
     monkeypatch.setattr(ingestion, "embed_paced", lambda texts, title: [fake_vector(t) for t in texts])
     monkeypatch.setattr(retrieval.embedding_cache, "embed_query", fake_vector)
     monkeypatch.setattr(rerank, "score", fake_rerank)

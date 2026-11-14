@@ -63,7 +63,7 @@ TOOLS = [
     _tool("find_documents", "Which document the user means, by name or content: a decision (unique, ambiguous, "
           "uncertain, none) and the candidates.", {"description": {**_S, "description": "The user's words for it."}},
           ["description"]),
-    _tool("document_details", "A document's summary, keywords, earlier names and edits; with passage, the exact text "
+    _tool("document_details", "A document's summary, keywords, headings, earlier names and edits; with passage, the exact text "
           "around those words.", {"doc_id": _S, "passage": {**_S, "description": "A few words of the part you need."}},
           ["doc_id"]),
     _tool("edit_document", "Change a document's text. replace: find (exact wording) becomes text. append: text is "
@@ -172,6 +172,10 @@ def run_tool(name: str, args: dict, guard: Guard, actions: list) -> dict:
                "summary": doc["summary"], "keywords": doc["keywords"], "pages": doc["pages"],
                "previous_names": [h["old_title"] for h in catalog.rename_history(doc["id"])],
                "edits": [e["detail"] for e in catalog.edit_history(doc["id"])]}
+        try:
+            out["headings"] = editing.outline(doc)
+        except Exception as e:
+            log.warning("Couldn't read the headings of %s: %s", doc["title"], str(e)[:200])
         if (args.get("passage") or "").strip():
             try:
                 text = editing.passage(doc, args["passage"])
@@ -382,28 +386,41 @@ def _rename(args: dict, guard: Guard, actions: list) -> dict:
 
 
 # ---------------------------------------------------------------- the loop
-def _llm(model: str, retries: int):
+def _llm(model: str, retries: int, key: int = 0):
+    """`model` with tools, on Groq key number `key` (day7's GROQ_API_KEY ... GROQ_API_KEY_4)."""
     from langchain_groq import ChatGroq
 
-    from renamer.day7 import settings
+    from renamer.day7 import llm
 
-    return ChatGroq(model=model, temperature=0, api_key=settings.groq_api_key, max_retries=retries,
+    return ChatGroq(model=model, temperature=0, api_key=llm._key(key), max_retries=retries,
                     reasoning_effort=config.AGENT_REASONING or None).bind_tools(TOOLS)
 
 
-def _checker():
+def _checker(key: int = 0):
     """The 20B without tools, for one-word questions."""
     from langchain_groq import ChatGroq
 
-    from renamer.day7 import settings
+    from renamer.day7 import llm
 
-    return ChatGroq(model=config.BACKUP_MODEL, temperature=0, api_key=settings.groq_api_key, max_retries=1,
+    return ChatGroq(model=config.BACKUP_MODEL, temperature=0, api_key=llm._key(key), max_retries=1,
                     reasoning_effort="low")
+
+
+def _on_keys(model: str, clients: dict, make, call):
+    """day7's key rotation: call(client) on the first Groq key with room for `model`, the next key on a rate limit.
+    Raises groq.RateLimitError only when every key is limited for that model, so the 120B -> 20B fallback starts then."""
+    from renamer.day7 import llm
+
+    def client(key):
+        if key not in clients:
+            clients[key] = make(key)
+        return clients[key]
+    return llm.call_with_keys(model, client, call)
 
 
 class GroqAgentModel:
     """The 120B, or the 20B when the 120B has no room. Groq limits each model's tokens per minute apart, so the 20B
-    is a second allowance, not a slower path:
+    is a second allowance, not a slower path. Each model runs on every Groq key in turn first (day7's key pool):
 
       * no room in the 120B's minute for a call of the size seen last: straight to the 20B, no waiting;
       * the 120B rate-limited anyway (Groq counts a little differently): the 20B at once. The 120B gets no
@@ -412,7 +429,7 @@ class GroqAgentModel:
     """
 
     def __init__(self):
-        self.main, self.backup, self.checker = None, None, None
+        self.main, self.backup, self.checker = {}, {}, {}   # one client per Groq key
         self.estimate = config.CALL_ESTIMATE_TOKENS   # the size of the 120B's last call
         self.sleep = time.sleep
 
@@ -424,8 +441,7 @@ class GroqAgentModel:
         prompt = (f'The user wrote:\n"""{message[:1500]}"""\n\nDone so far:\n{lines}\n\n'
                   "Has everything the user asked for in that message been done? Answer with one word: DONE or MORE.")
         try:
-            self.checker = self.checker or _checker()
-            reply = self.checker.invoke(prompt)
+            reply = _on_keys(config.BACKUP_MODEL, self.checker, _checker, lambda c: c.invoke(prompt))
         except Exception as e:
             log.warning("Couldn't check whether the request is finished: %s", str(e)[:200])
             return True, 0
@@ -436,8 +452,12 @@ class GroqAgentModel:
         return "MORE" in answer or "DONE" not in answer, used
 
     def _use_backup(self, messages):
-        self.backup = self.backup or _llm(config.BACKUP_MODEL, retries=2)
-        return self.backup.invoke(messages)
+        return _on_keys(config.BACKUP_MODEL, self.backup, lambda k: _llm(config.BACKUP_MODEL, retries=2, key=k),
+                        lambda c: c.invoke(messages))
+
+    def _use_main(self, messages):
+        return _on_keys(config.AGENT_MODEL, self.main, lambda k: _llm(config.AGENT_MODEL, retries=0, key=k),
+                        lambda c: c.invoke(messages))
 
     def retry_on_main(self, messages):
         """The 20B gave up (an empty answer). Wait for room in the 120B's minute, at most RETRY_WAIT_SECONDS, and ask
@@ -446,9 +466,8 @@ class GroqAgentModel:
         log.info("Empty answer; asking %s again%s", config.AGENT_MODEL, f" after {wait:.0f}s" if wait > 0 else "")
         if wait > 0:
             self.sleep(wait)
-        self.main = self.main or _llm(config.AGENT_MODEL, retries=0)
         try:
-            reply = self.main.invoke(messages)
+            reply = self._use_main(messages)
         except groq.RateLimitError as e:
             log.warning("Agent model still rate-limited, using %s: %s", config.BACKUP_MODEL, str(e)[:200])
             return self._use_backup(messages)
@@ -460,9 +479,8 @@ class GroqAgentModel:
             log.info("No room in %s's minute (%d of %d tokens used), using %s", config.AGENT_MODEL,
                      limits.WINDOW.used(), limits.WINDOW.limit, config.BACKUP_MODEL)
             return self._use_backup(messages)
-        self.main = self.main or _llm(config.AGENT_MODEL, retries=0)
         try:
-            reply = self.main.invoke(messages)
+            reply = self._use_main(messages)
             self.estimate = limits.tokens_of(reply) or self.estimate
             return reply
         except groq.RateLimitError as e:

@@ -37,6 +37,7 @@ os.environ["UPLOAD_DIR"] = str(config.LIBRARY_DIR)
 if str(config.DAY7_DIR) not in sys.path:
     sys.path.insert(0, str(config.DAY7_DIR))
 
+from backend.config import llm  # noqa: E402
 from backend.config.settings import settings  # noqa: E402
 from backend.rag import ingestion, rerank, retrieval, sparse, vectorstore  # noqa: E402
 

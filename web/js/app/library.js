@@ -20,6 +20,7 @@ function documentItem(d, flash) {
     ${d.status === "failed" ? `<div class="doc-summary" style="color:var(--negative)">${escapeHtml(d.error || "")}</div>` :
       d.summary ? `<div class="doc-summary" title="${escapeHtml(d.summary)}">${escapeHtml(d.summary)}</div>` : ""}
     <div class="doc-actions">
+      ${d.status === "indexed" ? `<button class="link-button" data-preview="${d.id}">Preview</button>` : ""}
       <a class="link-button" href="/api/documents/${d.id}/file" title="${escapeHtml(d.file_name)}">Download</a>
       ${d.status === "indexed" && d.ext !== ".pdf"
         ? `<a class="link-button" href="/api/documents/${d.id}/pdf" title="Download as a PDF (simple layout)">PDF</a>` : ""}
@@ -29,8 +30,8 @@ function documentItem(d, flash) {
   return li;
 }
 
-/** els: panel, list, count, empty, fileInput, toggle. */
-export function createLibrary({ els, api, toast }) {
+/** els: panel, list, count, empty, fileInput, toggle. onPreview(doc) opens a document's preview. */
+export function createLibrary({ els, api, toast, onPreview = () => {} }) {
   let docs = [];
 
   function render(flashIds = []) {
@@ -75,6 +76,8 @@ export function createLibrary({ els, api, toast }) {
 
   els.fileInput.addEventListener("change", () => { upload(els.fileInput.files); els.fileInput.value = ""; });
   els.list.addEventListener("click", async (e) => {
+    const previewId = e.target.dataset?.preview;
+    if (previewId) return onPreview(docs.find((d) => d.id === previewId));
     const id = e.target.dataset?.delete;
     if (!id) return;
     const doc = docs.find((d) => d.id === id);
