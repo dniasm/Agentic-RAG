@@ -206,6 +206,7 @@ overridden by an environment variable / `.env` entry with the same name (case-in
 | Setting | Default | Purpose |
 |---|---|---|
 | `GROQ_API_KEY` / `GEMINI_API_KEY` | — | **Required.** |
+| `GROQ_API_KEY_2` … `GROQ_API_KEY_4` | — | Optional keys from **other** Groq organisations. Groq limits are per organisation and model, so when a model's per-minute or daily limit is used up on one key, that model is called with the next key (`config/llm.call_with_keys`); the exhausted key is skipped until the reset time in Groq's error. The 120B → 20B and Qwen → 20B backups start only when every key is out for that model. Keys from the same account share its limits and add nothing. |
 | `TAVILY_API_KEY` | `""` | Optional. Enables Tavily as the first web provider. |
 | `VOYAGE_API_KEY` | `""` | Reranking and conversation memory. Without it, episodes are skipped (facts still work). |
 | `LLM_MODEL` | `openai/gpt-oss-120b` | Replies, knowledge gate, evaluation, reviews. |
@@ -1452,10 +1453,12 @@ Four token cuts that leave answer quality alone.
   thanks or goodbye ("hi", "thanks a lot!", "see you later") goes straight to small talk. The first message of a
   conversation that explicitly asks for the uploaded documents (`asks_for_documents`, with uploads) goes straight to
   the documents; with no history it is already standalone. Trace steps say `decided_in_code`.
-- **Episodes only for the answer writer** (`tools.memories_for_decision`). The router and the knowledge gate get the
-  saved facts, not the up to three ~800-character past-conversation summaries, unless the message refers back to a
-  past conversation ("last time", "remember", "you said", "our previous chat"): then they need the episodes to see
-  that the answer is already known.
+- **Shorter episodes for the router and the gate** (`tools.memories_for_decision`). They get each recalled episode
+  cut to 300 characters (the answer writer gets them whole; whole for both when the message says "last time",
+  "remember", "you said"…). First version dropped the episodes for these two steps entirely: on 7 messages whose
+  answer was in a recalled episode (2 runs each) that went from 14/14 answered from memory to 10/14 ("which metrics
+  did we settle on?" refused by the gate, "how many days was my trek?" sent to the documents), since a message can
+  refer back without saying "last time". With the 300-character cut: 14/14 again.
 - **Slim small-talk prompt** (`direct_answer.SMALL_TALK`). Small talk no longer gets the direct-answer rules on
   accuracy and follow-ups: system prompt 1,848 characters instead of ~4,200; the persona rule (`IDENTITY`) is kept.
 - **Batched fact extraction** (§8, `memory/batching.py`): one memory-model call per conversation pause instead of
@@ -1475,6 +1478,25 @@ picks the open-question prompt and temperature, so the answer call can't know wh
 needs full answers (31 cases × 5, ~300k 120B tokens). Prompt caching was left as it is (§21.3).
 
 Results: `benchmark/results/memory_eval_batch.json` (batched), `memory_eval.json` (per message, same day).
+
+**Same messages, old code (0b189e5) vs new**, 8 messages with fixed histories, three saved facts and two recalled
+episodes: greeting, thanks, personal small talk, a first-message document request, a factual and an opinion question,
+a follow-up after a long answer, and a reference to a past chat. Old code ran on a key with capacity (its first run hit
+the 120B limit and 5 answers came from the backup model, so it was discarded); 0 backup answers in both runs below.
+
+| Message | Old | New |
+|---|---|---|
+| "hi" | 2,591 | 937 (router and its 120B review skipped) |
+| "thanks a lot!" | 3,720 | 1,836 |
+| personal small talk | 2,607 | 2,061 (slim prompt) |
+| first-message document request | 3,042 | 1,846 (router and review skipped) |
+| factual / opinion / long follow-up / past chat | 3,021 / 3,097 / 4,687 / 3,060 | 3,035 / 3,065 / 4,674 / 3,129 |
+| **Agent total** | **25,825** | **20,583 (−20%)** |
+
+Single messages vary by about ±500 tokens between runs (the router asks for a fact check, and so a gate call, in some
+runs and not others), so only the total is meaningful. The long follow-up's previous answer contained code, so the
+history cap left it whole. Small talk on 6 personal messages ("my dog died yesterday", "I got the internship!!") read
+as warm and natural with both prompts; the new one mentions the documents and web less often (2/6 replies vs 5/6).
 
 Two smaller cuts, the same day:
 

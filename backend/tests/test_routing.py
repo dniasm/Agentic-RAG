@@ -357,10 +357,14 @@ class EpisodesOnlyForTheAnswer(unittest.TestCase):
          "memory_source": "semantic"},
     ]
 
-    def test_router_and_gate_get_saved_facts_only(self):
-        from backend.tools import memories_for_decision
-        kept = memories_for_decision(self.MEMORIES, "what is tf-idf?")
-        self.assertEqual([m["memory_key"] for m in kept], ["name"])
+    def test_router_and_gate_get_long_episodes_shortened(self):
+        from backend.tools import DECISION_EPISODE_CHARS, memories_for_decision
+        long_episode = {"memory_key": "past_conversation_episodic", "memory_value": "e" * 800,
+                        "memory_source": "semantic"}
+        kept = memories_for_decision(self.MEMORIES + [long_episode], "what is tf-idf?")
+        self.assertEqual([m["memory_value"] for m in kept[:2]], ["Asha", "User asked about BM25."])  # short: whole
+        self.assertLessEqual(len(kept[2]["memory_value"]), DECISION_EPISODE_CHARS + 2)
+        self.assertEqual(len(long_episode["memory_value"]), 800)  # the answer writer's copy is untouched
 
     def test_episodes_kept_when_the_message_refers_to_a_past_conversation(self):
         from backend.tools import memories_for_decision
@@ -368,7 +372,7 @@ class EpisodesOnlyForTheAnswer(unittest.TestCase):
                   "in our previous chat you said something about BM25"):
             self.assertEqual(len(memories_for_decision(self.MEMORIES, q)), 2, q)
 
-    def test_router_prompt_leaves_episodes_out(self):
+    def test_router_prompt_keeps_short_episodes(self):
         decision = nodes.Route(
             message_type="information_request", source_preference="model_knowledge", reasoning="r",
             query_is_clear=True, standalone_query="q", confidence="high", confidence_required=True)
@@ -376,7 +380,7 @@ class EpisodesOnlyForTheAnswer(unittest.TestCase):
             nodes.router_node({"query": "what is tf-idf?", "doc_names": [], "memories": self.MEMORIES})
         prompt = router.call_args.args[0]
         self.assertIn("name: Asha", prompt)
-        self.assertNotIn("BM25", prompt)
+        self.assertIn("BM25", prompt)  # a message can refer back without saying "last time"
 
     def test_answer_writer_still_gets_episodes(self):
         from backend.tools import direct_answer
@@ -499,6 +503,95 @@ class ShortEpisodes(unittest.TestCase):
         summarized, episode = self._remember("Explain how BM25 ranks documents?", "z" * 900)
         self.assertTrue(summarized)
         self.assertEqual(episode, "Summary.")
+
+
+def _rate_limit(text="Rate limit reached ... tokens per day (TPD). Please try again in 7m12.5s."):
+    import groq
+    import httpx
+    return groq.RateLimitError(text, response=httpx.Response(429, request=httpx.Request("POST", "http://x")),
+                               body=None)
+
+
+class GroqKeyRotation(unittest.TestCase):
+    """Each model moves to the next Groq key when its limit is used up. No API calls."""
+
+    def setUp(self):
+        from backend.config import llm
+        self.llm = llm
+        llm.key_pool.reset()
+        self.addCleanup(llm.key_pool.reset)
+        patcher = mock.patch.object(llm, "groq_keys", return_value=["k1", "k2", "k3", "k4"])
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _models(self, limited: set[int]):
+        """factory(key) -> a fake model that is rate-limited on the keys in `limited`."""
+        calls = []
+
+        def factory(key):
+            def call():
+                calls.append(key)
+                if key in limited:
+                    raise _rate_limit()
+                return f"answer from key {key + 1}"
+            return call
+        return factory, calls
+
+    def test_reset_time_is_read_from_the_error(self):
+        self.assertAlmostEqual(self.llm.cooldown_seconds(_rate_limit()), 432.5)
+        self.assertEqual(self.llm.cooldown_seconds(_rate_limit("Please try again in 1h2m3s.")), 3723)
+        self.assertEqual(self.llm.cooldown_seconds(_rate_limit("try again in 450ms")), 1.0)
+        self.assertEqual(self.llm.cooldown_seconds(_rate_limit("no hint")), 60.0)
+
+    def test_next_key_is_used_and_the_limited_one_skipped_afterwards(self):
+        factory, calls = self._models(limited={0, 1})
+        self.assertEqual(self.llm.call_with_keys("m", factory, lambda fn: fn()), "answer from key 3")
+        self.assertEqual(self.llm.call_with_keys("m", factory, lambda fn: fn()), "answer from key 3")
+        self.assertEqual(calls, [0, 1, 2, 2])  # keys 1 and 2 not retried while limited
+
+    def test_limits_are_per_model(self):
+        factory, _ = self._models(limited={0})
+        self.llm.call_with_keys("a", factory, lambda fn: fn())
+        factory_b, calls_b = self._models(limited=set())
+        self.llm.call_with_keys("b", factory_b, lambda fn: fn())
+        self.assertEqual(calls_b, [0])
+
+    def test_every_key_limited_raises_the_rate_limit_for_the_backups(self):
+        import groq
+        factory, calls = self._models(limited={0, 1, 2, 3})
+        with self.assertRaises(groq.RateLimitError):
+            self.llm.call_with_keys("m", factory, lambda fn: fn())
+        with self.assertRaises(groq.RateLimitError):  # known to be limited: no calls at all
+            self.llm.call_with_keys("m", factory, lambda fn: fn())
+        self.assertEqual(calls, [0, 1, 2, 3])
+
+    def test_answer_falls_back_to_the_small_model_only_after_every_key(self):
+        big = lambda key: mock.Mock(invoke=mock.Mock(side_effect=_rate_limit()))
+        small = lambda key: mock.Mock(invoke=mock.Mock(return_value=mock.Mock(content="small")))
+        with mock.patch.object(self.llm, "get_llm", side_effect=lambda t, k: big(k)) as get_big, \
+             mock.patch.object(self.llm, "get_backup_writer", side_effect=lambda t, k: small(k)):
+            self.assertEqual(self.llm.invoke_answer(["m"]), "small")
+        self.assertEqual([c.args[1] for c in get_big.call_args_list], [0, 1, 2, 3])
+        self.assertTrue(self.llm.consume_backup_flag())
+
+    def test_structured_output_skips_the_plain_json_retry_on_a_rate_limit(self):
+        from pydantic import BaseModel
+
+        class Out(BaseModel):
+            x: int
+
+        def fake_llm(key):
+            m = mock.Mock(model_name="openai/gpt-oss-20b")
+            if key == 0:
+                m.with_structured_output.return_value = RunnableLambda(lambda p: (_ for _ in ()).throw(_rate_limit()))
+                m.invoke.side_effect = AssertionError("plain-JSON fallback called on a rate limit")
+            else:
+                m.with_structured_output.return_value = RunnableLambda(lambda p: Out(x=key))
+            return m
+
+        from langchain_core.runnables import RunnableLambda
+        with mock.patch.object(self.llm, "get_fast_llm", side_effect=fake_llm):
+            self.assertEqual(self.llm.structured(Out).invoke("prompt").x, 1)
 
 
 if __name__ == "__main__":

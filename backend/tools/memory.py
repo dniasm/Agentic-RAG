@@ -18,7 +18,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from backend.config.llm import get_memory_llm, structured
+from backend.config.llm import invoke_memory, structured
 from backend.models import database as db
 
 log = logging.getLogger(__name__)
@@ -333,7 +333,7 @@ _THINK = re.compile(r"<think>.*?</think>", re.S)
 def summarize_exchange(question: str, answer: str, callbacks: list | None = None) -> str | None:
     """A one- or two-sentence summary of an exchange (memory model), or None if it couldn't be written."""
     try:
-        reply = get_memory_llm().invoke(
+        reply = invoke_memory(
             EPISODE_PROMPT.format(question=question[:1500], answer=answer[:3000]),
             config={"callbacks": callbacks or [], "metadata": {"usage_step": "episode_summary"}},
         ).content

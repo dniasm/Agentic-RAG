@@ -52,13 +52,22 @@ _PAST_REFERENCE = re.compile(
     re.I)
 
 
+DECISION_EPISODE_CHARS = 300  # characters of each recalled episode the router and the gate see
+
+
 def memories_for_decision(memories: list[dict], query: str) -> list[dict]:
-    """Memories for the router and the knowledge gate: saved facts only. Recalled episodes (up to three of ~800
-    characters) are kept for the answer writer, which is the only step that uses their content, unless the
-    message refers back to a past conversation."""
+    """Memories for the router and the knowledge gate. Recalled episodes (up to three, each up to ~800 characters
+    for older ones) are shortened: these steps only need to see that the answer is already known, the answer
+    writer gets them whole. Dropping them entirely (tried 2026-11-14) sent "which metrics did we settle on?" and
+    "how many days was my trek?" to the documents or a refusal in 4 of 14 runs, since a message can refer back
+    without saying "last time". When it does say so, the episodes are kept whole."""
     if _PAST_REFERENCE.search(query):
         return memories
-    return [m for m in memories if m.get("memory_source") != "semantic"]
+    return [
+        m if m.get("memory_source") != "semantic" or len(m["memory_value"]) <= DECISION_EPISODE_CHARS
+        else {**m, "memory_value": m["memory_value"][:DECISION_EPISODE_CHARS].rstrip() + " …"}
+        for m in memories
+    ]
 
 
 def memory_lines(memories: list[dict], empty: str = "(none)") -> str:

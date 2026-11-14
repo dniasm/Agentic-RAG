@@ -77,6 +77,7 @@ Old vs current, from the benchmarks and the token log (details: [`docs/DOCUMENTA
 | Web answers checked without the 120B (32 answers) | 0/32 | 17/32; 0 real problems missed; 124/128 broken answers caught |
 | Identity probes naming the underlying model or provider (33) | 27/33 | 0/33; questions about AI models still answered |
 | Persona "Hroptatyr": name given when asked / says "the Wise" | — | 9/9 / 0 |
+| Agent tokens, same 8 messages (old code vs new) | 25,825 | 20,583 (−20%); greetings −64%, document requests −39% |
 | Router calls on 80 router test messages | 80 | 70 (greetings and first-message document requests decided in code) |
 | Memory benchmark, batched extraction (same day) | 17/18, 14,375 tokens | 17/18, 12,180 (−15%); 0 false saves |
 
@@ -108,6 +109,7 @@ What every file does: [`docs/DOCUMENTATION.md` §6](docs/DOCUMENTATION.md#6-proj
 GROQ_API_KEY=...
 GEMINI_API_KEY=...
 # optional
+GROQ_API_KEY_2=...         # up to GROQ_API_KEY_4: keys from other Groq accounts, used when a model's limit runs out
 TAVILY_API_KEY=...
 VOYAGE_API_KEY=...         # reranking and conversation memory
 OPEN_ROUTER_API_KEY=...    # only for the Nemotron experiments
@@ -140,7 +142,7 @@ Create an account on the login screen, upload files on **Documents**, then chat.
 
 Smoke test (backend must be running): `python test_rag_pipeline.py [path/to/file.pdf]`
 
-Unit tests (91, no API calls): `python -m unittest discover backend/tests -p "test_*.py"` (routing, memory, streaming,
+Unit tests (97, no API calls): `python -m unittest discover backend/tests -p "test_*.py"` (routing, memory, streaming,
 citation check, reranker fallbacks)
 
 Model experiments (they call the APIs) live in `scripts/experiments/`; run them from the project root,

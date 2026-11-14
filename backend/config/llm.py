@@ -2,6 +2,9 @@
 import json
 import logging
 import re
+import threading
+import time
+from collections.abc import Callable
 from contextvars import ContextVar
 from functools import lru_cache
 
@@ -15,13 +18,87 @@ from backend.config.settings import settings
 log = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------------- Groq keys
+# Groq rate limits are per organisation and per model. With extra keys from other organisations
+# (GROQ_API_KEY_2 … GROQ_API_KEY_4), a model whose per-minute or daily limit is used up on one key is called with
+# the next one. The model-level backups further down (large -> small model, Qwen -> small model) only start when
+# every key is out for that model.
+def groq_keys() -> list[str]:
+    keys = (settings.groq_api_key, settings.groq_api_key_2, settings.groq_api_key_3, settings.groq_api_key_4)
+    return [k for k in keys if k]
+
+
+_RETRY_IN = re.compile(r"try again in ((?:\d+(?:\.\d+)?(?:h|ms|m|s))+)")
+_RETRY_PART = re.compile(r"(\d+(?:\.\d+)?)(h|ms|m|s)")
+_UNIT_SECONDS = {"h": 3600, "m": 60, "s": 1, "ms": 0.001}
+
+
+def cooldown_seconds(error: Exception) -> float:
+    """How long Groq says to wait ("Please try again in 7m12.5s"); 60 s if it doesn't say."""
+    match = _RETRY_IN.search(str(error))
+    if not match:
+        return 60.0
+    return max(1.0, sum(float(n) * _UNIT_SECONDS[u] for n, u in _RETRY_PART.findall(match.group(1))))
+
+
+class KeyPool:
+    """Remembers which key is rate-limited for which model until Groq's reset time, so calls go straight to a
+    key that still has capacity instead of failing (and retrying) on an exhausted one first."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._until: dict[tuple[str, int], float] = {}
+        self._last_error: dict[str, Exception] = {}
+
+    def available(self, model: str, count: int) -> list[int]:
+        now = time.monotonic()
+        with self._lock:
+            return [i for i in range(count) if self._until.get((model, i), 0) <= now]
+
+    def mark(self, model: str, index: int, error: Exception) -> None:
+        wait = cooldown_seconds(error)
+        with self._lock:
+            self._until[(model, index)] = time.monotonic() + wait
+            self._last_error[model] = error
+        log.warning("Groq key %d is rate-limited for %s for %.0f s: %s", index + 1, model, wait, str(error)[:160])
+
+    def last_error(self, model: str) -> Exception:
+        with self._lock:
+            return self._last_error.get(model) or RuntimeError(f"No Groq key available for {model}")
+
+    def reset(self) -> None:
+        with self._lock:
+            self._until.clear()
+            self._last_error.clear()
+
+
+key_pool = KeyPool()
+
+
+def call_with_keys(model: str, factory: Callable[[int], object], call: Callable[[object], object]):
+    """call(factory(key_index)) on the first key with capacity for `model`; on a rate limit, the next one.
+    Re-raises the last groq.RateLimitError when every key is limited, so the callers' backups take over."""
+    count = max(1, len(groq_keys()))
+    for index in key_pool.available(model, count):
+        try:
+            return call(factory(index))
+        except groq.RateLimitError as e:
+            key_pool.mark(model, index, e)
+    raise key_pool.last_error(model)
+
+
+def _key(index: int) -> str:
+    keys = groq_keys()
+    return keys[index] if index < len(keys) else settings.groq_api_key
+
+
 @lru_cache
-def get_llm(temperature: float | None = None) -> ChatGroq:
+def get_llm(temperature: float | None = None, key: int = 0) -> ChatGroq:
     """Stronger model used to write user-facing answers (LLM_TEMPERATURE unless given)."""
     return ChatGroq(
         model=settings.llm_model,
         temperature=settings.llm_temperature if temperature is None else temperature,
-        api_key=settings.groq_api_key,
+        api_key=_key(key),
         max_retries=2,
     )
 
@@ -37,52 +114,57 @@ def get_nemotron_llm() -> ChatOpenAI:
     )
 
 @lru_cache
-def get_fast_llm() -> ChatGroq:
+def get_fast_llm(key: int = 0) -> ChatGroq:
     """Cheap, deterministic model for routing / grading / rewriting / evaluation."""
     return ChatGroq(
         model=settings.fast_llm_model,
         temperature=0,
-        api_key=settings.groq_api_key,
+        api_key=_key(key),
         max_retries=2,
         reasoning_effort=settings.fast_llm_reasoning_effort or None,
     )
 
 
 @lru_cache
-def get_memory_llm() -> ChatGroq:
+def get_memory_llm(key: int = 0) -> ChatGroq:
     """Qwen: extracts persistent memories. Separate rate limit from gpt-oss, and it answers without
     hidden reasoning, so a structured extraction costs a few dozen output tokens instead of hundreds."""
     return ChatGroq(
         model=settings.memory_llm_model,
         temperature=0,
-        api_key=settings.groq_api_key,
+        api_key=_key(key),
         max_retries=2,
     )
 
 
 @lru_cache
-def get_judge_llm() -> ChatGroq:
+def get_judge_llm(key: int = 0) -> ChatGroq:
     """Large model for reviews and answer evaluation: deterministic, with lighter hidden reasoning.
     Same verdicts in testing, ~60% fewer output tokens, which matters under the free tier's TPM limit."""
     return ChatGroq(
         model=settings.llm_model,
         temperature=0,
-        api_key=settings.groq_api_key,
+        api_key=_key(key),
         max_retries=2,
         reasoning_effort=settings.judge_reasoning_effort or None,
     )
 
 
 @lru_cache
-def get_backup_writer(temperature: float | None = None) -> ChatGroq:
+def get_backup_writer(temperature: float | None = None, key: int = 0) -> ChatGroq:
     """The small model, set up for writing answers, used when the large model's quota is exhausted.
     Each Groq model has its own rate limits, so the small model usually still has capacity."""
     return ChatGroq(
         model=settings.fast_llm_model,
         temperature=settings.llm_temperature if temperature is None else temperature,
-        api_key=settings.groq_api_key,
+        api_key=_key(key),
         max_retries=2,
     )
+
+
+def invoke_memory(prompt, config=None):
+    """The memory model (Qwen), on the first Groq key with capacity."""
+    return call_with_keys(settings.memory_llm_model, get_memory_llm, lambda llm: llm.invoke(prompt, config))
 
 
 # ---------------------------------------------------------------- answer writing with quota fallback
@@ -91,14 +173,16 @@ _backup_used: ContextVar[bool] = ContextVar("backup_used", default=False)
 
 
 def invoke_answer(messages, temperature: float | None = None) -> str:
-    """Write a user-facing answer with the large model, falling back to the small model if the
-    large model's rate limit (per-minute or daily) is exhausted."""
+    """Write a user-facing answer with the large model (each Groq key in turn), falling back to the small model
+    when the large model's rate limit (per-minute or daily) is used up on every key."""
     try:
-        return get_llm(temperature).invoke(messages).content
+        return call_with_keys(settings.llm_model, lambda k: get_llm(temperature, k),
+                              lambda llm: llm.invoke(messages).content)
     except groq.RateLimitError as e:
         log.warning("Large model rate-limited, writing this answer with the small model: %s", str(e)[:200])
         _backup_used.set(True)
-        return get_backup_writer(temperature).invoke(messages).content
+        return call_with_keys(settings.fast_llm_model, lambda k: get_backup_writer(temperature, k),
+                              lambda llm: llm.invoke(messages).content)
 
 
 def consume_backup_flag() -> bool:
@@ -176,16 +260,40 @@ def _structured_for(llm: ChatGroq, model_cls):
     intermittently writes its reasoning where the JSON belongs (`json_validate_failed` /
     `output_parse_failed`); every failure re-sent the whole prompt. Strict mode constrains decoding instead.
     Other models (Qwen): tool calling. In testing Qwen's json_schema mode returned empty results.
+    A rate limit is not a format problem: it skips the plain-JSON fallback (which would hit the same limit)
+    and goes to the next key.
     """
     if llm.model_name in _STRICT_MODELS:
         primary = llm.with_structured_output(model_cls, method="json_schema", strict=True)
     else:
         primary = _recover_tool_call(llm.with_structured_output(model_cls, method="function_calling"), model_cls)
-    return primary.with_fallbacks([_plain_json(llm, model_cls).with_retry(stop_after_attempt=2)])
+    fallback = _plain_json(llm, model_cls).with_retry(stop_after_attempt=2)
+
+    def run(prompt, config):
+        try:
+            return primary.invoke(prompt, config)
+        except groq.RateLimitError:
+            raise
+        except Exception:
+            return fallback.invoke(prompt, config)
+
+    return RunnableLambda(run)
+
+
+def _structured_on_keys(factory: Callable[[int], ChatGroq], model_cls):
+    """_structured_for on the first Groq key with capacity for the model, then the next key on a rate limit."""
+    model = factory(0).model_name
+
+    def run(prompt, config):
+        return call_with_keys(model, lambda k: _structured_for(factory(k), model_cls),
+                              lambda chain: chain.invoke(prompt, config))
+
+    return RunnableLambda(run)
 
 
 def structured(model_cls, fast: bool = True, backup: bool = False, memory: bool = False):
-    """Schema-constrained output, returned as an instance of `model_cls`.
+    """Schema-constrained output, returned as an instance of `model_cls`. Each model is tried on every Groq key
+    (call_with_keys) before the model-level backup below.
 
     fast=True: the small model (routing and other short decisions).
     fast=False: the large model (reviews, evaluation, the knowledge gate).
@@ -196,10 +304,10 @@ def structured(model_cls, fast: bool = True, backup: bool = False, memory: bool 
     reviewing its own decision adds nothing, so reviews are simply skipped when the large model is out.
     """
     if memory:
-        return _structured_for(get_memory_llm(), model_cls).with_fallbacks(
-            [_structured_for(get_fast_llm(), model_cls)]
+        return _structured_on_keys(get_memory_llm, model_cls).with_fallbacks(
+            [_structured_on_keys(get_fast_llm, model_cls)]
         )
     if fast:
-        return _structured_for(get_fast_llm(), model_cls)
-    chain = _structured_for(get_judge_llm(), model_cls)
-    return chain.with_fallbacks([_structured_for(get_fast_llm(), model_cls)]) if backup else chain
+        return _structured_on_keys(get_fast_llm, model_cls)
+    chain = _structured_on_keys(get_judge_llm, model_cls)
+    return chain.with_fallbacks([_structured_on_keys(get_fast_llm, model_cls)]) if backup else chain

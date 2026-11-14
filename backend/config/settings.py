@@ -17,6 +17,11 @@ class Settings(BaseSettings):
 
     # --- Provider keys ---
     groq_api_key: str = ""
+    # Optional keys from other Groq organisations: each model moves to the next key when its limit on the current
+    # one is used up (limits are per organisation, so extra keys from the same account add nothing).
+    groq_api_key_2: str = ""
+    groq_api_key_3: str = ""
+    groq_api_key_4: str = ""
     gemini_api_key: str = ""
     tavily_api_key: str = ""  # optional but recommended; DuckDuckGo/Wikipedia are used otherwise
     open_router_api_key: str = ""
