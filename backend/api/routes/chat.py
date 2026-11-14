@@ -24,6 +24,7 @@ from backend.models.schemas import (
     ChatRequest,
     ChatResponse,
     ConversationOut,
+    ConversationRename,
     MessageOut,
 )
 from backend.memory.batching import MemoryBatcher
@@ -485,6 +486,21 @@ def conversation_messages(
         )
 
     return db.list_messages(conv_id)
+
+
+@router.patch("/conversations/{conv_id}", response_model=ConversationOut)
+def rename_conversation(
+    conv_id: str,
+    body: ConversationRename,
+    user: dict = Depends(get_current_user),
+):
+    title = body.title.strip()
+    if not title:
+        raise HTTPException(status_code=422, detail="Title can't be empty")
+    if not db.get_conversation(user["id"], conv_id):
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    db.rename_conversation(user["id"], conv_id, title)
+    return db.get_conversation(user["id"], conv_id)
 
 
 @router.delete("/conversations/{conv_id}", status_code=204)

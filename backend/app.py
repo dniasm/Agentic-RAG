@@ -19,7 +19,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.api.routes import auth, chat, documents, health
 from backend.config.settings import settings
 from backend.models.database import init_db
-from backend.rag import rerank
 from backend.rag.vectorstore import get_client, close_client
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -33,7 +32,6 @@ async def lifespan(_: FastAPI):
         raise RuntimeError(f"Missing required settings in .env: {', '.join(k.upper() for k in missing)}")
     init_db()
     get_client()  # open / create the Qdrant collection up front
-    rerank.warm_up_in_background()  # loading torch can take a minute; the app works meanwhile
 
     try:
         yield

@@ -93,7 +93,7 @@ def route_after_grade(state: AgentState) -> str:
         if zone == "high":
             return "generate_rag"
 
-        # A partial cross-encoder match gets WEAK_MATCH_RETRIES reworded searches on top of the normal
+        # A partial reranker match gets WEAK_MATCH_RETRIES reworded searches on top of the normal
         # budget. (It used to be min(budget, 1 + retries): with MAX_RETRIEVAL_ATTEMPTS=1 that is 1, so
         # the retry never happened and every partial match went straight to the next source.)
         if (

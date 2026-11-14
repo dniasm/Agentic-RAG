@@ -78,7 +78,7 @@ What makes it *agentic* rather than a fixed pipeline:
 │  conversations,     │                            user_memories (Voyage)       │
 │  messages           ├── Groq: gpt-oss-120b, gpt-oss-20b, qwen3.8-27b          │
 │                     ├── Gemini embeddings (documents) · Voyage (memory)       │
-│                     └── Voyage rerank-2.5 (local MiniLM optional)             │
+│                     └── Voyage rerank-2.5                                     │
 └───────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -108,7 +108,7 @@ What makes it *agentic* rather than a fixed pipeline:
 | LLMs | Groq (see below) | Strict `json_schema` output for gpt-oss decisions |
 | Document embeddings | Google Gemini `models/gemini-embedding-001`, 768 dims | Question embeddings cached on disk |
 | Keyword search | BM25 sparse vectors in Qdrant | Fused with dense search by Reciprocal Rank Fusion |
-| Reranking | Voyage `rerank-2.5` (hosted); local cross-encoder `ms-marco-MiniLM-L-6-v2` optional | Confidence zones + MMR diversity; LLM check if no reranker can score |
+| Reranking | Voyage `rerank-2.5` (hosted) | Confidence zones + MMR diversity; LLM check if Voyage can't score |
 | Memory embeddings | Voyage AI `voyage-4-lite`, 1,024 dims | Conversation summaries only |
 | Vector DB | Qdrant — embedded on-disk by default, or a server via `QDRANT_URL` | Cosine distance |
 | Web search | Tavily (if key set) → DuckDuckGo → Wikipedia | Results cached for an hour |
@@ -133,8 +133,8 @@ The small model never grades the large one: evaluation and reviews are done by t
 ### Prerequisites
 
 - Python 3.12+ (developed on 3.14), Node.js 18+
-- A **Groq** API key and a **Gemini** API key. A **Voyage** key is needed for reranking (without it, set
-  `RERANKER_PROVIDER=local` or the LLM relevance check is used) and conversation memory. Tavily is optional.
+- A **Groq** API key and a **Gemini** API key. A **Voyage** key is needed for reranking (without it the LLM
+  relevance check is used) and conversation memory. Tavily is optional.
 
 ### 1) Environment file
 
@@ -146,7 +146,6 @@ GEMINI_API_KEY=your-gemini-key
 # Optional
 TAVILY_API_KEY=your-tavily-key
 VOYAGE_API_KEY=your-voyage-key        # reranking + conversation memory
-OPEN_ROUTER_API_KEY=...               # only for scripts/experiments
 JWT_SECRET=some-long-random-string
 QDRANT_URL=http://localhost:6333
 ```
@@ -161,8 +160,9 @@ uvicorn app:app --reload          # from the project root or from inside backend
 ```
 
 Check: <http://localhost:8000/api/health>. Interactive API docs: <http://localhost:8000/docs>.
-Reranking is hosted (Voyage), so nothing heavy loads at startup. With `RERANKER_PROVIDER=local` or
-`RERANKER_LOCAL_FALLBACK=true`, the local cross-encoder loads in the background (about 11 s, ~450 MB).
+Reranking is hosted (Voyage), so nothing heavy loads at startup. An environment installed before 14 November may
+still have `torch` and `sentence-transformers`: `voyageai` then loads them on import (through
+`langchain_text_splitters`), which slows startup. `pip uninstall torch sentence-transformers transformers` fixes it.
 
 ### 3) Frontend
 
@@ -226,13 +226,9 @@ overridden by an environment variable / `.env` entry with the same name (case-in
 | `HYBRID_CANDIDATES` / `RRF_K` | `20` / `60` | Results per list before fusion; RRF constant. |
 | `BM25_K1` / `BM25_B` / `BM25_AVG_LEN` | `1.2` / `0.75` / `120` | BM25 parameters. |
 | `RERANK_ENABLED` | `True` | Use a reranker (otherwise the LLM relevance check). |
-| `RERANKER_PROVIDER` | `voyage` | `voyage` (hosted) or `local` (MiniLM cross-encoder). |
 | `VOYAGE_RERANK_MODEL` / `VOYAGE_RERANK_TIMEOUT` | `rerank-2.5` / `15` | Hosted reranker; a slow call falls back instead of waiting. |
 | `VOYAGE_RELEVANCE_HIGH` / `VOYAGE_RELEVANCE_LOW` | `0.55` / `0.45` | Confidence zones on Voyage's scale (calibrated). |
-| `RERANKER_LOCAL_FALLBACK` | `False` | Keep the local model loaded as a backup for Voyage (~450 MB RAM, torch). |
-| `RERANKER_MODEL` / `RERANKER_MAX_LENGTH` | MiniLM-L-6-v2 / `256` | Local cross-encoder. |
 | `RERANK_CANDIDATES` / `RERANK_TOP_N` / `MMR_LAMBDA` | `20` / `12` / `0.7` | Candidates scored; pool MMR picks from; relevance vs diversity. |
-| `RELEVANCE_HIGH` / `RELEVANCE_LOW` | `0.05` / `0.01` | Confidence zones for the local model (MiniLM's score scale). |
 | `WEAK_MATCH_RETRIES` | `1` | Extra reworded searches in the middle zone. |
 | `MIN_RELEVANCE_SCORE` / `RAG_SKIP_SCORE` | `0.45` / `0.52` | Used only when the reranker is unavailable. |
 | `MAX_RETRIEVAL_ATTEMPTS` / `MAX_WEB_ATTEMPTS` | `1` / `2` | Search rounds per source. |
@@ -256,8 +252,8 @@ server proxies it to `http://127.0.0.1:8000`.
 
 ```
 day7/
-├── app.py, requirements.txt, README.md, test_rag_pipeline.py, claude_wiki.docx
-├── docs/                 documentation (this file and two first-version walkthroughs)
+├── app.py, requirements.txt, README.md, claude_wiki.docx
+├── docs/                 documentation (this file)
 ├── backend/              FastAPI app, LangGraph agent, retrieval, memory, tests
 │   ├── api/              HTTP layer: auth, chat, documents, health
 │   ├── config/           settings, model clients, token accounting
@@ -268,15 +264,14 @@ day7/
 │   ├── memory/           conversation memory (Voyage + Qdrant)
 │   ├── evaluation/       answer checks, LLM grading, decision reviews
 │   ├── scripts/          one-off maintenance scripts
-│   ├── tests/            unit tests (no API calls) and reasoning cases
+│   ├── tests/            unit tests (no API calls)
 │   └── data/ documents/ vector_db/    created at runtime (not committed)
 ├── frontend/             React + Vite + Tailwind single-page app
 ├── benchmark/            benchmark scripts, question sets, corpus and saved results
 └── scripts/experiments/  one-off model experiments (call the live APIs)
 ```
 
-Most folders (including a few frontend ones) contain an empty `__init__.py`; it only lets Python import the folder
-as a package. The exceptions are `backend/tools/__init__.py` (shared helpers, below) and
+Most backend folders contain an empty `__init__.py`; it only lets Python import the folder as a package. The exceptions are `backend/tools/__init__.py` (shared helpers, below) and
 `scripts/experiments/__init__.py` (a docstring on how to run the experiments).
 
 ### 6.2 What each folder holds and what each file does
@@ -288,7 +283,6 @@ as a package. The exceptions are `backend/tools/__init__.py` (shared helpers, be
 | `app.py` | Re-exports `backend/app.py`, so `uvicorn app:app --reload` works from the project root. |
 | `requirements.txt` | Python dependencies for the backend, benchmarks and tests. |
 | `README.md` | Quick start, workflow summary, headline measurements, API summary. |
-| `test_rag_pipeline.py` | End-to-end smoke test against a running backend: registers a throwaway user, asks questions before and after uploading a PDF, and checks the source order, notices and review loop. |
 | `claude_wiki.docx` | A Word document in the benchmark corpus (exercises DOCX ingestion). |
 | `.gitignore` | Keeps secrets (`.env`), runtime data, third-party PDFs, `node_modules` and build output out of git. |
 | `.env` | API keys and overrides (not committed; see §4 and §5). |
@@ -298,8 +292,6 @@ as a package. The exceptions are `backend/tools/__init__.py` (shared helpers, be
 | File | What it does |
 |---|---|
 | `DOCUMENTATION.md` | This file: the current technical documentation. |
-| `CODE_REFERENCE.md` | Function-by-function walkthrough of the **first version** (commit `9f5c527`); kept for history, line numbers no longer match. |
-| `GRAPH_EXPLAINED.md` | Plain-language, line-by-line explanation of `backend/graph/` in the **first version**; same caveat. |
 
 #### `backend/`
 
@@ -314,7 +306,7 @@ as a package. The exceptions are `backend/tools/__init__.py` (shared helpers, be
 | `security.py` | Password hashing (SHA-256 pre-hash + bcrypt) and HS256 JWT creation/verification with the standard library; generates the JWT secret if none is set. |
 | `dependencies.py` | `get_current_user`: reads the bearer token on each request and returns the user, or a 401. |
 | `routes/auth.py` | `POST /auth/register`, `POST /auth/login`, `GET /auth/me`. |
-| `routes/chat.py` | `POST /chat` and `POST /chat/stream` (SSE): loads history, facts, past-conversation summaries and document names, runs the agent in its own thread, saves the answer, and queues memory work and token logging in the background. Also lists and deletes conversations and serves `/stats`. |
+| `routes/chat.py` | `POST /chat` and `POST /chat/stream` (SSE): loads history, facts, past-conversation summaries and document names, runs the agent in its own thread, saves the answer, and queues memory work and token logging in the background. Also lists, renames and deletes conversations and serves `/stats`. |
 | `routes/documents.py` | Lists, uploads (size check, filename cleanup, dedup by hash, ingestion) and deletes documents. |
 | `routes/health.py` | `GET /health`: reports the configured models and web-search providers. |
 
@@ -323,7 +315,7 @@ as a package. The exceptions are `backend/tools/__init__.py` (shared helpers, be
 | File | What it does |
 |---|---|
 | `settings.py` | Every setting (keys, models, chunking, retrieval, reranker thresholds, budgets, paths), loaded from `.env`; full list in §5. |
-| `llm.py` | One client per model role (120B writer and judge, 20B router, Qwen memory, 20B backup writer, Nemotron for experiments), the rate-limit fallback to the backup writer, and `structured()` for schema-validated output, including recovery of misnamed tool calls. |
+| `llm.py` | One client per model role (120B writer and judge, 20B router, Qwen memory, 20B backup writer), key rotation across `GROQ_API_KEY`…`_4`, the rate-limit fallback to the backup writer, and `structured()` for schema-validated output, including recovery of misnamed tool calls. |
 | `usage.py` | `UsageTracker` counts tokens per model and per step during a request; `record()` writes the request's line to `backend/data/token_usage.jsonl`. |
 
 #### `backend/models/` — data storage and API shapes
@@ -357,11 +349,11 @@ as a package. The exceptions are `backend/tools/__init__.py` (shared helpers, be
 | File | What it does |
 |---|---|
 | `ingestion.py` | Loads PDF/DOCX/TXT/MD files, cleans and chunks the text, embeds it (paced for the free tier) and stores it in Qdrant (§9). |
-| `vectorstore.py` | Qdrant client (embedded or server), Gemini embeddings, the collection with dense + BM25 vectors, per-user filters, search, delete and count. |
+| `vectorstore.py` | Qdrant client (embedded or server), Gemini embeddings, the collection with dense + BM25 vectors, per-user filters, search and delete. |
 | `sparse.py` | Tokenizer and BM25 sparse vectors for keyword search (the citation check reuses the tokenizer). |
 | `embedding_cache.py` | SQLite cache of question embeddings, to save Gemini's daily quota. |
 | `retrieval.py` | Multi-query hybrid search (dense + BM25) fused with Reciprocal Rank Fusion, scoped to the user (§10). |
-| `rerank.py` | Scores candidates with Voyage `rerank-2.5` or the local cross-encoder, maps the best score to a confidence zone, and picks diverse passages with MMR. |
+| `rerank.py` | Scores candidates with Voyage `rerank-2.5`, maps the best score to a confidence zone, and picks diverse passages with MMR. |
 
 #### `backend/memory/` — conversation memory
 
@@ -391,11 +383,9 @@ as a package. The exceptions are `backend/tools/__init__.py` (shared helpers, be
 | `test_routing.py` | Source order, retry budgets, partial RAG answers, unchecked answers kept, web query rules, knowledge-gate rules, memory pre-check, tool-call recovery, prompt trims. |
 | `test_memory.py` | Key normalisation, merge rules (replace / collect / forget / corrections), storage, the one-time migration (temporary database). |
 | `test_citations.py` | The code citation check. |
-| `test_rerank.py` | Reranker choice, per-provider thresholds and fallbacks. |
+| `test_rerank.py` | Reranker zones and the fallback when Voyage can't score. |
+| `test_conversations.py` | Renaming chats; a fresh database has no old `user_memory` table. |
 | `test_stream.py` | The SSE stream ends with `final`, and the answer is saved even if the client disconnects. |
-| `test_reasoning_cases.py` | Not a unit test: a list of direct-answer reasoning cases (opinions, follow-ups, challenges) with the expected behaviour. |
-| `run_reasoning_baseline.py` | Runs those cases through `direct_answer.answer` (calls the API) and saves the answers. |
-| `reasoning_baseline_results*.json` | Saved answers from earlier runs, for comparing prompt versions. |
 
 #### Runtime folders (created automatically, not committed)
 
@@ -432,7 +422,7 @@ as a package. The exceptions are `backend/tools/__init__.py` (shared helpers, be
 | `pages/Chat.jsx` | New-chat screen with suggestions, or the conversation and composer. |
 | `pages/Documents.jsx` | Upload (drop zone, type/size checks, progress), document list and delete. |
 | `pages/Overview.jsx` | Usage numbers, where answers came from, document library. |
-| `components/Sidebar.jsx` | New chat, chats by recency, navigation, theme switch, log out. |
+| `components/Sidebar.jsx` | New chat, chats by recency (rename, delete), navigation, theme switch, log out. |
 | `components/Message.jsx` | One message: notices, Markdown with citation marks, provenance line, **Sources** and **Steps**, live progress while answering. |
 | `components/InputBox.jsx` | The message box (Enter sends, Shift/Ctrl+Enter adds a line; drafts kept per chat). |
 | `components/Mark.jsx` | The logo as a React component. |
@@ -468,6 +458,7 @@ Data:
 | `questions.json` | The 74 retrieval questions (67 answerable, 7 out of scope) with their relevant passages and answer shapes. |
 | `router_cases.json` | The 80 router messages, the expected source for each, and the uploaded document names they assume. |
 | `memory_cases.json` | The 18 memory conversations and the facts expected afterwards. |
+| `reasoning_cases.py` / `run_reasoning_baseline.py` | 16 direct-answer reasoning cases (opinions, follow-ups, challenges) with the expected behaviour, and a script that runs them through `direct_answer.answer` (calls the API); saved answers in `results/reasoning_baseline_results*.json`. |
 | `corpus/wikipedia/*.md` | 18 Wikipedia articles on information retrieval and NLP (CC BY-SA 4.0, source URL in each file). The corpus PDFs are not committed (see the README). |
 | `results/` | Saved output of every benchmark run, named after its script: `retrieval_stage*`, `selection_*` (including the saved candidate pools `selection_pool.json` / `.npz`), `rerank_calibration`, `e2e_stage*`, `perf`, `router_eval*`, `direct_gate_*`, `gate_*`, `direct_prompt_*`, `memory_eval*`, `checker_eval*`, `web_prompt_*`. Files ending in `_before` or `_old` keep the run or prompt from before a change. |
 
@@ -480,9 +471,7 @@ All of these call the live APIs; run them from the project root, e.g. `python -m
 | `test_gate.py` | Runs the knowledge gate on five sample questions (easy, borderline, an invented paper) and prints its verdicts. |
 | `promptcaching.py` | Sends the same long routing prompt to Groq several times and prints how many tokens were cached. |
 | `token_usage.py` | Prints Groq's token counts for a long routing prompt and its review follow-ups. |
-| `token_log.py` | Streams one question through the agent and totals the tokens of every model call. |
-| `nemotronsmoketest.py` | One-question smoke test of the Nemotron model through OpenRouter. |
-| `test_model.py` | Asks Nemotron a moral-dilemma question to compare its reasoning style. |
+| `nemotronsmoketest.py` | One-question smoke test of Nemotron Ultra through OpenRouter; self-contained (needs `pip install langchain-openai` and `OPEN_ROUTER_API_KEY`). |
 
 ---
 
@@ -647,7 +636,8 @@ extracted. One waiting message uses the single-message prompt unchanged; if a ba
 extracted on its own. Batched calls are logged as their own `memory_batch` line in the token log.
 
 The original one-row-per-key `user_memory` table was migrated into `user_facts` once (recorded in `migrations` as
-`user_facts_v1`) and kept, unused, as a backup.
+`user_facts_v1`) and kept, unused, as a backup in databases from before then. New databases don't get the table;
+the migration is just marked done.
 
 ---
 
@@ -681,10 +671,9 @@ Deleting a document removes its vectors, the stored file and the DB row.
 4. Keyword hits keep their place even with low cosine (exact terms are the point of BM25); dense-only hits must pass
    `MIN_RELEVANCE_SCORE`. If embedding fails, keyword search alone is used.
 
-Then `rag/rerank.py` scores each candidate (0–1) with the configured reranker: Voyage `rerank-2.5` by default; the
-local cross-encoder if `RERANKER_PROVIDER=local`, or as a backup when `RERANKER_LOCAL_FALLBACK=true`. If none can
-score (e.g. Voyage rate-limited, no local model), `score()` returns `None` and the LLM relevance check grades the top
-8 candidates. The best score sets the **zone**, using that reranker's thresholds (≥ high → answer; < low → next
+Then `rag/rerank.py` scores each candidate (0–1) with Voyage `rerank-2.5` (the local MiniLM cross-encoder it
+replaced was removed on 14 November). If Voyage can't score (rate-limited, down, no key), `score()` returns `None` and the LLM relevance check grades the top
+8 candidates. The best score sets the **zone** (≥ high → answer; < low → next
 source; between → one reworded retry); MMR picks `RETRIEVAL_K` diverse passages from the top `RERANK_TOP_N`.
 
 **Reranker calibration** (`benchmark/calibrate_reranker.py`: the same 20 saved candidates per question, so the
@@ -730,8 +719,7 @@ graph inherits it; calls outside the graph name their step with `usage_step` met
 
 ### `app.py`
 Adds the project root to `sys.path`; `lifespan` checks the required keys, runs `init_db()` (and migrations), opens the
-Qdrant collection, and loads the local cross-encoder in the background only when it is configured
-(`RERANKER_PROVIDER=local` or `RERANKER_LOCAL_FALLBACK=true`). CORS: `CORS_ORIGINS` plus any localhost port.
+Qdrant collection, and on shutdown extracts any facts still waiting in the memory batch. CORS: `CORS_ORIGINS` plus any localhost port.
 
 ### `config/llm.py`
 | Function | Description |
@@ -755,7 +743,7 @@ placeholders and filter by `user_id`.
 | Users | `create_user`, `get_user_by_username`, `get_user` |
 | Facts | `list_memories` (grouped: `memory_key`, `values`, `memory_value`, `updated_at`), `add_fact`, `set_fact`, `delete_fact(value=None)` |
 | Documents | `add_document`, `update_document`, `find_document_by_hash`, `list_documents`, `get_document`, `delete_document` |
-| Conversations | `create_conversation`, `get_conversation`, `list_conversations`, `rename_conversation` (unused), `delete_conversation` |
+| Conversations | `create_conversation`, `get_conversation`, `list_conversations`, `rename_conversation` (title only; the chat keeps its place), `delete_conversation` |
 | Messages | `add_message`, `list_messages(conv_id, limit)` |
 | Stats | `user_stats` |
 
@@ -833,7 +821,7 @@ users ──< documents
 | `users` | `id`, `username`, `password_hash`, `created_at` | `username` unique, case-insensitive |
 | `user_facts` | `id`, `user_id`, `memory_key`, `value`, `created_at`, `updated_at` | `UNIQUE(user_id, memory_key, value)`, `value` case-insensitive |
 | `migrations` | `name`, `applied_at` | One-off data migrations applied |
-| `user_memory` | `id`, `user_id`, `memory_key`, `memory_value`, … | Pre-migration backup, no longer written |
+| `user_memory` | `id`, `user_id`, `memory_key`, `memory_value`, … | Pre-migration backup, no longer written; only in databases from before 1 November |
 | `documents` | `id`, `user_id`, `filename`, `file_hash`, `size_bytes`, `pages`, `chunks`, `status`, `error`, `created_at` | `UNIQUE(user_id, file_hash)` |
 | `conversations` | `id`, `user_id`, `title`, `created_at`, `updated_at` | cascade on user delete |
 | `messages` | `id`, `conversation_id`, `role`, `content`, `tool`, `meta` (JSON), `created_at` | cascade on conversation delete |
@@ -880,6 +868,7 @@ Base URL `http://localhost:8000/api`. All endpoints except `health`, `auth/regis
 | `POST /chat/stream` | same | SSE (below) |
 | `GET /conversations` | — | `[{id, title, created_at, updated_at}]` |
 | `GET /conversations/{id}/messages` | — | `[{id, role, content, tool, meta, created_at}]` oldest first |
+| `PATCH /conversations/{id}` | `{"title"}` (1–60 characters) | the conversation; `updated_at` unchanged, so it keeps its place in the list — `404`, `422` |
 | `DELETE /conversations/{id}` | — | `204` (messages and remembered episodes removed) |
 | `GET /stats` | — | `{documents, chunks, conversations, queries, by_tool, queries_rewritten, answers_evaluated, answers_sufficient, avg_latency_ms}` |
 
@@ -927,7 +916,7 @@ App.jsx ── session, health polling, conversations, documents, routing
 | `pages/Chat.jsx` | New chat with suggestions based on your documents; otherwise the conversation and composer. |
 | `pages/Documents.jsx` | Drop zone + picker, type/size checks, upload progress, status list, delete with inline confirmation. |
 | `pages/Overview.jsx` | Key numbers, where answers came from, document library. |
-| `components/Sidebar.jsx` | New chat, chats grouped by recency (a dot marks one still answering; inline delete confirmation), navigation, theme switch, user and log out. |
+| `components/Sidebar.jsx` | New chat, chats grouped by recency (a dot marks one still answering; rename inline with the pencil or a double-click, Enter saves, Escape cancels; inline delete confirmation), navigation, theme switch, user and log out. |
 | `components/Message.jsx` | Answer with notices, Markdown and citation marks; a provenance line (source, checked or not, time); **Sources** and **Steps** disclosures; live status/steps/draft while pending. |
 | `components/InputBox.jsx` | Growing textarea: **Enter** sends, **Shift+Enter** or **Ctrl+Enter** adds a line; drafts kept per chat. |
 | `index.css`, `tailwind.config.js` | Colour tokens as CSS variables for both themes, type scale, component classes, `.markdown` styles. |
@@ -949,10 +938,8 @@ same origin as the API, or set `VITE_API_URL`.
 | `test_memory.py` | Key normalisation, merge rules (replace / collect / forget / corrections), storage, one-time migration |
 | `test_stream.py` | The stream ends with `final`; the answer is saved after the client disconnects |
 | `test_citations.py` | The code citation check: uncited claims, invalid `[n]`, unsupported claims, numbers, lists under a cited lead-in |
-| `test_rerank.py` | Reranker choice (Voyage / local), per-provider thresholds, fallback to the LLM check when no reranker can score |
-
-**Smoke test** (backend running): `python test_rag_pipeline.py [path/to/file.pdf]` — registers a throwaway user and
-asks one question per path.
+| `test_rerank.py` | Reranker zones; fallback to the LLM check when Voyage can't score |
+| `test_conversations.py` | Renaming chats (title trimmed, empty or too long rejected, other users' chats not found); fresh databases skip the old memory table |
 
 **Benchmarks** (`benchmark/`, see each script's docstring; retrieval ones need the backend stopped):
 
@@ -990,7 +977,7 @@ Experiments that call the APIs live in `scripts/experiments/` (run from the root
 | Answer marked "couldn't be automatically checked" | The checking model was rate-limited; the answer was kept unverified. |
 | Opinion questions going to documents/web | Check the `direct_answer` step under **Steps**: the gate's `question_kind` and reason. `run_direct_gate.py` reproduces it. |
 | Memory not recalled from past chats | `VOYAGE_API_KEY` missing or Voyage unavailable (logged); facts still work. |
-| Steps show "chunks judged relevant" instead of "Reranked … with Voyage" | Voyage failed (usually its rate limit: the free tier without a payment method allows 3 requests / 10,000 tokens per minute) and the LLM check was used. Add a payment method on Voyage, or set `RERANKER_LOCAL_FALLBACK=true`. |
+| Steps show "chunks judged relevant" instead of "Reranked … with Voyage" | Voyage failed (usually its rate limit: the free tier without a payment method allows 3 requests / 10,000 tokens per minute) and the LLM check was used. Add a payment method on Voyage. |
 | Upload returns 422 "No extractable text" | Scanned/image-only PDF. OCR it first. |
 | Web search returns nothing | DuckDuckGo blocking or rate limiting. Add a `TAVILY_API_KEY`. |
 
@@ -1006,7 +993,7 @@ and a node in `nodes.py` that sets `answer`, `tool`, `trace`; add it to `_source
 in `pages/Documents.jsx`.
 
 **Swap models:** change `LLM_MODEL` / `FAST_LLM_MODEL` / `MEMORY_LLM_MODEL`. Keep structured output working for
-every schema in 7.8. Changing `RERANKER_MODEL` requires recalibrating `RELEVANCE_HIGH` / `RELEVANCE_LOW`.
+every schema in 7.8. Changing `VOYAGE_RERANK_MODEL` requires recalibrating `VOYAGE_RELEVANCE_HIGH` / `VOYAGE_RELEVANCE_LOW`.
 
 **Remember a new kind of fact:** add single-value keys to `SINGLE_VALUE_KEYS` (or use a `favorite_` / `preferred_` /
 `current_` prefix) and variants to `KEY_ALIASES` in `tools/memory.py`; add a case to `benchmark/memory_cases.json`.

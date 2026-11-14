@@ -51,7 +51,7 @@ def configure_stage(stage: str) -> None:
     settings.retrieval_mode = "dense" if stage == "0" else "hybrid"
     settings.rerank_enabled = stage not in ("0", "1")
     if settings.rerank_enabled and not rerank.ensure_loaded():
-        raise RuntimeError("cross-encoder could not be loaded")
+        raise RuntimeError("reranker unavailable: set VOYAGE_API_KEY")
     print(f"stage {stage}: retrieval={settings.retrieval_mode}, rerank={'on' if settings.rerank_enabled else 'off'}")
 
 

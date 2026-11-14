@@ -42,12 +42,3 @@ export function groupByRecency(conversations, now = new Date()) {
   }
   return groups.filter((g) => g.items.length);
 }
-
-/** Where an answer came from, in the product's words. */
-export const SOURCE_LABELS = {
-  rag: 'your documents',
-  web_search: 'a web search',
-  direct: "the model's own knowledge",
-  greeting: 'small talk',
-  no_results: 'no source',
-};

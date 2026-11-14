@@ -19,18 +19,9 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
-CREATE TABLE IF NOT EXISTS user_memory (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    memory_key TEXT NOT NULL,
-    memory_value TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    UNIQUE(user_id, memory_key)
-);
-CREATE INDEX IF NOT EXISTS idx_memory_user ON user_memory(user_id);
--- One row per remembered value: a key such as "hobbies" can hold many values. Replaces user_memory
--- (one JSON-encoded value per key), which is kept, unused, as a backup of the pre-migration data.
+-- One row per remembered value: a key such as "hobbies" can hold many values. Replaced user_memory
+-- (one JSON-encoded value per key): databases from before 2026-11-01 still have that table, unused, as a
+-- backup of the pre-migration data; new databases don't get it.
 CREATE TABLE IF NOT EXISTS user_facts (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -118,6 +109,9 @@ def _migrate_memory_to_facts(c) -> None:
     per value). Runs once: recorded in `migrations`, so deleting facts later never resurrects old ones."""
     if c.execute("SELECT 1 FROM migrations WHERE name = 'user_facts_v1'").fetchone():
         return
+    if not c.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'user_memory'").fetchone():
+        c.execute("INSERT INTO migrations (name, applied_at) VALUES ('user_facts_v1', ?)", (_now(),))
+        return  # a database created after the migration: nothing to copy
     for row in c.execute("SELECT user_id, memory_key, memory_value, created_at, updated_at "
                          "FROM user_memory").fetchall():
         for value in _decode_values(row["memory_value"]):
@@ -311,8 +305,10 @@ def list_conversations(user_id: str) -> list[dict]:
 
 
 def rename_conversation(user_id: str, conv_id: str, title: str) -> None:
+    """Changes the title only: updated_at is left alone, so a renamed chat keeps its place in the list."""
     with tx() as c:
-        c.execute("UPDATE conversations SET title = ? WHERE id = ? AND user_id = ?", (title[:60], conv_id, user_id))
+        c.execute("UPDATE conversations SET title = ? WHERE id = ? AND user_id = ?",
+                  (title.strip()[:60], conv_id, user_id))
 
 
 def delete_conversation(user_id: str, conv_id: str) -> None:

@@ -67,6 +67,10 @@ class ConversationOut(BaseModel):
     updated_at: str
 
 
+class ConversationRename(BaseModel):
+    title: str = Field(min_length=1, max_length=60)
+
+
 class MessageOut(BaseModel):
     id: str
     role: str

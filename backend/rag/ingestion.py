@@ -72,9 +72,8 @@ def load_file(path: Path) -> tuple[list[Document], int]:
 
 def split_documents(docs: list[Document]) -> list[Document]:
     # Imported here, not at module level: the langchain_text_splitters package eagerly imports
-    # sentence-transformers / transformers / torch when they're installed, which added 12-32 s to
-    # every backend startup. Now that cost is paid on the first upload only (or not at all,
-    # if the cross-encoder has already loaded torch in the background).
+    # sentence-transformers / transformers / torch when they're installed (no longer required, but an older
+    # environment may still have them), which added 12-32 s to every backend startup.
     from langchain_text_splitters import RecursiveCharacterTextSplitter
 
     splitter = RecursiveCharacterTextSplitter(

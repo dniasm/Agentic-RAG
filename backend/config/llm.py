@@ -11,7 +11,6 @@ from functools import lru_cache
 import groq
 from langchain_core.runnables import RunnableLambda
 from langchain_groq import ChatGroq
-from langchain_openai import ChatOpenAI
 
 from backend.config.settings import settings
 
@@ -100,17 +99,6 @@ def get_llm(temperature: float | None = None, key: int = 0) -> ChatGroq:
         temperature=settings.llm_temperature if temperature is None else temperature,
         api_key=_key(key),
         max_retries=2,
-    )
-
-@lru_cache
-def get_nemotron_llm() -> ChatOpenAI:
-    """Prospect model"""
-    return ChatOpenAI(
-        model = settings.open_router_model,
-        base_url = settings.open_router_base_url,
-        api_key = settings.open_router_api_key,
-        temperature = settings.llm_temperature,
-        max_retries = 2,
     )
 
 @lru_cache

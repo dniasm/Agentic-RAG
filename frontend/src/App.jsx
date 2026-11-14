@@ -88,6 +88,11 @@ export default function App() {
     refreshConversations();
   };
 
+  const handleRenameConversation = async (id, title) => {
+    const updated = await apiService.renameConversation(id, title);
+    setConversations((list) => list.map((c) => (c.id === id ? { ...c, title: updated.title } : c)));
+  };
+
   if (checkingSession) {
     return (
       <div className="h-full grid place-items-center text-muted">
@@ -114,6 +119,7 @@ export default function App() {
       documentsCount={indexed?.length ?? null}
       systemOnline={systemOnline}
       onDeleteConversation={handleDeleteConversation}
+      onRenameConversation={handleRenameConversation}
       onLogout={handleLogout}
       onNavigate={() => setMenuOpen(false)}
     />

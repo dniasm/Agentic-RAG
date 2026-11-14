@@ -106,6 +106,8 @@ class Storage(unittest.TestCase):
     def test_old_memories_are_migrated_once(self):
         with db.tx() as c:
             c.execute("DELETE FROM migrations")
+            c.execute("CREATE TABLE IF NOT EXISTS user_memory (id TEXT PRIMARY KEY, user_id TEXT, memory_key TEXT, "
+                      "memory_value TEXT, created_at TEXT, updated_at TEXT)")  # as databases before 2026-11-01
             for key, value in (("hobbies", json.dumps(["trekking", "futsal"])), ("preferred_name", "Ash")):
                 c.execute("INSERT INTO user_memory (id, user_id, memory_key, memory_value, created_at, updated_at) "
                           "VALUES (?, ?, ?, ?, 't', 't')", (key, self.uid, key, value))

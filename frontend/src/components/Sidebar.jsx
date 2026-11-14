@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { BarChart3, FileText, LogOut, MessageSquare, Monitor, Moon, Plus, Sun, Trash2 } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { BarChart3, FileText, LogOut, MessageSquare, Monitor, Moon, Pencil, Plus, Sun, Trash2 } from 'lucide-react';
 import Mark from './Mark';
 import { groupByRecency } from '../lib/format';
 import { hrefFor } from '../lib/route';
@@ -57,15 +57,58 @@ function NavLink({ href, active, icon: Icon, children, onNavigate }) {
   );
 }
 
-function ChatRow({ conv, active, answering, onDelete, onNavigate }) {
-  const [confirming, setConfirming] = useState(false);
+function RenameField({ conv, onRename, onDone }) {
+  const [title, setTitle] = useState(conv.title);
+  const [error, setError] = useState('');
+  const cancelled = useRef(false); // Escape: the blur that follows must not save
 
-  if (confirming) {
+  const save = async () => {
+    if (cancelled.current) return;
+    const next = title.trim();
+    if (!next || next === conv.title) return onDone();
+    try {
+      await onRename(conv.id, next);
+      onDone();
+    } catch (e) {
+      setError(e.message || 'Could not rename the chat.');
+    }
+  };
+
+  return (
+    <div>
+      <input
+        autoFocus
+        value={title}
+        maxLength={60}
+        onChange={(e) => { setTitle(e.target.value); setError(''); }}
+        onFocus={(e) => e.target.select()}
+        onBlur={save}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); }
+          if (e.key === 'Escape') { e.preventDefault(); cancelled.current = true; onDone(); }
+        }}
+        aria-label="Chat name"
+        aria-invalid={error ? true : undefined}
+        className="w-full h-8 px-2 rounded-control bg-surface text-body text-ink border border-line outline-none focus:border-[color:var(--text-2)]"
+      />
+      {error && <p className="px-2 pt-1 text-small text-negative" role="alert">{error}</p>}
+    </div>
+  );
+}
+
+const ROW_ACTION = 'w-6 h-6 grid place-items-center rounded text-muted hover:text-ink hover:bg-active';
+
+function ChatRow({ conv, active, answering, onDelete, onRename, onNavigate }) {
+  const [mode, setMode] = useState('view'); // view | rename | confirm-delete
+
+  if (mode === 'rename') return <RenameField conv={conv} onRename={onRename} onDone={() => setMode('view')} />;
+
+  if (mode === 'confirm-delete') {
     return (
       <div className="flex items-center gap-2 h-8 px-2 rounded-control bg-raised text-body">
         <span className="truncate flex-1">Delete this chat?</span>
         <button className="font-medium text-negative hover:underline" onClick={() => onDelete(conv.id)}>Delete</button>
-        <button className="text-muted hover:text-ink" onClick={() => setConfirming(false)}>Cancel</button>
+        <button className="text-muted hover:text-ink" onClick={() => setMode('view')}>Cancel</button>
       </div>
     );
   }
@@ -75,28 +118,31 @@ function ChatRow({ conv, active, answering, onDelete, onNavigate }) {
       <a
         href={hrefFor('chat', conv.id)}
         onClick={onNavigate}
+        onDoubleClick={(e) => { e.preventDefault(); setMode('rename'); }}
         aria-current={active ? 'page' : undefined}
         title={conv.title}
-        className={`flex items-center h-8 pl-2 pr-8 rounded-control text-body transition-colors ${
+        className={`flex items-center h-8 pl-2 pr-14 rounded-control text-body transition-colors ${
           active ? 'bg-active text-ink' : 'text-[color:var(--text-2)] hover:bg-raised'
         }`}
       >
         <span className="truncate">{conv.title}</span>
         {answering && <span className="ml-2 flex-none text-small text-muted">answering…</span>}
       </a>
-      <button
-        onClick={() => setConfirming(true)}
-        aria-label={`Delete chat "${conv.title}"`}
-        className="absolute right-1 top-1 w-6 h-6 grid place-items-center rounded text-muted hover:text-ink hover:bg-active opacity-0 group-hover:opacity-100 focus:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity"
-      >
-        <Trash2 className="w-3.5 h-3.5" strokeWidth={1.6} />
-      </button>
+      <div className="absolute right-1 top-1 flex gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity">
+        <button onClick={() => setMode('rename')} aria-label={`Rename chat "${conv.title}"`} title="Rename" className={ROW_ACTION}>
+          <Pencil className="w-3.5 h-3.5" strokeWidth={1.6} />
+        </button>
+        <button onClick={() => setMode('confirm-delete')} aria-label={`Delete chat "${conv.title}"`} title="Delete" className={ROW_ACTION}>
+          <Trash2 className="w-3.5 h-3.5" strokeWidth={1.6} />
+        </button>
+      </div>
     </div>
   );
 }
 
 export default function Sidebar({
-  user, route, conversations, documentsCount, systemOnline, onDeleteConversation, onLogout, onNavigate,
+  user, route, conversations, documentsCount, systemOnline, onDeleteConversation, onRenameConversation, onLogout,
+  onNavigate,
 }) {
   const streaming = useStreamingKeys();
   const groups = groupByRecency(conversations);
@@ -147,6 +193,7 @@ export default function Sidebar({
                   active={route.page === 'chat' && route.conversationId === conv.id}
                   answering={streaming.includes(conv.id)}
                   onDelete={onDeleteConversation}
+                  onRename={onRenameConversation}
                   onNavigate={onNavigate}
                 />
               ))}

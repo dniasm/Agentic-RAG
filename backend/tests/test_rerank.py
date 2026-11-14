@@ -15,57 +15,37 @@ def hits(n=3):
 
 
 class Thresholds(unittest.TestCase):
-    def test_each_scorer_uses_its_own_scale(self):
-        with mock.patch.object(settings, "voyage_relevance_high", 0.6), \
-             mock.patch.object(settings, "voyage_relevance_low", 0.4), \
-             mock.patch.object(settings, "relevance_high", 0.05), \
-             mock.patch.object(settings, "relevance_low", 0.01):
-            # 0.3 is a strong local score but an off-topic Voyage score.
-            self.assertEqual(rerank.zone(0.3, "local"), "high")
-            self.assertEqual(rerank.zone(0.3, "voyage"), "low")
-            self.assertEqual(rerank.zone(0.5, "voyage"), "mid")
-            self.assertEqual(rerank.zone(0.7, "voyage"), "high")
-            self.assertEqual(rerank.zone(None, "voyage"), "low")
+    def test_zones(self):
+        with mock.patch.object(settings, "voyage_relevance_high", 0.6),              mock.patch.object(settings, "voyage_relevance_low", 0.4):
+            self.assertEqual(rerank.zone(0.3), "low")
+            self.assertEqual(rerank.zone(0.5), "mid")
+            self.assertEqual(rerank.zone(0.7), "high")
+            self.assertEqual(rerank.zone(None), "low")
 
 
-class Providers(unittest.TestCase):
+class Voyage(unittest.TestCase):
     def setUp(self):
         patches = [mock.patch.object(settings, "rerank_enabled", True),
-                   mock.patch.object(settings, "reranker_provider", "voyage"),
                    mock.patch.object(settings, "voyage_api_key", "test-key")]
         for p in patches:
             p.start()
             self.addCleanup(p.stop)
 
-    def test_voyage_scores_and_sorts(self):
+    def test_scores_and_sorts(self):
         with mock.patch.object(rerank, "_score_voyage", return_value=[0.2, 0.9, 0.5]):
             ranked = rerank.score("q", hits())
         self.assertEqual([h["id"] for h in ranked], ["1", "2", "0"])
         self.assertTrue(all(h["scorer"] == "voyage" for h in ranked))
 
-    def test_voyage_failure_uses_the_local_backup_when_loaded(self):
-        with mock.patch.object(settings, "reranker_local_fallback", True), \
-             mock.patch.object(rerank, "_model", object()), \
-             mock.patch.object(rerank, "_score_voyage", side_effect=RuntimeError("429")), \
-             mock.patch.object(rerank, "_score_local", return_value=[0.01, 0.02, 0.9]):
-            ranked = rerank.score("q", hits())
-        self.assertEqual(ranked[0]["id"], "2")
-        self.assertEqual(ranked[0]["scorer"], "local")
-
-    def test_voyage_failure_without_backup_returns_none(self):
-        with mock.patch.object(settings, "reranker_local_fallback", False), \
-             mock.patch.object(rerank, "_score_voyage", side_effect=RuntimeError("timeout")):
+    def test_failure_returns_none(self):
+        with mock.patch.object(rerank, "_score_voyage", side_effect=RuntimeError("timeout")):
             self.assertIsNone(rerank.score("q", hits()))
 
-    def test_local_model_is_not_loaded_unless_used(self):
-        with mock.patch.object(settings, "reranker_local_fallback", False), \
-             mock.patch("threading.Thread") as thread:
-            rerank.warm_up_in_background()
-        thread.assert_not_called()
-
-    def test_available_without_a_voyage_key_or_local_model(self):
-        with mock.patch.object(settings, "voyage_api_key", ""), mock.patch.object(rerank, "_model", None):
+    def test_not_available_without_a_key(self):
+        with mock.patch.object(settings, "voyage_api_key", ""),              mock.patch.object(rerank, "_score_voyage") as voyage:
             self.assertFalse(rerank.available())
+            self.assertIsNone(rerank.score("q", hits()))
+        voyage.assert_not_called()
 
 
 class GradeFallback(unittest.TestCase):

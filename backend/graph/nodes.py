@@ -859,12 +859,11 @@ def grade_node(state: AgentState) -> dict:
 
         best = ranked[0]["relevance"]
         scorer = ranked[0].get("scorer")
-        zone = rerank.zone(best, scorer)
+        zone = rerank.zone(best)
         chosen = rerank.mmr_select(ranked) if zone != "low" else []
-        where = "with Voyage" if scorer == "voyage" else "locally"
 
         detail = (
-            f"Reranked {len(ranked)} candidates {where}: "
+            f"Reranked {len(ranked)} candidates with Voyage: "
             f"best relevance {best:.2f} -> {_ZONE_TEXT[zone]}"
         )
 

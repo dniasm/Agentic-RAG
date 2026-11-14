@@ -31,7 +31,7 @@ class AgentState(TypedDict, total=False):
     documents: list[dict]           # graded, relevant chunks
     docs_off_topic: bool            # best document match was too weak: the documents don't cover the question
     docs_search_failed: bool        # document search itself failed (e.g. embedding service outage)
-    match_zone: str                 # cross-encoder verdict: high (answer) | mid (retry once) | low (next source)
+    match_zone: str                 # reranker verdict: high (answer) | mid (retry once) | low (next source)
     web_results: list[dict]
 
     # --- output

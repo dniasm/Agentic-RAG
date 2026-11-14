@@ -30,6 +30,7 @@ Object.assign(apiService, {
   getConversations: async () => (empty ? [] : fx.conversations),
   getMessages: async (id) => fx.messages[id] || [],
   deleteConversation: async () => null,
+  renameConversation: async (id, title) => ({ id, title }),
   getDocuments: async () => (empty ? [] : fx.documents),
   deleteDocument: async () => null,
   uploadDocument: async (file) => { await wait(1500); return { status: 'success', filename: file.name, chunks_indexed: 42 }; },

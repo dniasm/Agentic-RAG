@@ -141,6 +141,9 @@ export const apiService = {
   async getMessages(conversationId) {
     return request(`/conversations/${conversationId}/messages`);
   },
+  async renameConversation(conversationId, title) {
+    return request(`/conversations/${conversationId}`, { method: 'PATCH', body: { title } });
+  },
   async deleteConversation(conversationId) {
     return request(`/conversations/${conversationId}`, { method: 'DELETE' });
   },

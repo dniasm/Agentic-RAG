@@ -133,12 +133,6 @@ def delete_document_vectors(user_id: str, doc_id: str) -> None:
         )
 
 
-def count_user_vectors(user_id: str) -> int:
-    client = get_client()
-    with _lock:
-        return client.count(settings.collection_name, count_filter=user_filter(user_id), exact=True).count
-
-
 def close_client() -> None:
     """Close the shared Qdrant client during application shutdown."""
     if get_client.cache_info().currsize:

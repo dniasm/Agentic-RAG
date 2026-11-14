@@ -74,7 +74,7 @@ def collect(cached_only: bool = False) -> None:
     if not cached_only:
         ensure_corpus(user)
     if not rerank.ensure_loaded():
-        raise RuntimeError("cross-encoder could not be loaded")
+        raise RuntimeError("reranker unavailable: set VOYAGE_API_KEY")
     before = embedding_cache.stats["misses"]
     pools, vectors = {}, {}
     for q in load_questions():

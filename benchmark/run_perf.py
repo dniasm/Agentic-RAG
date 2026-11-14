@@ -75,8 +75,8 @@ def main():
 
     s = time.perf_counter()
     rerank.ensure_loaded()
-    st["load cross-encoder (incl. torch import): seconds"] = round(time.perf_counter() - s, 1)
-    st["after cross-encoder, memory MB"] = rss_mb()
+    st["reranker ready: seconds"] = round(time.perf_counter() - s, 1)
+    st["after reranker check, memory MB"] = rss_mb()
     st["process start -> ready: seconds"] = round(time.perf_counter() - T0, 1)
 
     from common import all_chunks, bench_user

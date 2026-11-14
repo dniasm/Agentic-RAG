@@ -58,7 +58,7 @@ def _reranked(query: str, user: dict, use_mmr: bool):
     from backend.rag import rerank
     from backend.rag.retrieval import retrieve
     if not rerank.ensure_loaded():
-        raise RuntimeError("cross-encoder could not be loaded")
+        raise RuntimeError("reranker unavailable: set VOYAGE_API_KEY")
     t0 = time.perf_counter()
     pool = retrieve([query], user["id"], k=settings.rerank_candidates - 2, min_score=0.0, mode="hybrid")
     t1 = time.perf_counter()
@@ -153,9 +153,7 @@ def main():
 
     result = evaluate(args.stage)
     result["summary"] = summarize(result)
-    # Variants of the same stage (e.g. RERANKER_MAX_LENGTH=256) are saved under their own name.
-    suffix = f"_len{settings.reranker_max_length}" if args.stage.startswith("2") and settings.reranker_max_length != 512 else ""
-    out = BENCH_DIR / "results" / f"retrieval_stage{args.stage}{suffix}.json"
+    out = BENCH_DIR / "results" / f"retrieval_stage{args.stage}.json"
     out.parent.mkdir(exist_ok=True)
     out.write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
 

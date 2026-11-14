@@ -2,7 +2,6 @@
 
 > 📘 Full technical documentation: [`docs/DOCUMENTATION.md`](docs/DOCUMENTATION.md) (architecture, agent workflow, memory, API, configuration,
 > and a [guide to every folder and file](docs/DOCUMENTATION.md#6-project-structure-and-file-guide)).
-> `docs/CODE_REFERENCE.md` and `docs/GRAPH_EXPLAINED.md` explain the first version line by line.
 
 A full-stack agentic RAG app. Users log in, upload documents into a per-user vector store, and chat
 with an agent that decides for each message whether to **chat**, **answer from their documents (RAG)**,
@@ -16,7 +15,7 @@ checks its own answers before replying.
 | Agent | LangGraph state machine |
 | LLMs (Groq) | `openai/gpt-oss-120b`: every reply (answers and small talk), the knowledge gate, answer evaluation, decision reviews. `openai/gpt-oss-20b`: routing and query rewrites. `qwen/qwen3.8-27b`: memory extraction and conversation summaries (own rate limit, no hidden reasoning) |
 | Embeddings | Gemini `gemini-embedding-001` (768-d) for documents; Voyage `voyage-4-lite` for conversation memory |
-| Reranking | Voyage `rerank-2.5` (hosted); the local cross-encoder `ms-marco-MiniLM-L-6-v2` is optional (`RERANKER_PROVIDER=local` or `RERANKER_LOCAL_FALLBACK=true`) |
+| Reranking | Voyage `rerank-2.5` (hosted); if it can't score, an LLM relevance check is used |
 | Vector DB | Qdrant (embedded on-disk by default, or a server via `QDRANT_URL`) |
 | Web search | Tavily if `TAVILY_API_KEY` is set, then DuckDuckGo, then Wikipedia |
 
@@ -112,7 +111,6 @@ GEMINI_API_KEY=...
 GROQ_API_KEY_2=...         # up to GROQ_API_KEY_4: keys from other Groq accounts, used when a model's limit runs out
 TAVILY_API_KEY=...
 VOYAGE_API_KEY=...         # reranking and conversation memory
-OPEN_ROUTER_API_KEY=...    # only for the Nemotron experiments
 JWT_SECRET=...            # auto-generated into backend/data/.jwt_secret if omitted
 QDRANT_URL=http://localhost:6333
 ```
@@ -140,10 +138,8 @@ sample data from `frontend/src/dev/fixtures.js` and is not part of the productio
 
 Create an account on the login screen, upload files on **Documents**, then chat.
 
-Smoke test (backend must be running): `python test_rag_pipeline.py [path/to/file.pdf]`
-
-Unit tests (97, no API calls): `python -m unittest discover backend/tests -p "test_*.py"` (routing, memory, streaming,
-citation check, reranker fallbacks)
+Unit tests (99, no API calls): `python -m unittest discover backend/tests -p "test_*.py"` (routing, memory, streaming,
+citation check, reranker fallbacks, renaming chats)
 
 Model experiments (they call the APIs) live in `scripts/experiments/`; run them from the project root,
 e.g. `python -m scripts.experiments.test_gate`.
@@ -183,7 +179,7 @@ and `claude_wiki.docx` are committed. `python benchmark/build_wiki_corpus.py` re
 | GET / POST / DELETE | `/api/documents`, `/api/documents/upload`, `/api/documents/{id}` | PDF, DOCX, TXT, MD; deduplicated by SHA-256 |
 | POST | `/api/chat` | full JSON response (answer, tool, sources, trace, evaluation) |
 | POST | `/api/chat/stream` | SSE stream: `meta` → `step`… → `final` |
-| GET / DELETE | `/api/conversations`, `/api/conversations/{id}/messages`, `/api/conversations/{id}` | |
+| GET / PATCH / DELETE | `/api/conversations`, `/api/conversations/{id}/messages`, `/api/conversations/{id}` | PATCH `{"title"}` renames a chat |
 | GET | `/api/stats` | Overview page metrics |
 
 Tuning knobs (chunk size, `RETRIEVAL_K`, `VOYAGE_RELEVANCE_HIGH` / `VOYAGE_RELEVANCE_LOW`, `MAX_RETRIEVAL_ATTEMPTS`, models, …) live in

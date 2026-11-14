@@ -1,17 +1,21 @@
+"""Runs benchmark/reasoning_cases.py through direct_answer.answer (calls the API) and saves the answers.
+
+    python benchmark/run_reasoning_baseline.py
+"""
 
 import json
 import sys
 import time
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from backend.tools.direct_answer import answer
-from backend.tests.test_reasoning_cases import TEST_CASES
+from reasoning_cases import TEST_CASES  # noqa: E402  (benchmark/reasoning_cases.py)
 
 
-output_path = Path(__file__).with_name("reasoning_baseline_results2.json")
+output_path = Path(__file__).parent / "results" / "reasoning_baseline_results2.json"
 results = []
 
 for index, case in enumerate(TEST_CASES, start=1):
