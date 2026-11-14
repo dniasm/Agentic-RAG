@@ -2,7 +2,7 @@
 
 Values that differ per deployment are fields on day7's Settings (library_*, signup_code), set in the one .env.
 The rest are constants. Storage: the vector store and its collection are day7's (settings.qdrant_path,
-settings.collection_name); files, versions, logs and the catalog live under settings.library_data_dir.
+settings.collection_name); files, versions and logs live under settings.library_data_dir; the catalog's tables are in day7's app.db.
 """
 from pathlib import Path
 
@@ -10,7 +10,6 @@ from backend.config.settings import PROJECT_ROOT, settings
 
 DATA_DIR = Path(settings.library_data_dir).resolve()
 LIBRARY_DIR = DATA_DIR / "library"        # the stored files, named after their current title
-CATALOG_PATH = DATA_DIR / "catalog.db"    # documents, rename history, chat sessions
 OWNER = "library"   # the owner of documents from before accounts existed (and of tests); users are their own ids
 SIGNUP_CODE = settings.signup_code   # needed for every sign-up after the first; empty: closed
 

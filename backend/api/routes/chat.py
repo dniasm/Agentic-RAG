@@ -18,6 +18,7 @@ from backend.memory.store import (
     search_memories,
     delete_conversation_memories,
 )
+from backend.library import catalog
 from backend.models import database as db
 from backend.models.schemas import (
     ChatRequest,
@@ -156,13 +157,7 @@ def _prepare(
     except Exception:
         log.exception("Semantic memory retrieval failed")
 
-    doc_names = [
-        d["filename"]
-        for d in db.list_documents(
-            user["id"],
-            status="indexed",
-        )
-    ]
+    doc_names = [d["title"] for d in catalog.list_documents(status="indexed", owner=user["id"])]
 
     db.add_message(conv["id"], "user", req.message)
 

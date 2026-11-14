@@ -1,4 +1,4 @@
-"""SQLite persistence for users, documents, conversations and messages."""
+"""SQLite persistence for users, conversations and messages (documents: backend/library/catalog.py, same file)."""
 import json
 import sqlite3
 import threading
@@ -37,19 +37,7 @@ CREATE TABLE IF NOT EXISTS migrations (
     applied_at TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS documents (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    filename TEXT NOT NULL,
-    file_hash TEXT NOT NULL,
-    size_bytes INTEGER NOT NULL,
-    pages INTEGER NOT NULL DEFAULT 0,
-    chunks INTEGER NOT NULL DEFAULT 0,
-    status TEXT NOT NULL,
-    error TEXT,
-    created_at TEXT NOT NULL,
-    UNIQUE(user_id, file_hash)
-);
+-- documents: owned by backend/library/catalog.py (its schema, in this same file)
 CREATE TABLE IF NOT EXISTS conversations (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -83,9 +71,11 @@ def _get_conn() -> sqlite3.Connection:
     global _conn
     if _conn is None:
         Path(settings.database_path).parent.mkdir(parents=True, exist_ok=True)
-        _conn = sqlite3.connect(settings.database_path, check_same_thread=False)
+        _conn = sqlite3.connect(settings.database_path, check_same_thread=False, timeout=30)
         _conn.row_factory = sqlite3.Row
         _conn.execute("PRAGMA foreign_keys = ON")
+        _conn.execute("PRAGMA journal_mode = WAL")   # the library's batch worker writes while chats read
+        _conn.execute("PRAGMA synchronous = NORMAL")
     return _conn
 
 
@@ -107,6 +97,8 @@ def init_db() -> None:
         c.executescript(SCHEMA)
         _migrate_memory_to_facts(c)
         _add_message_stat_columns(c)
+    from backend.library import catalog
+    catalog.init()
 
 
 def _migrate_memory_to_facts(c) -> None:
@@ -264,68 +256,6 @@ def delete_fact(user_id: str, memory_key: str, value: str | None = None) -> int:
         return cur.rowcount
 
 
-# ---------------------------------------------------------------- documents
-def add_document(user_id: str, filename: str, file_hash: str, size_bytes: int) -> dict:
-    doc = {
-        "id": uuid.uuid4().hex, "user_id": user_id, "filename": filename, "file_hash": file_hash,
-        "size_bytes": size_bytes, "pages": 0, "chunks": 0, "status": "processing", "created_at": _now(),
-    }
-    with tx() as c:
-        c.execute(
-            "INSERT INTO documents (id, user_id, filename, file_hash, size_bytes, pages, chunks, status, created_at) "
-            "VALUES (:id, :user_id, :filename, :file_hash, :size_bytes, :pages, :chunks, :status, :created_at)",
-            doc,
-        )
-    return doc
-
-
-_DOC_FIELDS = {"pages", "chunks", "status", "error"}
-
-
-def update_document(doc_id: str, **fields) -> None:
-    fields = {k: v for k, v in fields.items() if k in _DOC_FIELDS}
-    if not fields:
-        return
-    cols = ", ".join(f"{k} = :{k}" for k in fields)
-    with tx() as c:
-        c.execute(f"UPDATE documents SET {cols} WHERE id = :id", {**fields, "id": doc_id})
-
-
-INTERRUPTED = "Indexing was interrupted when the server stopped. Upload the file again."
-
-
-def fail_unfinished_documents() -> int:
-    """At startup: documents still "processing" were being indexed when the server stopped; nothing will finish
-    them, so they are marked failed (uploading the file again retries it)."""
-    with tx() as c:
-        return c.execute("UPDATE documents SET status = 'failed', error = ? WHERE status = 'processing'",
-                         (INTERRUPTED,)).rowcount
-
-
-def find_document_by_hash(user_id: str, file_hash: str) -> dict | None:
-    with tx() as c:
-        return _one(c.execute("SELECT * FROM documents WHERE user_id = ? AND file_hash = ?", (user_id, file_hash)))
-
-
-def list_documents(user_id: str, status: str | None = None) -> list[dict]:
-    with tx() as c:
-        if status:
-            return _all(c.execute(
-                "SELECT * FROM documents WHERE user_id = ? AND status = ? ORDER BY created_at DESC", (user_id, status)
-            ))
-        return _all(c.execute("SELECT * FROM documents WHERE user_id = ? ORDER BY created_at DESC", (user_id,)))
-
-
-def get_document(user_id: str, doc_id: str) -> dict | None:
-    with tx() as c:
-        return _one(c.execute("SELECT * FROM documents WHERE id = ? AND user_id = ?", (doc_id, user_id)))
-
-
-def delete_document(user_id: str, doc_id: str) -> None:
-    with tx() as c:
-        c.execute("DELETE FROM documents WHERE id = ? AND user_id = ?", (doc_id, user_id))
-
-
 # ---------------------------------------------------------------- conversations
 def create_conversation(user_id: str, title: str) -> dict:
     now = _now()
@@ -398,7 +328,7 @@ def list_messages(conv_id: str, limit: int | None = None) -> list[dict]:
 def user_stats(user_id: str) -> dict:
     with tx() as c:
         docs = _one(c.execute(
-            "SELECT COUNT(*) n, COALESCE(SUM(chunks), 0) chunks FROM documents WHERE user_id = ? AND status = 'indexed'",
+            "SELECT COUNT(*) n, COALESCE(SUM(chunks), 0) chunks FROM documents WHERE owner = ? AND status = 'indexed'",
             (user_id,),
         ))
         convs = _one(c.execute("SELECT COUNT(*) n FROM conversations WHERE user_id = ?", (user_id,)))

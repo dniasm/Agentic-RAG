@@ -10,6 +10,7 @@ import copy
 import shutil
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from qdrant_client import models
@@ -128,9 +129,27 @@ def add_file(original_name: str, data: bytes, owner: str = config.OWNER) -> tupl
     return doc, False
 
 
+# The one indexing queue (the library's uploads and day7's /api/documents): one file at a time, because the
+# embedded Qdrant store is not safe for concurrent writers and Gemini's free tier allows 100 embedding requests
+# a minute.
+_queue = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ingest")
+
+
+def queue(doc_id: str) -> None:
+    """Index the document in the background (process())."""
+    _queue.submit(process, doc_id)
+
+
+def stop_queue() -> None:
+    """On shutdown: files still waiting stay "processing" and are resumed at the next start."""
+    _queue.shutdown(wait=False, cancel_futures=True)
+
+
 def process(doc_id: str, ask_title=None) -> dict:
     """Title the document, then index it with day7's ingestion pipeline (load, clean, chunk, embed, store)."""
     doc = catalog.get_document(doc_id)
+    if doc is None:   # deleted while it waited in the queue
+        return None
     try:
         pages, _ = ingestion.load_file(_path(doc))
         if not pages:
@@ -148,6 +167,9 @@ def process(doc_id: str, ask_title=None) -> dict:
 
         result = ingestion.ingest_file(config.LIBRARY_DIR / file_name, user_id=doc["owner"], doc_id=doc_id,
                                        filename=title)
+        if catalog.get_document(doc_id) is None:   # deleted while it was being indexed
+            vectorstore.delete_document_vectors(doc["owner"], doc_id)
+            return None
         _set_chunk_fields(doc_id, doc["owner"], title=title, file_name=file_name)
         catalog.update_document(doc_id, status="indexed", pages=result["pages"], chunks=result["chunks"], error=None)
         event("indexed", doc=doc_id, title=title, chunks=result["chunks"], pages=result["pages"])

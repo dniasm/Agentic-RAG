@@ -5,7 +5,6 @@ in that user's library: another user's document, chat or batch answers as if it 
 """
 import logging
 import threading
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import quote
 
@@ -19,8 +18,6 @@ from backend.library.logs import event
 router = APIRouter(prefix="/library", tags=["Library"])
 
 
-# One file at a time: Gemini's free tier allows 100 embedding requests a minute.
-_ingest_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ingest")
 # One chat message at a time per session, so two quick messages can't race on the same session.
 _session_locks: dict[str, threading.Lock] = {}
 _locks_guard = threading.Lock()
@@ -36,7 +33,7 @@ def _public(doc: dict) -> dict:
 def _resume_unfinished() -> None:
     """Files left 'processing' when the server stopped are indexed again."""
     for doc in catalog.list_documents(status="processing"):
-        _ingest_pool.submit(library.process, doc["id"])
+        library.queue(doc["id"])
 
 
 def startup() -> None:
@@ -48,6 +45,7 @@ def startup() -> None:
 
 
 def shutdown() -> None:
+    library.stop_queue()
     batch.stop()
     event("server_stopped")
 
@@ -149,7 +147,7 @@ def upload(files: list[UploadFile] = File(...), user: dict = Depends(current_use
             results.append({"file": f.filename, "status": "rejected", "error": str(e)})
             continue
         if not duplicate:
-            _ingest_pool.submit(library.process, doc["id"])
+            library.queue(doc["id"])
         # a duplicate of the file as it was uploaded, though the document has been edited since
         edited_since = duplicate and doc["sha256"] != library.ingestion.file_sha256(data)
         results.append({"file": f.filename, "status": "duplicate" if duplicate else "queued", "document": _public(doc),

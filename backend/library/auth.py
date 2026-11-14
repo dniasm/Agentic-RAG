@@ -44,12 +44,28 @@ def hash_password(password: str) -> str:
 
 
 def check_password(password: str, stored: str) -> bool:
+    """Both formats in the users table: PBKDF2 (made here) and bcrypt (made by day7's sign-up before the merge),
+    told apart by prefix. They are equal in strength, so neither is re-hashed."""
+    if stored.startswith("$2"):
+        return _check_bcrypt(password, stored)
     try:
         _, rounds, salt, digest = stored.split("$")
         mine = hashlib.pbkdf2_hmac("sha256", password.encode(), bytes.fromhex(salt), int(rounds))
     except (ValueError, TypeError):
         return False
     return hmac.compare_digest(mine.hex(), digest)
+
+
+def _check_bcrypt(password: str, stored: str) -> bool:
+    import base64
+
+    import bcrypt
+    # day7 pre-hashed with SHA-256 so that passphrases past bcrypt's 72 bytes still count
+    prehashed = base64.b64encode(hashlib.sha256(password.encode("utf-8")).digest())
+    try:
+        return bcrypt.checkpw(prehashed, stored.encode())
+    except ValueError:
+        return False
 
 
 def _token_hash(token: str) -> str:

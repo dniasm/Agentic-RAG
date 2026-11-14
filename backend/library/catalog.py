@@ -5,11 +5,14 @@ import threading
 import uuid
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
+from backend.config.settings import settings
 from backend.library import config
 
 _lock = threading.RLock()
 _conn: sqlite3.Connection | None = None
+_conn_path: Path | None = None
 _version = 0   # goes up with every change to documents or their names: cached search results are stale after it
 
 
@@ -112,11 +115,26 @@ def now() -> str:
 
 
 def _db() -> sqlite3.Connection:
-    global _conn
+    """The catalog's tables are in day7's database (settings.database_path), on a connection of their own. It
+    follows that setting, as day7's does: tests point it at a temporary file."""
+    global _conn, _conn_path
+    path = Path(settings.database_path)
+    if _conn is not None and _conn_path != path:
+        _conn.close()
+        _conn = None
     if _conn is None:
-        config.CATALOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-        _conn = sqlite3.connect(config.CATALOG_PATH, check_same_thread=False)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _conn_path = path
+        _conn = sqlite3.connect(path, check_same_thread=False, timeout=30)
         _conn.row_factory = sqlite3.Row
+        _conn.execute("PRAGMA journal_mode = WAL")   # the batch worker writes while chats read
+        _conn.execute("PRAGMA synchronous = NORMAL")
+        columns = {r[1] for r in _conn.execute("PRAGMA table_info(documents)")}
+        if columns and "title" not in columns:
+            _conn.close()
+            _conn = None
+            raise RuntimeError(f"{path} still has day7's old documents table: "
+                               "run python -m backend.scripts.merge_library first")
         _conn.executescript(SCHEMA)
         try:  # databases made before structured changes existed
             _conn.execute("ALTER TABLE batch_tasks ADD COLUMN payload TEXT")
@@ -145,8 +163,14 @@ def _db() -> sqlite3.Connection:
     return _conn
 
 
+def init() -> None:
+    """Open the catalog now (day7's init_db calls this), so a database that needs migrating fails at startup."""
+    with _lock:
+        _db()
+
+
 def reset_connection() -> None:
-    """Close the connection (tests point CATALOG_PATH elsewhere and reopen)."""
+    """Close the connection (the next call reopens it)."""
     global _conn
     with _lock:
         if _conn is not None:

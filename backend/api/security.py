@@ -23,10 +23,9 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(password: str, password_hash: str) -> bool:
-    try:
-        return bcrypt.checkpw(_prehash(password), password_hash.encode())
-    except ValueError:
-        return False
+    """bcrypt (day7's) or PBKDF2 (the library's): one users table holds both."""
+    from backend.library.auth import check_password
+    return check_password(password, password_hash)
 
 
 # ---------------------------------------------------------------- JWT

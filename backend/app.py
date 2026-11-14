@@ -20,7 +20,7 @@ from backend.api.routes import auth, chat, documents, health
 from backend.config.settings import settings
 from backend.library import api as library_api
 from backend.memory.store import ensure_memory_collection
-from backend.models.database import fail_unfinished_documents, init_db
+from backend.models.database import init_db
 from backend.rag.vectorstore import get_client, close_client
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -33,7 +33,6 @@ async def lifespan(_: FastAPI):
     if missing:
         raise RuntimeError(f"Missing required settings in .env: {', '.join(k.upper() for k in missing)}")
     init_db()
-    fail_unfinished_documents()  # indexing that a restart cut off
     get_client()  # open / create the Qdrant collection up front
     library_api.startup()  # the document library: logs, unfinished files, the batch queue worker
     try:  # once here, not on every message; a problem only disables recall of past conversations
@@ -46,8 +45,6 @@ async def lifespan(_: FastAPI):
     finally:
         from backend.api.routes.chat import flush_pending_memory
         flush_pending_memory()  # facts still waiting for a batched extraction
-        from backend.api.routes.documents import stop_indexing
-        stop_indexing()
         library_api.shutdown()
         close_client()
 

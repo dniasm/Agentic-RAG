@@ -24,6 +24,7 @@ class TokenOut(BaseModel):
 # ---------------------------------------------------------------- documents
 class DocumentOut(BaseModel):
     id: str
+    title: str            # the library's name for it (renamed by the agent); filename is the uploaded name
     filename: str
     size_bytes: int
     pages: int
