@@ -466,6 +466,41 @@ class MemoryBatching(unittest.TestCase):
         self.assertNotIn("{message}", memory.BATCH_PROMPT)
 
 
+class MemoryRetry(unittest.TestCase):
+    def _run(self, *replies, message="I live in Pokhara and I play futsal."):
+        model = mock.Mock()
+        model.return_value.invoke.side_effect = list(replies)
+        saved = []
+        with mock.patch.object(memory, "structured", model), \
+             mock.patch.object(memory, "_grouped", return_value={}), \
+             mock.patch.object(memory, "apply_changes", lambda uid, changes: saved.extend(changes)):
+            memory.extract_and_save_memories("u", message, [])
+        steps = [c.kwargs["config"]["metadata"]["usage_step"] for c in model.return_value.invoke.call_args_list]
+        return steps, saved
+
+    def facts(self, *values):
+        return memory.MemoryExtraction(facts=[memory.MemoryOp(key="location", value=v, action="remember")
+                                              for v in values])
+
+    def test_no_tool_call_is_retried_once(self):
+        steps, saved = self._run(None, self.facts("Pokhara"))
+        self.assertEqual(steps, ["memory_extract", "memory_extract_retry"])
+        self.assertEqual(saved, [("set", "location", "Pokhara")])
+
+    def test_empty_list_is_retried_once_then_given_up(self):
+        steps, saved = self._run(self.facts(), self.facts())
+        self.assertEqual(steps, ["memory_extract", "memory_extract_retry"])
+        self.assertEqual(saved, [])
+
+    def test_no_retry_when_facts_were_found(self):
+        steps, _ = self._run(self.facts("Pokhara"))
+        self.assertEqual(steps, ["memory_extract"])
+
+    def test_no_call_when_the_pre_check_rejects_the_message(self):
+        steps, _ = self._run(message="what is BM25?")
+        self.assertEqual(steps, [])
+
+
 class PreviousAnswerCap(unittest.TestCase):
     def test_long_previous_answer_keeps_its_start_and_end(self):
         from backend.tools import history_to_messages

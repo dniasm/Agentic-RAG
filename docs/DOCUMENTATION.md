@@ -635,6 +635,12 @@ conversation first waits (up to 30 s) for the user's pending facts to be saved; 
 extracted. One waiting message uses the single-message prompt unchanged; if a batch call fails, each message is
 extracted on its own. Batched calls are logged as their own `memory_batch` line in the token log.
 
+**One retry.** A message reaches the memory model only after passing the pre-check, so an empty result is often a
+miss: Qwen intermittently answers without calling its tool, or returns an empty list that a repeat fills. Such a
+call is repeated once, logged as the step `memory_extract_retry`. On the 18 memory conversations (14 November)
+it fired once, on the turn behind the earlier intermittent miss, and found the fact: 18/18 cases and 20/20 facts
+(before: 17/18, 19/20), batched 18/18 and 20/20 (before: 17/18, 16/20); no retry came back empty.
+
 The original one-row-per-key `user_memory` table was migrated into `user_facts` once (recorded in `migrations` as
 `user_facts_v1`) and kept, unused, as a backup in databases from before then. New databases don't get the table;
 the migration is just marked done.
@@ -952,7 +958,7 @@ same origin as the API, or set `VITE_API_URL`.
 | `calibrate_reranker.py` | Voyage vs local reranker on saved pools; zone thresholds | 74 questions: top-5 100%, MRR 0.930 (local 0.830) |
 | `run_router.py` | 80 routing cases | 73/80 exact, 79/80 acceptable, 0/41 non-document messages sent to RAG |
 | `run_direct_gate.py [--gate-only] [--old] [--only ids]` | 22 questions to answer from model knowledge, 9 that must be refused | 31/31 with the trimmed gate prompt; `--old` runs the pre-trim prompt (§21.13) |
-| `run_memory.py [case-id]` | 18 memory conversations | 17/18; 19/20 facts; 0 stale; 0 false saves; 15,984 tokens (§21.12) |
+| `run_memory.py [case-id] [--batch]` | 18 memory conversations | 18/18; 20/20 facts; 0 stale; 0 false saves; 16,224 tokens (batched: 18/18, 12,986) with the one retry (§8) |
 | `run_checker.py [--fresh] [--rescore]` | Code citation check vs the 120B answer check, plus deliberately broken answers | 43 answers: 0 real problems missed; 187/190 broken answers caught (§21.9) |
 | `run_direct_prompt.py` | Direct-answer prompt split: 19 questions through router → gate → answer | 12/12 open questions got the open-question rules; memories kept out of role-play (§21.10) |
 | `run_web_prompt.py [--only ids]` | Web-answer prompt, old vs new, on the same saved search results (10 questions) | "As of" dates 6/6, gaps named 2/2 either way; "sources you provided" 0 (§21.14) |

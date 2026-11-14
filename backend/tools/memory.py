@@ -229,6 +229,20 @@ def apply_changes(user_id: str, changes: list[tuple[str, str, str | None]]) -> N
         log.info("Memory %s %s%s", action, key, f" = {value!r}" if value else "")
 
 
+def _extract(prompt: str, callbacks: list | None) -> list[MemoryOp]:
+    """One memory-model call, retried once when it returns nothing. Only called for messages the pre-check let
+    through, so an empty result is often a miss: Qwen intermittently answers without calling the tool (parsed as
+    None, which used to fail the whole extraction) or with an empty list where a repeat finds the facts (2026-11-03:
+    both benchmark misses passed 3/3 on repeat). The retry is its own step, so its cost shows in the token log."""
+    for step in ("memory_extract", "memory_extract_retry"):
+        result = structured(MemoryExtraction, memory=True).invoke(
+            prompt, config={"callbacks": callbacks or [], "metadata": {"usage_step": step}})
+        if result is not None and result.facts:
+            return result.facts
+        log.info("Memory extraction (%s) returned %s", step, "no tool call" if result is None else "no facts")
+    return []
+
+
 def extract_and_save_memories(user_id: str, message: str, history: list[dict],
                               callbacks: list | None = None) -> list[tuple[str, str, str | None]]:
     """Extract facts from the latest user message and store them. Returns the changes made.
@@ -244,13 +258,10 @@ def extract_and_save_memories(user_id: str, message: str, history: list[dict],
         history_text = "\n".join(
             f"{m['role']}: {' '.join(m['content'].split())[:400]}" for m in history[-2:]
         ) or "(no previous conversation)"
-        result = structured(MemoryExtraction, memory=True).invoke(
-            EXTRACT_PROMPT.format(existing=existing_text, history=history_text, message=message),
-            config={"callbacks": callbacks or [], "metadata": {"usage_step": "memory_extract"}},
-        )
-        log.info("Memory extraction returned %d operation(s): %s", len(result.facts),
-                 [op.model_dump() for op in result.facts])
-        changes = plan_changes(existing, result.facts)
+        ops = _extract(EXTRACT_PROMPT.format(existing=existing_text, history=history_text, message=message),
+                       callbacks)
+        log.info("Memory extraction returned %d operation(s): %s", len(ops), [op.model_dump() for op in ops])
+        changes = plan_changes(existing, ops)
         apply_changes(user_id, changes)
         return changes
     except Exception:
@@ -299,13 +310,10 @@ def extract_and_save_batch(user_id: str, turns: list[dict], callbacks: list | No
             if previous:
                 lines.append(f"ASSISTANT: {' '.join(previous['content'].split())[:BATCH_REPLY_CHARS]}")
             lines.append(f"USER: {t['message'].strip()}")
-        result = structured(MemoryExtraction, memory=True).invoke(
-            BATCH_PROMPT.format(existing=existing_text, conversation="\n".join(lines)),
-            config={"callbacks": callbacks or [], "metadata": {"usage_step": "memory_extract"}},
-        )
-        log.info("Batched memory extraction (%d messages) returned %d operation(s): %s", len(turns),
-                 len(result.facts), [op.model_dump() for op in result.facts])
-        changes = plan_changes(existing, result.facts)
+        ops = _extract(BATCH_PROMPT.format(existing=existing_text, conversation="\n".join(lines)), callbacks)
+        log.info("Batched memory extraction (%d messages) returned %d operation(s): %s", len(turns), len(ops),
+                 [op.model_dump() for op in ops])
+        changes = plan_changes(existing, ops)
         apply_changes(user_id, changes)
         return changes
     except Exception:

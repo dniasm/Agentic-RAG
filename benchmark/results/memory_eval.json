@@ -1,12 +1,12 @@
 {
-  "timestamp": "2026-11-14T01:17:56",
+  "timestamp": "2026-11-14T09:24:43",
   "model": "qwen/qwen3.8-27b",
   "summary": {
-    "cases_passed": "17/18",
-    "facts_saved": "19/20",
+    "cases_passed": "18/18",
+    "facts_saved": "20/20",
     "stale_values_left": 0,
     "false_saves": 0,
-    "memory_model_tokens": 14375
+    "memory_model_tokens": 16224
   },
   "rows": [
     {
@@ -39,22 +39,21 @@
       "missing": [],
       "unwanted": [],
       "false_save": false,
-      "tokens": 1876
+      "tokens": 927
     },
     {
       "id": "hobbies-append",
-      "passed": false,
+      "passed": true,
       "memories": {
         "hobbies": [
-          "trekking"
+          "trekking",
+          "futsal"
         ]
       },
-      "missing": [
-        "futsal"
-      ],
+      "missing": [],
       "unwanted": [],
       "false_save": false,
-      "tokens": 1816
+      "tokens": 2341
     },
     {
       "id": "liked-vs-favourite",
@@ -70,17 +69,17 @@
       "missing": [],
       "unwanted": [],
       "false_save": false,
-      "tokens": 928
+      "tokens": 726
     },
     {
       "id": "many-facts",
       "passed": true,
       "memories": {
         "languages": [
-          "Nepali",
-          "English"
+          "nepali",
+          "english"
         ],
-        "university": [
+        "education": [
           "Tribhuvan University"
         ],
         "occupation": [
@@ -90,7 +89,7 @@
       "missing": [],
       "unwanted": [],
       "false_save": false,
-      "tokens": 874
+      "tokens": 840
     },
     {
       "id": "forget-one",
@@ -103,7 +102,7 @@
       "missing": [],
       "unwanted": [],
       "false_save": false,
-      "tokens": 798
+      "tokens": 1679
     },
     {
       "id": "forget-all",
@@ -125,7 +124,7 @@
       "missing": [],
       "unwanted": [],
       "false_save": false,
-      "tokens": 1835
+      "tokens": 898
     },
     {
       "id": "name-change",
@@ -164,20 +163,20 @@
       "missing": [],
       "unwanted": [],
       "false_save": false,
-      "tokens": 0
+      "tokens": 898
     },
     {
       "id": "vegetarian",
       "passed": true,
       "memories": {
-        "diet": [
+        "dietary_restrictions": [
           "vegetarian"
         ]
       },
       "missing": [],
       "unwanted": [],
       "false_save": false,
-      "tokens": 0
+      "tokens": 766
     },
     {
       "id": "dislike",
@@ -190,7 +189,7 @@
       "missing": [],
       "unwanted": [],
       "false_save": false,
-      "tokens": 0
+      "tokens": 766
     },
     {
       "id": "no-facts-question",
@@ -239,7 +238,7 @@
       "missing": [],
       "unwanted": [],
       "false_save": false,
-      "tokens": 764
+      "tokens": 899
     }
   ]
 }

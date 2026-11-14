@@ -79,6 +79,7 @@ Old vs current, from the benchmarks and the token log (details: [`docs/DOCUMENTA
 | Agent tokens, same 8 messages (old code vs new) | 25,825 | 20,583 (−20%); greetings −64%, document requests −39% |
 | Router calls on 80 router test messages | 80 | 70 (greetings and first-message document requests decided in code) |
 | Memory benchmark, batched extraction (same day) | 17/18, 14,375 tokens | 17/18, 12,180 (−15%); 0 false saves |
+| Memory benchmark with one retry on an empty result | 17/18, 19/20 facts (batched 17/18, 16/20) | 18/18, 20/20 (batched 18/18, 20/20); 16,224 tokens (+13%, mostly run-to-run variance; the retry fired once) |
 
 ## Repository layout
 
