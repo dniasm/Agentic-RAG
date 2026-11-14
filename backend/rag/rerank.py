@@ -21,10 +21,10 @@ so near-duplicates (our chunks overlap by 200 characters) don't crowd out other 
 """
 import logging
 import time
-from functools import lru_cache
 
 import numpy as np
 
+from backend.config import voyage
 from backend.config.settings import settings
 
 log = logging.getLogger(__name__)
@@ -43,15 +43,10 @@ def ensure_loaded() -> bool:
 
 
 # ---------------------------------------------------------------- Voyage
-@lru_cache(maxsize=1)
-def _voyage_client():
-    import voyageai
-    # One quick retry for a dropped connection; rate limits are handled by the fallback, not by waiting.
-    return voyageai.Client(api_key=settings.voyage_api_key, max_retries=1, timeout=settings.voyage_rerank_timeout)
-
-
 def _score_voyage(query: str, texts: list[str]) -> list[float]:
-    result = _voyage_client().rerank(query, texts, model=settings.voyage_rerank_model, truncation=True)
+    # Highest priority on the shared Voyage limit; if no slot frees up in time, score() falls back.
+    result = voyage.call(voyage.RERANK, lambda c: c.rerank(query, texts, model=settings.voyage_rerank_model,
+                                                         truncation=True))
     scores = [0.0] * len(texts)
     for r in result.results:
         scores[r.index] = float(r.relevance_score)

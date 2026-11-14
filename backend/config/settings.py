@@ -79,6 +79,13 @@ class Settings(BaseSettings):
     # MRR 0.830). On the first 35 questions it also beat rerank-2.5-lite (top-1 100% vs 97%) at the same cost.
     voyage_rerank_model: str = "rerank-2.5"
     voyage_rerank_timeout: float = 15.0  # seconds; a slow call falls back instead of holding up the answer
+    # One limit for all Voyage calls (reranking, memory recall, episode saves; backend/config/voyage.py). The free
+    # tier without a payment method allows 3 requests a minute; with one, raise this.
+    voyage_requests_per_minute: int = 3
+    voyage_rerank_reserve: int = 1      # slots recall and saves leave free for the reranker
+    voyage_rerank_max_wait: float = 10.0  # seconds a rerank waits for a slot before the LLM relevance check
+    voyage_recall_max_wait: float = 3.0   # seconds memory recall waits, then answers without past conversations
+    voyage_save_max_wait: float = 120.0   # seconds a background episode save waits
     # rerank-2.5's score scale: unrelated passages still score ~0.3. Measured best scores (74 questions):
     # answerable 0.58-0.99; out of scope 0.34-0.51, except one near-miss at 0.81 (K2 vs a passage on Everest's first
     # ascent). With these values all 67 answerable questions are answered from the documents, 5/7 out-of-scope go

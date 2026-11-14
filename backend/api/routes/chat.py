@@ -40,6 +40,9 @@ EPISODE_RAW_MAX_CHARS = 400  # exchanges up to this long (question + answer) are
 # Memory work (fact extraction, episode summary) runs after the reply is sent, one job at a time, so it
 # adds no wait for the user and two quick messages can't update the same memory keys at once.
 _memory_worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix="memory")
+# Storing an episode can wait up to VOYAGE_SAVE_MAX_WAIT for a Voyage request slot (config/voyage.py), so it has its
+# own worker: waiting on _memory_worker would hold up fact extraction, which the user's next message may wait for.
+_episode_worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix="episodes")
 MEMORY_FLUSH_WAIT_SECONDS = 30  # longest a new conversation waits for the user's pending facts to be saved
 
 
@@ -263,11 +266,18 @@ def _remember_exchange(user_id: str, conv_id: str, user_message: str, history: l
             short = len(question) + len(answer) <= EPISODE_RAW_MAX_CHARS
             summary = None if short else summarize_exchange(question, answer, callbacks=[tracker])
             episode = summary or raw
-            save_memory(user_id, episode, kind="episodic", conversation_id=conv_id)
+            _episode_worker.submit(_save_episode, user_id, episode, conv_id)
         except Exception:
             log.exception("Semantic memory persistence failed")
 
     record_usage(tracker, **usage_context)
+
+
+def _save_episode(user_id: str, episode: str, conv_id: str) -> None:
+    try:
+        save_memory(user_id, episode, kind="episodic", conversation_id=conv_id)
+    except Exception:
+        log.exception("Saving the conversation episode failed")
 
 
 def _error_state(e: Exception) -> dict:

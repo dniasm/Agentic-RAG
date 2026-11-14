@@ -227,6 +227,8 @@ overridden by an environment variable / `.env` entry with the same name (case-in
 | `BM25_K1` / `BM25_B` / `BM25_AVG_LEN` | `1.2` / `0.75` / `120` | BM25 parameters. |
 | `RERANK_ENABLED` | `True` | Use a reranker (otherwise the LLM relevance check). |
 | `VOYAGE_RERANK_MODEL` / `VOYAGE_RERANK_TIMEOUT` | `rerank-2.5` / `15` | Hosted reranker; a slow call falls back instead of waiting. |
+| `VOYAGE_REQUESTS_PER_MINUTE` / `VOYAGE_RERANK_RESERVE` | `3` / `1` | One limit for every Voyage call (reranking, memory recall, episode saves); recall and saves leave this many slots for the reranker. Raise the limit if the Voyage account has a payment method. |
+| `VOYAGE_RERANK_MAX_WAIT` / `VOYAGE_RECALL_MAX_WAIT` / `VOYAGE_SAVE_MAX_WAIT` | `10` / `3` / `120` | Seconds each waits for a free slot: then the LLM relevance check, an answer without past conversations, or a skipped episode. |
 | `VOYAGE_RELEVANCE_HIGH` / `VOYAGE_RELEVANCE_LOW` | `0.55` / `0.45` | Confidence zones on Voyage's scale (calibrated). |
 | `RERANK_CANDIDATES` / `RERANK_TOP_N` / `MMR_LAMBDA` | `20` / `12` / `0.7` | Candidates scored; pool MMR picks from; relevance vs diversity. |
 | `WEAK_MATCH_RETRIES` | `1` | Extra reworded searches in the middle zone. |
@@ -316,6 +318,7 @@ Most backend folders contain an empty `__init__.py`; it only lets Python import 
 |---|---|
 | `settings.py` | Every setting (keys, models, chunking, retrieval, reranker thresholds, budgets, paths), loaded from `.env`; full list in §5. |
 | `llm.py` | One client per model role (120B writer and judge, 20B router, Qwen memory, 20B backup writer), key rotation across `GROQ_API_KEY`…`_4`, the rate-limit fallback to the backup writer, and `structured()` for schema-validated output, including recovery of misnamed tool calls. |
+| `voyage.py` | The one Voyage client, behind a shared rate limit with priorities: reranking first, then memory recall, then episode saves (§10). |
 | `usage.py` | `UsageTracker` counts tokens per model and per step during a request; `record()` writes the request's line to `backend/data/token_usage.jsonl`. |
 
 #### `backend/models/` — data storage and API shapes
@@ -359,7 +362,7 @@ Most backend folders contain an empty `__init__.py`; it only lets Python import 
 
 | File | What it does |
 |---|---|
-| `embeddings.py` | Voyage client and embedding helpers for memory texts and queries. |
+| `embeddings.py` | Embedding helpers for memory texts (save priority) and queries (recall priority), through `config/voyage.py`. |
 | `store.py` | The `user_memories` Qdrant collection: save an exchange summary, find the closest ones for a new message, delete a conversation's memories. |
 
 #### `backend/evaluation/` — checking answers and decisions
@@ -682,6 +685,13 @@ replaced was removed on 14 November). If Voyage can't score (rate-limited, down,
 8 candidates. The best score sets the **zone** (≥ high → answer; < low → next
 source; between → one reworded retry); MMR picks `RETRIEVAL_K` diverse passages from the top `RERANK_TOP_N`.
 
+**One Voyage limit** (`config/voyage.py`). Reranking, conversation-memory recall and episode saves share one Voyage
+account, whose free tier allows 3 requests a minute in total. They used to have a client each and didn't know about
+one another, so a recall and a save could use up the minute and the next rerank fell back to the LLM check. Now every
+call takes a slot from one limiter, by priority: the reranker waits up to 10 s; recall (3 s) and background saves
+(120 s, on their own worker so fact extraction isn't held up) only take a slot while another stays free, and never
+ahead of a waiting rerank.
+
 **Reranker calibration** (`benchmark/calibrate_reranker.py`: the same 20 saved candidates per question, so the
 rerankers are compared on identical input).
 
@@ -983,8 +993,8 @@ Experiments that call the APIs live in `scripts/experiments/` (run from the root
 | "The AI service's free usage limit has been reached" | A Groq limit (per minute or per day). The message says which model and how long to wait. |
 | Answer marked "couldn't be automatically checked" | The checking model was rate-limited; the answer was kept unverified. |
 | Opinion questions going to documents/web | Check the `direct_answer` step under **Steps**: the gate's `question_kind` and reason. `run_direct_gate.py` reproduces it. |
-| Memory not recalled from past chats | `VOYAGE_API_KEY` missing or Voyage unavailable (logged); facts still work. |
-| Steps show "chunks judged relevant" instead of "Reranked … with Voyage" | Voyage failed (usually its rate limit: the free tier without a payment method allows 3 requests / 10,000 tokens per minute) and the LLM check was used. Add a payment method on Voyage. |
+| Memory not recalled from past chats | `VOYAGE_API_KEY` missing, Voyage unavailable, or no Voyage request slot free within `VOYAGE_RECALL_MAX_WAIT` (all logged); facts still work. |
+| Steps show "chunks judged relevant" instead of "Reranked … with Voyage" | Voyage failed (usually its rate limit: the free tier without a payment method allows 3 requests / 10,000 tokens per minute) and the LLM check was used. The shared limiter (`config/voyage.py`) keeps a slot for the reranker, so this should only happen when another process uses the same Voyage key. Add a payment method on Voyage and raise `VOYAGE_REQUESTS_PER_MINUTE`. |
 | Upload returns 422 "No extractable text" | Scanned/image-only PDF. OCR it first. |
 | Web search returns nothing | DuckDuckGo blocking or rate limiting. Add a `TAVILY_API_KEY`. |
 

@@ -525,7 +525,8 @@ class ShortEpisodes(unittest.TestCase):
         with mock.patch.object(chat, "summarize_exchange", return_value="Summary.") as summarize, \
              mock.patch.object(chat, "save_memory") as save, \
              mock.patch.object(chat, "record_usage"), \
-             mock.patch.object(chat._memory_batcher, "add"):
+             mock.patch.object(chat._memory_batcher, "add"), \
+             mock.patch.object(chat._episode_worker, "submit", side_effect=lambda fn, *args: fn(*args)):
             chat._remember_exchange("u", "c", question, [], state, mock.Mock(), {})
         return summarize.called, save.call_args.args[1]
 
