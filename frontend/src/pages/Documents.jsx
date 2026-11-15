@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { FileText, Loader2, Upload, X } from 'lucide-react';
 import { apiService } from '../services/api';
 import { formatCount, formatDay, formatSize } from '../lib/format';
+import DocumentLinks from '../components/DocumentLinks';
+import { openPreview } from '../state/previewStore';
 
 const ACCEPTED = ['.pdf', '.docx', '.txt', '.md'];
 const MAX_MB = 20;
@@ -127,7 +129,7 @@ export default function Documents({ onChanged }) {
       setDocuments((prev) => prev.filter((d) => d.id !== doc.id));
       onChanged?.();
     } catch (err) {
-      setNotice({ type: 'error', lines: [`${doc.filename}: ${err.message}`] });
+      setNotice({ type: 'error', lines: [`${doc.title}: ${err.message}`] });
     }
   };
 
@@ -244,11 +246,15 @@ export default function Documents({ onChanged }) {
                       <span className="flex items-center gap-2.5 min-w-0">
                         <FileText className="w-4 h-4 flex-none text-muted" strokeWidth={1.6} aria-hidden="true" />
                         <span className="min-w-0">
-                          <span className="block truncate font-medium" title={doc.filename}>{doc.filename}</span>
+                          {/* the library's name for it (the agent renames it); the uploaded name underneath */}
+                          <span className="block truncate font-medium" title={doc.title}>{doc.title}</span>
+                          {doc.filename !== doc.title && (
+                            <span className="block truncate text-small text-muted" title="Uploaded as">{doc.filename}</span>
+                          )}
                           {/* Phone: the other fields move to a second line instead of being dropped. */}
                           <span className="md:hidden block text-small text-muted num">
                             {doc.status === 'indexed'
-                              ? `${plural(doc.pages, 'page')} · ${plural(doc.chunks, 'passage')} · ${formatSize(doc.size_bytes)}`
+                              ? `${doc.pages ? `${plural(doc.pages, 'page')} · ` : ''}${plural(doc.chunks, 'passage')} · ${formatSize(doc.size_bytes)}`
                               : formatSize(doc.size_bytes)}
                             {doc.status !== 'indexed' && <span className="ml-2 align-middle"><Status doc={doc} /></span>}
                           </span>
@@ -257,12 +263,20 @@ export default function Documents({ onChanged }) {
                       </span>
                     </td>
                     {/* A document still being indexed has no pages or passages yet: a dash, not a zero. */}
-                    <td className="px-4 text-right num hidden md:table-cell">{doc.status === 'indexed' ? formatCount(doc.pages) : <span className="text-muted">—</span>}</td>
+                    <td className="px-4 text-right num hidden md:table-cell">{doc.status === 'indexed' && doc.pages ? formatCount(doc.pages) : <span className="text-muted">—</span>}</td>
                     <td className="px-4 text-right num hidden md:table-cell">{doc.status === 'indexed' ? formatCount(doc.chunks) : <span className="text-muted">—</span>}</td>
                     <td className="px-4 text-right num text-muted hidden md:table-cell whitespace-nowrap">{formatSize(doc.size_bytes)}</td>
                     <td className="px-4 text-right text-muted hidden md:table-cell whitespace-nowrap">{formatDay(doc.created_at)}</td>
                     <td className="px-4 hidden md:table-cell"><Status doc={doc} /></td>
-                    <td className="px-4 text-right whitespace-nowrap"><RemoveAction doc={doc} onRemove={remove} /></td>
+                    <td className="px-4 text-right whitespace-nowrap">
+                      <span className="inline-flex items-center gap-3">
+                        {doc.status === 'indexed' && (
+                          <button className="link-action" onClick={() => openPreview(doc)}>Preview</button>
+                        )}
+                        <DocumentLinks doc={doc} className="hidden sm:inline-flex" />
+                        <RemoveAction doc={doc} onRemove={remove} />
+                      </span>
+                    </td>
                   </tr>
                 ))}
               </tbody>

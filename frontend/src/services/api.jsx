@@ -1,5 +1,5 @@
 // Dev: Vite proxies /api to the backend (see vite.config.js). Set VITE_API_URL to call it directly.
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
+export const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 // Logins used to keep a token in localStorage; the cookie replaced it. Drop the old one once.
 try { localStorage.removeItem('agentic_rag_token'); } catch { /* storage unavailable */ }
@@ -144,6 +144,14 @@ export const apiService = {
   },
   async deleteDocument(docId) {
     return request(`/documents/${docId}`, { method: 'DELETE' });
+  },
+  /** Take back a document's latest edit (the Undo under an edit in a chat). */
+  async undoEdit(docId, editId) {   // with editId, refused (409) unless that edit is still the latest
+    return request(`/library/documents/${docId}/undo`, { method: 'POST', body: { edit_id: editId ?? null } });
+  },
+  /** The documents a conversation renamed, edited or undid, newest first. */
+  async getConversationDocuments(conversationId) {
+    return request(`/conversations/${conversationId}/documents`);
   },
 
   // ---------- stats

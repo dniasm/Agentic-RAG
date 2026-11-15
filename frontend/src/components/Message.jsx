@@ -7,6 +7,7 @@ import 'katex/dist/katex.min.css';
 import { ChevronDown, ChevronRight, Info, Loader2 } from 'lucide-react';
 import { formatSeconds } from '../lib/format';
 import { withCitations, withMath } from '../lib/answerText';
+import DocumentActions from './DocumentActions';
 
 const STEP_LABELS = {
   router: 'Read the question',
@@ -164,7 +165,7 @@ function Disclosure({ label, count, open, onToggle }) {
   );
 }
 
-function AgentAnswer({ msg }) {
+function AgentAnswer({ msg, undoable, onUndo }) {
   const [open, setOpen] = useState(null); // 'sources' | 'steps' | null
   const toggle = (what) => setOpen((v) => (v === what ? null : what));
   const sources = msg.sources || [];
@@ -184,6 +185,7 @@ function AgentAnswer({ msg }) {
       )}
 
       <Markdown text={msg.text} sources={sources} />
+      {msg.actions?.length > 0 && <DocumentActions actions={msg.actions} undoable={undoable} onUndo={onUndo} />}
 
       <div className="mt-3 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-small text-muted">
         <Provenance msg={msg} />
@@ -239,7 +241,7 @@ function PendingAnswer({ msg }) {
   );
 }
 
-export default function Message({ msg }) {
+export default function Message({ msg, undoable = new Set(), onUndo }) {
   if (msg.sender === 'user') {
     return (
       <div className="flex justify-end">
@@ -255,5 +257,5 @@ export default function Message({ msg }) {
       </p>
     );
   }
-  return <AgentAnswer msg={msg} />;
+  return <AgentAnswer msg={msg} undoable={undoable} onUndo={onUndo} />;
 }

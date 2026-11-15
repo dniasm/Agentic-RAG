@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Loader2, Menu, Plus, X } from 'lucide-react';
 import Sidebar from './components/Sidebar';
+import DocumentPreview from './components/DocumentPreview';
 import Login from './pages/Login';
 import Chat from './pages/Chat';
 import Documents from './pages/Documents';
@@ -165,13 +166,15 @@ export default function App() {
               }
               refreshConversations();
             }}
-            onAnswered={refreshConversations}
+            // an answer may have renamed or edited documents: their titles and page counts change too
+            onAnswered={() => { refreshConversations(); refreshDocuments(); }}
             onDelete={handleDeleteConversation}
           />
         )}
         {route.page === 'documents' && <Documents onChanged={refreshDocuments} />}
         {route.page === 'overview' && <Overview documents={documents} />}
       </main>
+      <DocumentPreview documents={documents || []} />
     </div>
   );
 }
