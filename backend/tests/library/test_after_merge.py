@@ -116,3 +116,31 @@ def test_passages_of_a_text_file_carry_no_page(library_docs):
                                                scroll_filter=vectorstore.user_filter(library_docs["svm.txt"]["owner"],
                                                                                      library_docs["svm.txt"]["id"]))
     assert points and all(p.payload["metadata"].get("page") is None for p in points)
+
+
+def _offered_as_near_miss(*doc_ids):
+    guard = agent.Guard({}, 1)
+    guard.saw_find({"decision": "none", "candidates": [{"doc_id": d} for d in doc_ids]})
+    return agent.Guard(guard.state(), 2)   # the user replied to the offer, maybe without naming one
+
+
+def test_an_edit_of_a_near_miss_is_confirmed_first(library_docs):
+    glove = library_docs["glove.txt"]["id"]
+    later = _offered_as_near_miss(library_docs["w2v.txt"]["id"], glove)
+    args = {"doc_id": glove, "operation": "append", "text": "More."}
+    out = agent.run_tool("edit_document", args, later, [])
+    assert out["status"] == "needs_confirmation" and out["reason"] == "weak_match"
+    assert agent.run_tool("edit_document", args, later, [])["status"] == "needs_confirmation"
+    yes, actions = agent.Guard(later.state(), 3), []
+    assert agent.run_tool("edit_document", args, yes, actions)["status"] == "edited"
+    # confirmed once: the document counts as identified from then on, for any tool
+    assert not agent.Guard(yes.state(), 4).weak_match_unconfirmed(glove)
+
+
+def test_an_undo_of_a_near_miss_is_confirmed_first(library_docs):
+    w2v = library_docs["w2v.txt"]["id"]
+    later = _offered_as_near_miss(w2v)
+    out = agent.run_tool("undo_edit", {"doc_id": w2v}, later, [])
+    assert out["status"] == "needs_confirmation" and out["reason"] == "weak_match"
+    out = agent.run_tool("undo_edit", {"doc_id": w2v}, agent.Guard(later.state(), 3), [])
+    assert out["status"] != "needs_confirmation"   # asked and answered (nothing to undo here)

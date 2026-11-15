@@ -114,11 +114,25 @@ class Guard:
         elif result["decision"] in ("ambiguous", "uncertain", "none"):
             for doc_id in ids:
                 self.needs_user[doc_id] = self.turn
-                if result["decision"] == "none":   # a near miss the reply may not have named: confirm a rename
+                if result["decision"] == "none":   # a near miss the reply may not have named: confirm any change
                     self.weak[doc_id] = self.turn
 
     def only_weakly_identified(self, doc_id: str) -> bool:
         return doc_id in self.weak and doc_id not in self.resolved
+
+    def weak_match_unconfirmed(self, doc_id: str) -> bool:
+        """True (and the question is recorded) while a near miss hasn't been confirmed by name in an earlier
+        message. The user's answer to that question counts for every tool, once: then it is identified."""
+        if not self.only_weakly_identified(doc_id):
+            return False
+        if any(p["doc_id"] == doc_id and p.get("reason") == "weak_match" and p["turn"] < self.turn
+               for p in self.pending):
+            self.pending = [p for p in self.pending if not (p["doc_id"] == doc_id and p.get("reason") == "weak_match")]
+            self.weak.pop(doc_id, None)
+            self.resolved[doc_id] = {"turn": self.turn, "by": "confirmed"}
+            return False
+        self.ask_confirmation(doc_id, "", "weak_match")
+        return True
 
     def saw_list(self, doc_ids: list[str]) -> None:
         for doc_id in doc_ids:
@@ -248,6 +262,8 @@ def _edit(args: dict, guard: Guard, actions: list) -> dict:
     problem = guard.identification_problem(doc_id)
     if problem:
         return {"status": "needs_clarification", "error": problem.replace("renaming", "editing")}
+    if guard.weak_match_unconfirmed(doc_id):
+        return _weak_match(doc, "edit_document")
     try:
         result = editing.edit(doc_id, args.get("operation", ""), find=args.get("find") or "",
                               text=args.get("text") or "", replace_all=bool(args.get("replace_all")),
@@ -359,12 +375,20 @@ def _undo(args: dict, guard: Guard, actions: list) -> dict:
     problem = guard.identification_problem(doc_id)
     if problem:
         return {"status": "needs_clarification", "error": problem.replace("renaming", "changing")}
+    if guard.weak_match_unconfirmed(doc_id):
+        return _weak_match(doc, "undo_edit")
     try:
         result = editing.undo(doc_id)
     except editing.EditError as e:
         return {"status": "error", "error": str(e)}
     actions.append({"type": "undo", "doc_id": doc_id, "title": doc["title"], "undid": result["undid"]})
     return result
+
+
+def _weak_match(doc: dict, tool: str) -> dict:
+    return {"status": "needs_confirmation", "reason": "weak_match", "document": doc["title"],
+            "next": f"It was only a near match. Ask the user whether <document> is the one they mean, naming it. "
+                    f"If they say yes, call {tool} again."}
 
 
 def _rename(args: dict, guard: Guard, actions: list) -> dict:
@@ -386,12 +410,10 @@ def _rename(args: dict, guard: Guard, actions: list) -> dict:
     if title == doc["title"]:
         return {"status": "unchanged", "title": title}
 
-    if guard.only_weakly_identified(doc_id) and not (
-            args.get("confirmed") and guard.confirmed_earlier(doc_id, title, "weak_match")):
-        guard.ask_confirmation(doc_id, title, "weak_match")
-        return {"status": "needs_confirmation", "reason": "weak_match", "document": doc["title"], "new_title": title,
+    if guard.weak_match_unconfirmed(doc_id):
+        return {**_weak_match(doc, "rename_document"), "new_title": title,
                 "next": "It was only a near match. Ask the user: rename <document> to <new_title>? If they agree, "
-                        "call rename_document again with confirmed=true."}
+                        "call rename_document again."}
 
     conflicts = library.name_conflicts(title, exclude=doc_id)
     if conflicts and not (args.get("confirmed") and guard.confirmed_earlier(doc_id, title, "name_conflict")):

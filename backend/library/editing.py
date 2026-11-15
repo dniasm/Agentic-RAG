@@ -373,8 +373,9 @@ def _finish(doc: dict, reloaded: dict, before: str | None = None) -> bool:
 
 
 @library._exclusive
-def undo(doc_id: str) -> dict:
-    """Put back the document as it was before its most recent edit (one step at a time)."""
+def undo(doc_id: str, edit_id: int | None = None) -> dict:
+    """Put back the document as it was before its most recent edit (one step at a time). With edit_id, only if that
+    is still the most recent edit (checked under the same lock as the undo, so two clicks can't both pass)."""
     doc = catalog.get_document(doc_id)
     if not doc:
         raise EditError("Document not found.")
@@ -383,6 +384,8 @@ def undo(doc_id: str) -> dict:
     last = catalog.last_edit(doc_id)
     if not last:
         raise EditError("There is nothing to undo: this document hasn't been edited.")
+    if edit_id is not None and last["id"] != edit_id:
+        raise EditError("That edit was already undone, or a later edit came after it.")
     backup = _versions_dir(doc_id) / last["backup"]
     path = config.LIBRARY_DIR / doc["file_name"]
     if not backup.exists() or not path.exists():

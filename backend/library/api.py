@@ -113,10 +113,8 @@ def undo_edit(doc_id: str, body: UndoIn | None = None, user: dict = Depends(curr
     """Undo the document's most recent edit (the Undo button under an edit in the chat)."""
     doc = _own_doc(doc_id, user)
     from backend.library import editing
-    if body and body.edit_id is not None and (catalog.last_edit(doc_id) or {}).get("id") != body.edit_id:
-        raise HTTPException(409, "That edit was already undone, or a later edit came after it.")
     try:
-        result = editing.undo(doc["id"])
+        result = editing.undo(doc["id"], body.edit_id if body else None)
     except editing.EditError as e:
         raise HTTPException(409, str(e)) from e
     event("undo_button", doc=doc_id, title=doc["title"])
