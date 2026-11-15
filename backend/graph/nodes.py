@@ -150,8 +150,7 @@ def next_source(state: AgentState) -> str | None:
 class Route(BaseModel):
     # Kept short: the rules live in ROUTER_PROMPT. These descriptions are sent with every message too (in the
     # output schema), and used to repeat the prompt (~240 tokens).
-    message_type: Literal["small_talk", "information_request", "document_action"] = Field(
-        description="See MESSAGE TYPE.")
+    message_type: Literal["small_talk", "information_request"] = Field(description="See MESSAGE TYPE.")
     # Kept in full: with only "See SOURCE." here, questions about the uploaded projects went to model knowledge
     # 3 times in 5 (5/5 to the documents with this description).
     source_preference: Literal["auto", "documents", "web", "model_knowledge"] = Field(
@@ -163,6 +162,14 @@ class Route(BaseModel):
     standalone_query: str = Field(description="See STANDALONE QUERY.")
     confidence: Literal["high", "medium", "low"] = Field(description="Your confidence in this classification.")
     confidence_required: bool = Field(description="See FACT CHECK.")
+    # A field of its own, not a third MESSAGE TYPE: every wording of it in the prompt moved other cases (2026-11-15,
+    # "what's the meaning of life" went to small talk 5 times in 5).
+    document_action: bool = Field(
+        default=False,
+        description="True when the user asks you to do something to their uploaded documents or document tasks: "
+                    "rename or retitle, edit, replace, append or fix text, undo a change, queue or cancel tasks, "
+                    "export, download or convert, list them, or which were renamed. False for questions about "
+                    "what a document says, and for summaries.")
 
 
 ROUTER_PROMPT = """You are the intake step of a research assistant. Classify the latest user message; do not
@@ -173,8 +180,6 @@ MESSAGE TYPE
   themselves, and questions about the assistant itself ("who are you?", "what can you do?").
 - information_request: everything else, including follow-ups, coding, calculations, how-tos, and challenges
   such as "why?" or "are you sure?" that ask for clarification or verification.
-- document_action: a request to change the user's uploaded documents (rename, edit, undo, queue, export).
-  Summarising or asking about them is information_request.
 
 SOURCE
 - model_knowledge: explanations, coding, calculations, reasoning, opinions, general questions, and follow-ups
@@ -333,7 +338,6 @@ def router_node(state: AgentState) -> dict:
     review_context = (
         "Review the intake classification. Correct genuine errors without "
         "replacing valid decisions with a generic default.\n"
-        "Use document_action only for requests to change the uploaded documents. "
         "Use model_knowledge for ordinary self-contained questions, documents "
         "when the user wants their uploaded material, and web for current or "
         "explicitly online information. Preserve conversational context.\n\n"
@@ -354,7 +358,7 @@ def router_node(state: AgentState) -> dict:
             review_context=review_context,
         )
 
-        kind = r.message_type
+        kind = "document_action" if r.document_action else r.message_type
         pref = r.source_preference
         clear = r.query_is_clear
         confidence_required = r.confidence_required

@@ -72,7 +72,7 @@ def test_only_narrow_cases_are_routed_in_code(message):
 
 def test_the_router_choosing_document_action_runs_the_agent(library_docs, monkeypatch):
     doc_id = library_docs["svm.txt"]["id"]
-    route = nodes.Route(message_type="document_action", source_preference="auto", reasoning="rename",
+    route = nodes.Route(message_type="information_request", document_action=True, source_preference="auto", reasoning="rename",
                         query_is_clear=True, standalone_query="rename the SVM doc to SVM Primer", confidence="high",
                         confidence_required=False)
     monkeypatch.setattr(nodes, "verified_decision", lambda *a, **k: (route, []))
@@ -121,7 +121,7 @@ def quiet_chat(monkeypatch):
 def test_the_chat_saves_actions_and_skips_the_episode(library_docs, signed_in, quiet_chat, monkeypatch):
     doc = catalog.list_documents(owner=signed_in.user["id"])[0]
     monkeypatch.setattr(nodes, "verified_decision", lambda *a, **k: (nodes.Route(
-        message_type="document_action", source_preference="auto", reasoning="r", query_is_clear=True,
+        message_type="information_request", document_action=True, source_preference="auto", reasoning="r", query_is_clear=True,
         standalone_query="rename it to New Name For It", confidence="high", confidence_required=False), []))
     monkeypatch.setattr(agent, "default_model", lambda: Scripted(
         [("find_documents", {"description": doc["original_name"]})],
@@ -172,3 +172,43 @@ def test_a_first_message_naming_a_document_goes_to_the_router_when_it_asks_for_a
     docs = ["nlp.pdf"]
     assert nodes._code_route({"query": "can you retitle nlp.pdf as NLP Notes", "doc_names": docs}) is None
     assert nodes._code_route({"query": "what does nlp.pdf say about smoothing?", "doc_names": docs})[1] == "documents"
+
+
+def test_a_declined_or_ignored_question_does_not_keep_the_chat_with_the_agent(library_docs, monkeypatch):
+    """The agent asked "rename this?" on turn 1; the user said "no" (turn 2) and then asked something else."""
+    session = catalog.load_session("conv-no")
+    session["guard"] = {"pending": [{"doc_id": library_docs["svm.txt"]["id"], "new_title": "SVM", "turn": 1}]}
+    session["turn"] = 1
+    catalog.save_session(session)
+    assert agent.has_open_question("conv-no")
+    monkeypatch.setattr(agent, "default_model", lambda: Scripted())
+    agent.chat("conv-no", "no", model=Scripted())               # turn 2: the question is still pending, unanswered
+    assert not agent.has_open_question("conv-no")
+
+
+def test_the_chat_asks_the_agent_only_after_its_own_answer(library_docs, signed_in, quiet_chat, monkeypatch):
+    from backend.api.routes import chat
+    from backend.models import database as db
+    conv = db.create_conversation(signed_in.user["id"], "c")
+    db.add_message(conv["id"], "assistant", "a RAG answer", tool="rag")
+    monkeypatch.setattr(agent, "has_open_question", lambda _id: True)
+    req = chat.ChatRequest(message="what does it say about kernels?", conversation_id=conv["id"])
+    assert chat._prepare(req, signed_in.user)[4]["agent_pending"] is False   # the last answer wasn't the agent's
+    db.add_message(conv["id"], "assistant", "Rename it?", tool="manage_documents")
+    assert chat._prepare(req, signed_in.user)[4]["agent_pending"] is True
+
+
+def test_several_cited_documents_still_need_the_user_to_pick(library_docs, monkeypatch):
+    ids = [library_docs["svm.txt"]["id"], library_docs["w2v.txt"]["id"]]
+    monkeypatch.setattr(agent, "default_model", lambda: Scripted(
+        [("rename_document", {"doc_id": ids[0], "new_title": "SVM Primer"})]))
+    state = ask("rename that one to SVM Primer", cited_doc_ids=ids, agent_pending=True)
+    assert state["actions"] == []                                 # the guard wants a search or a question first
+
+
+def test_a_second_message_in_a_busy_chat_gets_a_409(signed_in, monkeypatch):
+    from backend.api.routes import chat
+    monkeypatch.setattr(chat, "BUSY_WAIT_SECONDS", 0.05)
+    with chat._conversation_lock("busy-conv"):
+        r = signed_in.post("/api/chat", json={"message": "hi", "conversation_id": "busy-conv"})
+    assert r.status_code == 409

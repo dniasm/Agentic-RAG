@@ -1,4 +1,5 @@
 import json
+from contextlib import contextmanager
 import logging
 import re
 import time
@@ -118,7 +119,8 @@ def _prepare(
     context = {
         "conversation_id": conv["id"],
         # the document agent waits for an answer to its question: the router is skipped
-        "agent_pending": bool(req.conversation_id) and agent.has_open_question(conv["id"]),
+        "agent_pending": bool(last_answer) and last_answer.get("tool") == "manage_documents"
+                         and agent.has_open_question(conv["id"]),
         # "rename that one": the documents the previous answer was based on
         "cited_doc_ids": [src["doc_id"] for src in (last_answer or {}).get("meta", {}).get("sources", [])
                           if src.get("doc_id")],
@@ -358,9 +360,27 @@ def _conversation_lock(conv_id: str | None) -> threading.Lock:
     with _conversation_locks_guard:
         return _conversation_locks.setdefault(conv_id, threading.Lock())
 
+BUSY_WAIT_SECONDS = 2.0   # a second message waits this long for the first, then gets a 409
+
+
+def _take(lock: threading.Lock) -> None:
+    if not lock.acquire(timeout=BUSY_WAIT_SECONDS):
+        raise HTTPException(status_code=409, detail="Still working on your previous message in this chat.")
+
+
+@contextmanager
+def _turn(conv_id: str | None):
+    lock = _conversation_lock(conv_id)
+    _take(lock)
+    try:
+        yield
+    finally:
+        lock.release()
+
+
 @router.post("/chat", response_model=ChatResponse)
 def chat(req: ChatRequest, user: dict = Depends(get_current_user)):
-    with _conversation_lock(req.conversation_id):
+    with _turn(req.conversation_id):
         conv, history, memories, doc_names, context = _prepare(req, user)
         started = time.perf_counter()
         tracker = UsageTracker()
@@ -385,7 +405,7 @@ def chat(req: ChatRequest, user: dict = Depends(get_current_user)):
 def chat_stream(req: ChatRequest, user: dict = Depends(get_current_user)):
     """Stream metadata, status, trace steps, answer drafts, and final result."""
     lock = _conversation_lock(req.conversation_id)
-    lock.acquire()   # released by the worker thread when the answer is saved
+    _take(lock)   # released by the worker thread when the answer is saved
     try:
         conv, history, memories, doc_names, context = _prepare(req, user)
     except BaseException:

@@ -632,8 +632,10 @@ def has_open_question(session_id: str) -> bool:
     """The agent asked something on its last turn ("Rename these 3?", "Which one do you mean?") and waits for the
     answer: day7's chat sends the next message here without asking its router (a "yes" would read as small talk)."""
     session = catalog.load_session(session_id)
-    guard = session["guard"] or {}
-    return bool(guard.get("pending")) or session["turn"] in (guard.get("needs_user") or {}).values()
+    guard, turn = session["guard"] or {}, session["turn"]
+    # only a question from its last turn: a "no", or moving on, must not keep the conversation here
+    asked_now = any(p.get("turn") == turn for p in guard.get("pending") or [])
+    return asked_now or turn in (guard.get("needs_user") or {}).values()
 
 
 def chat(session_id: str, message: str, model=None, batch: bool = False, owner: str = config.OWNER,
@@ -657,8 +659,10 @@ def chat(session_id: str, message: str, model=None, batch: bool = False, owner: 
     log.debug("user message (%s turn %d): %s", session_id[:8], session["turn"], message[:500])
     history = _trim(messages_from_dict(session["llm_messages"]))
     context_docs = _context_docs(context_doc_ids, owner)
-    # the user saw these in the previous answer: like a list shown before this message, they count as identified
-    guard.saw_list_before([d["id"] for d in context_docs])
+    # one document in the previous answer: "rename that one" means it, as if it had been shown in a list. Several:
+    # they are only named in the note, and the guard still asks which one
+    if len(context_docs) == 1:
+        guard.saw_list_before([context_docs[0]["id"]])
     new = [HumanMessage(message + _context_note(context_docs))]
     actions: list = []
     reply = ""
