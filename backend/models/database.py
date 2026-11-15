@@ -309,6 +309,16 @@ def add_message(conv_id: str, role: str, content: str, tool: str | None = None, 
     return {**msg, "meta": meta or {}}
 
 
+def list_tool_messages(conv_id: str, tool: str) -> list[dict]:
+    """One conversation's answers from one tool, oldest first, with their meta."""
+    with tx() as c:
+        rows = _all(c.execute("SELECT id, meta, created_at FROM messages WHERE conversation_id = ? AND tool = ? "
+                              "ORDER BY created_at, rowid", (conv_id, tool)))
+    for r in rows:
+        r["meta"] = json.loads(r["meta"] or "{}")
+    return rows
+
+
 def list_messages(conv_id: str, limit: int | None = None) -> list[dict]:
     with tx() as c:
         if limit:

@@ -172,8 +172,10 @@ def process(doc_id: str, ask_title=None) -> dict:
             vectorstore.delete_document_vectors(doc["owner"], doc_id)
             return None
         _set_chunk_fields(doc_id, doc["owner"], title=title, file_name=file_name)
-        catalog.update_document(doc_id, status="indexed", pages=result["pages"], chunks=result["chunks"], error=None)
-        event("indexed", doc=doc_id, title=title, chunks=result["chunks"], pages=result["pages"])
+        from backend.library import export   # imported here: export imports editing, which imports this module
+        pages = export.page_count(catalog.get_document(doc_id), result["pages"])
+        catalog.update_document(doc_id, status="indexed", pages=pages, chunks=result["chunks"], error=None)
+        event("indexed", doc=doc_id, title=title, chunks=result["chunks"], pages=pages)
     except Exception as e:
         log.exception("Ingesting %s failed", doc["original_name"])
         try:

@@ -23,6 +23,7 @@ BACKUP_MODEL = settings.library_backup_model
 AGENT_REASONING = settings.library_agent_reasoning
 AGENT_MAX_STEPS = 8          # model calls per user message
 OLDER_MAX_CHARS = 800        # earlier messages are cut to this many characters (same as day7's history_to_messages)
+OPENING_CHARS = 1500       # document_details shows this much of a document that has no summary
 LIST_MAX_DOCUMENTS = 150   # list_documents shows at most this many titles (about 3,000 tokens)
 HISTORY_TURNS = 8            # earlier user messages sent back to the model (only the last with its tool calls)
 

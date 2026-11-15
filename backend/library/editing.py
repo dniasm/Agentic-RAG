@@ -353,7 +353,9 @@ def _finish(doc: dict, reloaded: dict, before: str | None = None) -> bool:
     SUMMARY_REFRESH_SHARE of the text, the old summary still holds. Returns whether it was refreshed."""
     path = config.LIBRARY_DIR / doc["file_name"]
     data = path.read_bytes()
-    fields = dict(sha256=ingestion.file_sha256(data), size_bytes=len(data), pages=reloaded["pages"],
+    from backend.library import export   # imported here: export imports this module
+    fields = dict(sha256=ingestion.file_sha256(data), size_bytes=len(data),
+                  pages=export.page_count(catalog.get_document(doc["id"]) or doc, reloaded["pages"]),
                   chunks=reloaded["chunks"])
     refreshed = False
     try:

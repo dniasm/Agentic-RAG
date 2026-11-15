@@ -104,11 +104,17 @@ def delete_document(doc_id: str, user: dict = Depends(current_user)):
     library.delete(doc_id)
 
 
+class UndoIn(BaseModel):
+    edit_id: int | None = None   # the edit the button is under: refused unless it is still the latest
+
+
 @router.post("/documents/{doc_id}/undo")
-def undo_edit(doc_id: str, user: dict = Depends(current_user)):
+def undo_edit(doc_id: str, body: UndoIn | None = None, user: dict = Depends(current_user)):
     """Undo the document's most recent edit (the Undo button under an edit in the chat)."""
     doc = _own_doc(doc_id, user)
     from backend.library import editing
+    if body and body.edit_id is not None and (catalog.last_edit(doc_id) or {}).get("id") != body.edit_id:
+        raise HTTPException(409, "That edit was already undone, or a later edit came after it.")
     try:
         result = editing.undo(doc["id"])
     except editing.EditError as e:

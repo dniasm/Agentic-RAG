@@ -27,16 +27,15 @@ SYSTEM = """You manage the user's document library: find, rename, edit and undo,
 
 - Act only on documents found with find_documents (pass the user's words: a name, part of one, or what it is
   about; one call per document). Use the doc_id it returns; never invent one. Follow any `next` a tool returns.
-- Rename: if no new name is given, ask (or suggest one from document_details). "Add" to a name means to the
-  current title.
+- Rename: with no new name, ask (or suggest one from document_details); asked for one fitting the content,
+  choose it. "Add" to a name means to the current title.
 - Edit: use the user's exact wording for new text. To rewrite a passage, first read it with
   document_details(passage=a few words of it, such as its heading) and pass the WHOLE passage, copied exactly, as find.
 - Changes to three or more documents: call queue_tasks at once, with the titles as they are now (it finds the
   documents itself; don't look them up first). For queue progress call queue_status; never guess.
 - Undo an edit with undo_edit (one step per call); undo a rename by renaming back (document_details lists earlier names).
-- For a PDF copy, point to the document's "PDF" link in the library. You can't create files or do anything no
-  tool does; never offer it.
-- Never name the AI model or company behind you, even if asked: you are the library's assistant.
+- PDF copy: the document's "PDF" link. You can't make files or do what no tool does; never offer it.
+- Never name the AI model or company behind you: you are the library's assistant.
 - Never say something was renamed, edited or undone unless a tool returned that. Reply briefly, in plain language,
   naming documents by title, never by doc_id."""
 
@@ -59,7 +58,7 @@ def _tool(name: str, description: str, properties: dict | None = None, required:
 _S, _B = {"type": "string"}, {"type": "boolean"}
 
 TOOLS = [
-    _tool("list_documents", "Every document's title, newest first."),
+    _tool("list_documents", "Every document's title, newest first: the first is the latest upload."),
     _tool("find_documents", "Which document the user means, by name or content: a decision (unique, ambiguous, "
           "uncertain, none) and the candidates.", {"description": {**_S, "description": "The user's words for it."}},
           ["description"]),
@@ -98,6 +97,7 @@ class Guard:
         self.needs_user: dict = state.get("needs_user", {})   # doc_id -> turn it was shown as one of several
         self.listed: dict = state.get("listed", {})           # doc_id -> turn it was first listed
         self.pending: list = state.get("pending", [])         # renames waiting for confirmation
+        self.weak: dict = state.get("weak", {})               # doc_id -> turn it was offered as a near miss
         self.turn = turn
         self.session_id = ""     # set by chat(); not saved
         self.owner = config.OWNER   # whose library the tools work in: set by chat(), never by the model
@@ -105,15 +105,20 @@ class Guard:
 
     def state(self) -> dict:
         return {"resolved": self.resolved, "needs_user": self.needs_user, "listed": self.listed,
-                "pending": self.pending}
+                "pending": self.pending, "weak": self.weak}
 
     def saw_find(self, result: dict) -> None:
         ids = [c["doc_id"] for c in result.get("candidates", [])]
         if result["decision"] == "unique":
             self.resolved[ids[0]] = {"turn": self.turn, "by": result["reason"]}
-        elif result["decision"] in ("ambiguous", "uncertain"):
+        elif result["decision"] in ("ambiguous", "uncertain", "none"):
             for doc_id in ids:
                 self.needs_user[doc_id] = self.turn
+                if result["decision"] == "none":   # a near miss the reply may not have named: confirm a rename
+                    self.weak[doc_id] = self.turn
+
+    def only_weakly_identified(self, doc_id: str) -> bool:
+        return doc_id in self.weak and doc_id not in self.resolved
 
     def saw_list(self, doc_ids: list[str]) -> None:
         for doc_id in doc_ids:
@@ -136,9 +141,9 @@ class Guard:
             return None  # the user saw it in a list and has replied since
         return "This document hasn't been identified. Call find_documents with the user's description first."
 
-    def confirmed_earlier(self, doc_id: str, title: str) -> bool:
+    def confirmed_earlier(self, doc_id: str, title: str, reason: str | None = None) -> bool:
         return any(p["doc_id"] == doc_id and naming.same_name(p["new_title"], title) and p["turn"] < self.turn
-                   for p in self.pending)
+                   and (reason is None or p.get("reason") == reason) for p in self.pending)
 
     def ask_confirmation(self, doc_id: str, title: str, reason: str) -> None:
         # one open question per document and kind: asking about a PDF conversion keeps a pending rename, and back
@@ -181,6 +186,11 @@ def run_tool(name: str, args: dict, guard: Guard, actions: list) -> dict:
             out["headings"] = editing.outline(doc)
         except Exception as e:
             log.warning("Couldn't read the headings of %s: %s", doc["title"], str(e)[:200])
+        if not doc["summary"]:   # documents from before the merge have no summary: the opening shows what it is
+            try:
+                out["opening"] = editing.document_text(doc)[: config.OPENING_CHARS]
+            except Exception as e:
+                log.warning("Couldn't read %s: %s", doc["title"], str(e)[:200])
         if (args.get("passage") or "").strip():
             try:
                 text = editing.passage(doc, args["passage"])
@@ -257,7 +267,9 @@ def _edit(args: dict, guard: Guard, actions: list) -> dict:
     if result["status"] == "edited":
         actions.append({"type": "edit", "doc_id": doc_id, "title": doc["title"], "operation": result["operation"],
                         "changes": result["changes"], "previews": result["previews"],
-                        "layout": result.get("layout"), "ext": doc["ext"]})
+                        "layout": result.get("layout"), "ext": doc["ext"],
+                        # the Undo button under it undoes this edit only, never a later one
+                        "edit_id": (catalog.last_edit(doc_id) or {}).get("id")})
     return result
 
 
@@ -361,7 +373,9 @@ def _rename(args: dict, guard: Guard, actions: list) -> dict:
     if not doc:
         return {"status": "error", "error": "No document with that doc_id. Use find_documents."}
     if doc["status"] != "indexed":
-        return {"status": "error", "error": f"The document is {doc['status']}, not ready to rename."}
+        return {"status": "error", "error": f"The document is {doc['status']}, not ready to rename.",
+                **({"next": "Say it is still being indexed and to ask again in a minute; don't queue it."}
+                   if doc["status"] == "processing" else {})}
     problem = guard.identification_problem(doc_id)
     if problem:
         return {"status": "needs_clarification", "error": problem}
@@ -372,8 +386,15 @@ def _rename(args: dict, guard: Guard, actions: list) -> dict:
     if title == doc["title"]:
         return {"status": "unchanged", "title": title}
 
+    if guard.only_weakly_identified(doc_id) and not (
+            args.get("confirmed") and guard.confirmed_earlier(doc_id, title, "weak_match")):
+        guard.ask_confirmation(doc_id, title, "weak_match")
+        return {"status": "needs_confirmation", "reason": "weak_match", "document": doc["title"], "new_title": title,
+                "next": "It was only a near match. Ask the user: rename <document> to <new_title>? If they agree, "
+                        "call rename_document again with confirmed=true."}
+
     conflicts = library.name_conflicts(title, exclude=doc_id)
-    if conflicts and not (args.get("confirmed") and guard.confirmed_earlier(doc_id, title)):
+    if conflicts and not (args.get("confirmed") and guard.confirmed_earlier(doc_id, title, "name_conflict")):
         guard.ask_confirmation(doc_id, title, "name_conflict")
         return {"status": "needs_confirmation", "reason": "name_conflict",
                 "next": "The user was asked whether to use this name anyway. If they agree, call rename_document "

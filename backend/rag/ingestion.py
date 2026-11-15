@@ -34,7 +34,8 @@ def _clean(text: str) -> str:
 
 
 def load_file(path: Path) -> tuple[list[Document], int]:
-    """Return one Document per page (PDF) or per file (others), plus the page count."""
+    """Return one Document per page (PDF) or per file (others), plus the page count. Only a PDF's passages carry a
+    page: a Word or text file has no fixed pages, and "page 1" on every citation from it was wrong."""
     ext = path.suffix.lower()
     if ext == ".pdf":
         from pypdf import PdfReader
@@ -61,11 +62,11 @@ def load_file(path: Path) -> tuple[list[Document], int]:
             for row in table.rows:
                 parts.append(" | ".join(cell.text.strip() for cell in row.cells))
         text = _clean("\n".join(parts))
-        return ([Document(page_content=text, metadata={"page": 1})] if text else []), 1
+        return ([Document(page_content=text, metadata={})] if text else []), 1
 
     if ext in {".txt", ".md"}:
         text = _clean(path.read_text(encoding="utf-8", errors="ignore"))
-        return ([Document(page_content=text, metadata={"page": 1})] if text else []), 1
+        return ([Document(page_content=text, metadata={})] if text else []), 1
 
     raise IngestionError(f"Unsupported file type: {ext}")
 

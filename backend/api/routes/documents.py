@@ -11,7 +11,8 @@ router = APIRouter(prefix="/documents", tags=["Documents"])
 
 
 def _out(doc: dict) -> DocumentOut:
-    return DocumentOut(id=doc["id"], title=doc["title"], filename=doc["original_name"], size_bytes=doc["size_bytes"],
+    return DocumentOut(id=doc["id"], title=doc["title"], filename=doc["original_name"], ext=doc["ext"] or "",
+                       size_bytes=doc["size_bytes"],
                        pages=doc["pages"] or 0, chunks=doc["chunks"] or 0, status=doc["status"], error=doc["error"],
                        created_at=doc["created_at"])
 

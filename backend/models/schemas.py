@@ -15,6 +15,7 @@ class DocumentOut(BaseModel):
     id: str
     title: str            # the library's name for it (renamed by the agent); filename is the uploaded name
     filename: str
+    ext: str = ""
     size_bytes: int
     pages: int
     chunks: int

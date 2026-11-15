@@ -5,10 +5,13 @@ The original PDF's layout and images are not recreated. A system font with wide 
 (Arial with Segoe UI as fallback on Windows, DejaVu Sans on Linux); without one, the built-in Helvetica is used and
 characters it lacks become "?".
 """
+import logging
 import re
 from pathlib import Path
 
 from backend.library import config, editing
+
+log = logging.getLogger(__name__)
 
 # (regular, bold) per family, first found wins; fallbacks cover characters the main font lacks
 _FONTS = [
@@ -109,3 +112,32 @@ def stored_pdf(doc: dict) -> Path | None:
     """A document that is still a PDF is downloaded as it is."""
     path = config.LIBRARY_DIR / doc["file_name"]
     return path if doc["ext"] == ".pdf" and path.exists() else None
+
+
+def _word_pages(path: Path) -> int | None:
+    """The page count Word saved in the file (docProps/app.xml), which is what the user sees in Word."""
+    import zipfile
+    try:
+        with zipfile.ZipFile(path) as z:
+            m = re.search(rb"<Pages>(\d+)</Pages>", z.read("docProps/app.xml"))
+        return int(m.group(1)) if m and int(m.group(1)) > 0 else None
+    except (KeyError, OSError, zipfile.BadZipFile, ValueError):
+        return None
+
+
+def page_count(doc: dict, loaded: int) -> int | None:
+    """Pages as the user sees them: a PDF's own count (`loaded`, from the loader); a Word file's as Word counted
+    them; otherwise the pages of the PDF it is previewed and downloaded as (the loader counts a whole Word or text
+    file as one page). None if it can't be told. Lays the document out: call it in the indexing and edit workers,
+    never in a request."""
+    if doc["ext"] == ".pdf":
+        return loaded
+    if doc["ext"] == ".docx" and (pages := _word_pages(config.LIBRARY_DIR / doc["file_name"])):
+        return pages
+    try:
+        import pymupdf
+        with pymupdf.open(stream=to_pdf(doc), filetype="pdf") as pdf:
+            return pdf.page_count
+    except Exception as e:
+        log.warning("Couldn't count the pages of %s: %s", doc["title"], str(e)[:200])
+        return None
