@@ -106,7 +106,7 @@ export default function Login({ onAuthenticated, systemOnline, signups = 'closed
                 id="username"
                 className="input"
                 required
-                minLength={3}
+                minLength={registering ? 3 : undefined}
                 maxLength={32}
                 pattern="[A-Za-z0-9_.\-]+"
                 autoComplete="username"
@@ -126,7 +126,7 @@ export default function Login({ onAuthenticated, systemOnline, signups = 'closed
                 type="password"
                 className="input"
                 required
-                minLength={8}
+                minLength={registering ? 8 : undefined}  // older accounts may have shorter passwords
                 autoComplete={registering ? 'new-password' : 'current-password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
