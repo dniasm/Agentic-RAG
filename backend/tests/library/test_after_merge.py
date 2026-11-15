@@ -144,3 +144,10 @@ def test_an_undo_of_a_near_miss_is_confirmed_first(library_docs):
     assert out["status"] == "needs_confirmation" and out["reason"] == "weak_match"
     out = agent.run_tool("undo_edit", {"doc_id": w2v}, agent.Guard(later.state(), 3), [])
     assert out["status"] != "needs_confirmation"   # asked and answered (nothing to undo here)
+
+
+def test_an_old_near_miss_question_is_asked_again(library_docs):
+    w2v = library_docs["w2v.txt"]["id"]
+    later = _offered_as_near_miss(w2v)
+    assert later.weak_match_unconfirmed(w2v)                       # asked at turn 2
+    assert agent.Guard(later.state(), 5).weak_match_unconfirmed(w2v)   # the user may have said no back then

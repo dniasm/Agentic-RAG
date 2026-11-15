@@ -125,8 +125,8 @@ class Guard:
         message. The user's answer to that question counts for every tool, once: then it is identified."""
         if not self.only_weakly_identified(doc_id):
             return False
-        if any(p["doc_id"] == doc_id and p.get("reason") == "weak_match" and p["turn"] < self.turn
-               for p in self.pending):
+        if any(p["doc_id"] == doc_id and p.get("reason") == "weak_match" and p["turn"] == self.turn - 1
+               for p in self.pending):   # asked in the previous message: an older question was answered already
             self.pending = [p for p in self.pending if not (p["doc_id"] == doc_id and p.get("reason") == "weak_match")]
             self.weak.pop(doc_id, None)
             self.resolved[doc_id] = {"turn": self.turn, "by": "confirmed"}
