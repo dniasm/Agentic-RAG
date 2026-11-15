@@ -58,14 +58,16 @@ def test_an_old_needs_user_entry_is_not_an_open_question(library_docs):
 
 
 @pytest.mark.parametrize("message", ["undo", "Undo that.", "undo the last change please", "what's in the queue?",
-                                     "is the batch done?"])
+                                     "is the batch done?", "which of my documents have been renamed?",
+                                     "list my documents"])
 def test_bare_undo_and_queue_status_skip_the_router(message, library_docs, no_router, monkeypatch):
     monkeypatch.setattr(agent, "default_model", lambda: Scripted())
     assert ask(message)["tool"] == "manage_documents"
 
 
 @pytest.mark.parametrize("message", ["rename", "how do I rename a file in Linux?", "undo the rename of the SVM doc",
-                                     "what does the SVM document say about kernels?"])
+                                     "what does the SVM document say about kernels?", "list my favourite movies",
+                                     "which documents mention GDPR?"])
 def test_only_narrow_cases_are_routed_in_code(message):
     assert nodes.manage_in_code({"query": message}) is None
 

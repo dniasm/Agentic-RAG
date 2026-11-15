@@ -305,6 +305,12 @@ _QUEUE_STATUS = re.compile(r"^\s*(?:what'?s\s+(?:in\s+)?the\s+queue|queue\s+stat
                            r"(?:queue|batch)(?:\s+going)?|is\s+the\s+(?:batch|queue)\s+(?:done|finished))[\s?.!]*$", re.I)
 
 
+# The library's own state (rename and edit history, the list of documents): only the agent knows it.
+_LIBRARY_STATE = re.compile(r"^\s*(?:(?:which|what)\s+(?:of\s+)?(?:my\s+)?(?:documents|docs|files)\s+"
+                            r"(?:have\s+been|were|got|did\s+you)\s+(?:renamed|retitled|edited|changed)|"
+                            r"(?:list|show)\s+(?:me\s+)?(?:all\s+)?my\s+(?:documents|docs|files))[\s?.!]*$", re.I)
+
+
 def manage_in_code(state: AgentState) -> str | None:
     """The few messages that go to the document agent without the router, with the reason; None otherwise.
     Kept narrow on purpose: "rename" alone is not one ("how do I rename a file in Linux?" is a question)."""
@@ -315,6 +321,8 @@ def manage_in_code(state: AgentState) -> str | None:
         return "A bare undo (decided in code)."
     if _QUEUE_STATUS.match(query):
         return "Asks about the queued document tasks (decided in code)."
+    if _LIBRARY_STATE.match(query):
+        return "Asks about the library itself: its documents or their rename and edit history (decided in code)."
     return None
 
 

@@ -126,7 +126,7 @@
     {"id": "gen-git-undo", "group": "general_howto", "message": "how do I undo a git commit?", "expect": "direct", "added": "2026-11-15"},
     {"id": "gen-batch-os", "group": "general_howto", "message": "explain what a batch queue is in operating systems", "expect": "direct", "added": "2026-11-15"},
     {"id": "bl-shorter-title", "group": "borderline", "message": "can you make the GDPR doc's title shorter?", "expect": "manage", "added": "2026-11-15", "borderline": true},
-    {"id": "bl-better-title", "group": "borderline", "message": "what would be a better title for the nlp notes?", "expect": "manage", "added": "2026-11-15", "also_ok": ["rag", "direct"], "borderline": true},
+    {"id": "bl-better-title", "group": "borderline", "message": "what would be a better title for the nlp notes?", "expect": "manage", "added": "2026-11-15", "also_ok": ["rag"], "borderline": true},
     {"id": "bl-title-accurate", "group": "borderline", "message": "is the title of nlp.pdf accurate?", "expect": "rag", "added": "2026-11-15", "also_ok": ["manage"], "borderline": true},
     {"id": "bl-misnamed", "group": "borderline", "message": "the World Bank report is misnamed", "expect": "manage", "added": "2026-11-15", "also_ok": ["rag"], "borderline": true},
     {"id": "bl-list-docs", "group": "borderline", "message": "list my documents", "expect": "manage", "added": "2026-11-15", "also_ok": ["rag"], "borderline": true},
