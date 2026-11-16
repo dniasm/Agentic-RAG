@@ -188,6 +188,9 @@ Production: `cd frontend && npm run build`, then start the backend: it serves th
 (`index.html` uncached, the hashed assets cached for a year, scripts, styles and JSON gzipped; pdf.js is bundled, so
 nothing loads from a CDN). Making it public over HTTPS: [`docs/DOCUMENTATION.md` §13](docs/DOCUMENTATION.md#13-authentication--security).
 
+Backups: `python -m backend.scripts.backup` (stop the backend first for one that includes the search index; restore steps in
+[`docs/DOCUMENTATION.md` §4](docs/DOCUMENTATION.md#4-getting-started)).
+
 Tests (no API calls; the PDF layout ones take a few minutes): `pip install -r requirements-dev.txt`, then
 `python -m pytest` from the project root.
 
