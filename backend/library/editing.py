@@ -219,10 +219,26 @@ _PLAIN_LETTERS = str.maketrans({"\u2010": "-", "\u2011": "-", "\u2012": "-", "\u
                                 "\u2009": " "})
 
 
+_MD_HEADING_MARK = re.compile(r"^[ \t]{0,3}#{1,6}[ \t]+", re.M)
+_MD_EMPHASIS = re.compile(r"(\*\*|__)(?=\S)(.+?)(?<=\S)\1|`([^`\n]+)`")
+
+
+def without_markdown(text: str) -> tuple[str, bool]:
+    """A PDF's text can't carry Markdown: "**Profile**" would print its asterisks. Bold and code marks and heading
+    hashes are taken out (and line breaks become spaces: the PDF's layout sets the lines). Returns (text, whether any
+    Markdown was taken out)."""
+    plain = _MD_EMPHASIS.sub(lambda m: m[2] if m[2] is not None else m[3], _MD_HEADING_MARK.sub("", text))
+    removed = plain != text
+    return re.sub(r"\s*\n\s*", " ", plain).strip() if "\n" in plain else plain, removed
+
+
 def _pdf_replace(path: Path, tmp: Path, pattern: re.Pattern, text: str, replace_all: bool, info: dict | None):
     """pdf_edit.replace. Where the PDF's font has no copy of a typographic dash, quote or space in the text, only
     those letters become their keyboard ones (listed in info["plain_letters"]); any other refusal stands."""
     swapped: set[str] = set()
+    text, removed = without_markdown(text)
+    if removed and info is not None:
+        info["markdown_removed"] = True
     for _ in range(4):   # each try can find another font (bold, italic) lacking another letter
         try:
             out = pdf_edit.replace(path, tmp, pattern, text, replace_all, info)
@@ -647,4 +663,5 @@ def _edit(source: dict, doc: dict, op: str, find: str, text: str, replace_all: b
             "layout": info.get("layout"),
             **({"plain_letters": info["plain_letters"]} if info.get("plain_letters") else {}),
             **({"stand_in": info["stand_in"]} if info.get("stand_in") else {}),
-            **{k: info[k] for k in ("added_lines", "new_pages") if info.get(k)}}
+            **{k: info[k] for k in ("added_lines", "new_pages", "page_numbers_kept", "markdown_removed")
+               if info.get(k)}}

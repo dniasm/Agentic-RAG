@@ -531,6 +531,7 @@ class _Plan:
     shift: object = None        # a _Shift: what is below a re-wrapped paragraph moves to make room
     own: list = field(default_factory=list)   # letters written by code in the page's own fonts (checked by glyph)
     added_lines: int = 0        # lines a re-wrapped paragraph gained (fewer when negative)
+    chrome: bool = False        # a page number renumbered because a page was inserted
 
 
 class PdfText:
@@ -914,6 +915,11 @@ class _Shift:
     overflow: pymupdf.Rect | None = None
     to_top: float = 0.0
     moved_out: list = field(default_factory=list)
+    # the page's running headers and footers, on the new page too: bands drawn as they are (less the boxes of page
+    # numbers, which are written again with the new page's number)
+    chrome_bands: list = field(default_factory=list)
+    chrome_skip: list = field(default_factory=list)
+    chrome_write: list = field(default_factory=list)
 
 
 def _repeated(pdf: PdfText) -> set[int]:
@@ -1525,15 +1531,16 @@ def _clear_region(page: pymupdf.Page, shift: _Shift) -> None:
                           graphics=pymupdf.PDF_REDACT_LINE_ART_REMOVE_IF_COVERED, text=pymupdf.PDF_REDACT_TEXT_REMOVE)
 
 
-def _draw_from(target: pymupdf.Page, original: pymupdf.Document, number: int, clip: pymupdf.Rect, dy: float) -> None:
+def _draw_from(target: pymupdf.Page, original: pymupdf.Document, number: int, clip: pymupdf.Rect, dy: float,
+               without: list | None = None) -> None:
     """Draw `clip` of the original page `number` on `target`, moved by dy, so its text, drawings and images keep
-    exactly their look. Text outside the clip is taken out of the copy that is drawn, so text readers don't meet it
-    twice."""
+    exactly their look. Text outside the clip (and in the boxes `without`) is taken out of the copy that is drawn,
+    so text readers don't meet it twice."""
     source = pymupdf.open()
     source.insert_pdf(original, from_page=number, to_page=number)
     sp = source[0]
-    for rect in (pymupdf.Rect(sp.rect.x0, sp.rect.y0, sp.rect.x1, clip.y0),
-                 pymupdf.Rect(sp.rect.x0, clip.y1, sp.rect.x1, sp.rect.y1)):
+    for rect in [pymupdf.Rect(sp.rect.x0, sp.rect.y0, sp.rect.x1, clip.y0),
+                 pymupdf.Rect(sp.rect.x0, clip.y1, sp.rect.x1, sp.rect.y1)] + list(without or []):
         if rect.height > 0:
             sp.add_redact_annot(rect, fill=False, cross_out=False)
     sp.apply_redactions(images=pymupdf.PDF_REDACT_IMAGE_NONE, graphics=pymupdf.PDF_REDACT_LINE_ART_NONE,
@@ -1567,6 +1574,10 @@ def _draw_region(page: pymupdf.Page, shift: _Shift, original: pymupdf.Document, 
     for link in out_links:
         link["from"] = link["from"] + (0, off, 0, off)
         new.insert_link(link)
+    for band in shift.chrome_bands:          # its running headers and footers, page numbers written again
+        _draw_from(new, original, number, band, 0, shift.chrome_skip)
+    if shift.chrome_write:
+        _write_with_writer(new, [t for t in shift.chrome_write if not t.c.isspace()])
 
 
 def _apply_page(page: pymupdf.Page, plan: _Plan, original: pymupdf.Document | None = None,
@@ -1900,8 +1911,15 @@ def _check_new_page(before: pymupdf.Page, new: pymupdf.Page, shift: _Shift) -> N
 
     def inside(r) -> bool:
         return shift.overflow.contains(r)
-    want = sorted((g.c, round(g.x, 1), round(g.y + off, 1)) for g in _glyph_list(before)
-                  if inside(pymupdf.Point((g.bbox[0] + g.bbox[2]) / 2, (g.bbox[1] + g.bbox[3]) / 2)))
+    def mid(g: Glyph) -> pymupdf.Point:
+        return pymupdf.Point((g.bbox[0] + g.bbox[2]) / 2, (g.bbox[1] + g.bbox[3]) / 2)
+
+    def copied(g: Glyph) -> bool:        # a header or footer letter drawn as it was
+        return any(b.contains(mid(g)) for b in shift.chrome_bands) and not any(r.contains(mid(g))
+                                                                            for r in shift.chrome_skip)
+    want = sorted([(g.c, round(g.x, 1), round(g.y + off, 1)) for g in _glyph_list(before) if inside(mid(g))]
+                  + [(g.c, round(g.x, 1), round(g.y, 1)) for g in _glyph_list(before) if copied(g)]
+                  + [(t.c, round(t.x, 1), round(t.y, 1)) for t in shift.chrome_write if not t.c.isspace()])
     got = sorted((g.c, round(g.x, 1), round(g.y, 1)) for g in _glyph_list(new))
     if len(want) != len(got) or any(a[0] != b[0] or abs(a[1] - b[1]) > 0.25 or abs(a[2] - b[2]) > 0.25
                                     for a, b in zip(want, got)):
@@ -1923,9 +1941,13 @@ def _check_new_page(before: pymupdf.Page, new: pymupdf.Page, shift: _Shift) -> N
     diff = (np.abs(a - b).max(axis=2) > INK) & area & (b[:, :, 0] >= 0)
     if diff.any():
         raise CantKeepLayout("Checking the new page failed: what moved onto it doesn't look as it did.")
-    blank = _render(new)
-    moved_area = _mask(blank.shape, [shift.overflow + (0, off, 0, off)])
-    if ((blank.min(axis=2) < 255 - INK) & ~moved_area).any():
+    plain = _render(new)
+    written = _changed_boxes(_Plan(write=list(shift.chrome_write)))
+    bands = _mask(a.shape, shift.chrome_bands) & ~_mask(a.shape, list(shift.chrome_skip) + written)
+    if ((np.abs(a - plain).max(axis=2) > INK) & bands).any():
+        raise CantKeepLayout("Checking the new page failed: a running header or footer didn't come out as it was.")
+    allowed = _mask(plain.shape, [shift.overflow + (0, off, 0, off)] + list(shift.chrome_bands) + written)
+    if ((plain.min(axis=2) < 255 - INK) & ~allowed).any():
         raise CantKeepLayout("Checking the new page failed: it has something on it besides what moved.")
 
 
@@ -2246,13 +2268,18 @@ def replace(path: Path, out: Path, pattern: re.Pattern, new: str, replace_all: b
             if len(page_edits) > 1 and any(p.shift is not None for _, p in page_edits):
                 raise CantKeepLayout("One of the changes moves the rest of its page; make the changes on that page one "
                                      "at a time.")
+        renumbering, head, foot = _plan_new_page(pdf, edits, info)
+        for n, seg, plan, ranges in renumbering:
+            edits[n].append(([seg], plan))
+            changes.extend((seg.start + a, seg.start + b, t) for a, b, t in ranges)
+        changes.sort()
         simple = {n: _Plan([g for _, p in page_edits for g in p.remove], [t for _, p in page_edits for t in p.write],
-                           shift=page_edits[0][1].shift)
+                           shift=next((p.shift for _, p in page_edits if p.shift is not None), None))
                   for n, page_edits in edits.items()}
         # where the lower part of a page moves, the re-set paragraph is drawn before it, so it reads in order anyway
         ordered = {n: simple[n] if simple[n].shift is not None else _in_reading_order(pdf, n, page_edits)
                    for n, page_edits in edits.items()}
-        plans = [p for page_edits in edits.values() for _, p in page_edits]
+        plans = [p for page_edits in edits.values() for _, p in page_edits if not p.chrome]
         if info is not None:
             overflows = sorted(n for n, page_edits in edits.items()
                                if any(p.shift is not None and p.shift.overflow is not None for _, p in page_edits))
@@ -2270,7 +2297,7 @@ def replace(path: Path, out: Path, pattern: re.Pattern, new: str, replace_all: b
         expected = "".join(expected) + pdf.text[at:]
         for plan in plans:
             if plan.shift is not None and plan.shift.overflow is not None:
-                expected = _moved_to_new_page(pdf, expected, changes, plan.shift)
+                expected = _moved_to_new_page(pdf, expected, changes, plan.shift, head, foot)
         written = ordered
         try:
             if any(p is None for p in ordered.values()):
@@ -2289,9 +2316,56 @@ def replace(path: Path, out: Path, pattern: re.Pattern, new: str, replace_all: b
         pdf.close()
 
 
-def _moved_to_new_page(pdf: PdfText, expected: str, changes: list, shift: _Shift) -> str:
+def _whole_line(pdf: PdfText, seg: Segment, plan: _Plan) -> _Plan:
+    """The plan with the rest of the line written again too, in order: a page's new text goes at the end of its
+    content, so a renumbered "Page 1 of 3" would otherwise read "Page 1 of ... 3" to text readers."""
+    gone = {id(g) for g in plan.remove}
+    kept = [_Typeset(g.x, g.y, g.c, g.style, pdf.font_for(g.style, g.c))
+            for w in seg.words for g in w.glyphs if id(g) not in gone]
+    plan.remove = [g for w in seg.words for g in w.glyphs]
+    plan.write = _spaced(sorted([t for t in plan.write if not t.c.isspace()] + kept, key=lambda t: t.x))
+    return plan
+
+
+def _page_numbers(pdf: PdfText) -> dict[int, list[tuple[int, int, str, int]]]:
+    """The page numbers in running headers and footers: {id(segment): [(start, end, kind, base)]} for each number
+    in its text that is the page's number ("page": its value is the page index + base) or the page count ("total").
+    A number counts only when the same header or footer on every page it is on agrees."""
+    repeated = _repeated(pdf)
+    groups: dict[tuple, list[Segment]] = defaultdict(list)
+    for s in pdf.segments:
+        if id(s) in repeated:
+            groups[(round(s.baseline), re.sub(r"\d+", "#", s.text))].append(s)
+    fields: dict[int, list] = {}
+    for segs in groups.values():
+        if len({s.page for s in segs}) < 2:
+            continue
+        nums = [[(m.start(), m.end(), int(m.group())) for m in re.finditer(r"\d+", s.text)] for s in segs]
+        if not nums[0] or len({len(x) for x in nums}) != 1:
+            continue
+        for k in range(len(nums[0])):
+            values = [nums[i][k][2] for i in range(len(segs))]
+            bases = {v - s.page for v, s in zip(values, segs)}
+            if len(bases) == 1 and len(set(values)) > 1:
+                kind, base = "page", bases.pop()
+            elif set(values) == {len(pdf.doc)}:
+                kind, base = "total", 0
+            else:
+                continue
+            for i, s in enumerate(segs):
+                fields.setdefault(id(s), []).append((nums[i][k][0], nums[i][k][1], kind, base))
+    return fields
+
+
+def _renumbered(fields: list, page: int, total: int) -> list[tuple[int, int, str]]:
+    """The replacements that give a header or footer the numbers of page `page` (0-based) of `total`."""
+    return [(a, b, str(page + base if kind == "page" else total)) for a, b, kind, base in fields]
+
+
+def _moved_to_new_page(pdf: PdfText, expected: str, changes: list, shift: _Shift, head: str = "",
+                       foot: str = "") -> str:
     """The expected text once shift.moved_out is on a page of its own: it now reads after the rest of its old page
-    (a footer there, say), not before it."""
+    (a footer there, say), not before it, between the new page's own header (head) and footer (foot)."""
     lines = sorted(shift.moved_out, key=lambda s: s.start)
     if not lines:
         return expected
@@ -2302,7 +2376,56 @@ def _moved_to_new_page(pdf: PdfText, expected: str, changes: list, shift: _Shift
     def at(offset: int) -> int:        # an offset in the original text, in the expected one
         return offset + sum(len(t) - (b - a) for a, b, t in changes if a < offset)
     s, e, p = at(start), at(end), at(page_end)
-    return expected[:s] + " " + expected[e:p] + " " + expected[s:e] + " " + expected[p:]
+    return expected[:s] + " " + expected[e:p] + " " + head + " " + expected[s:e] + " " + foot + " " + expected[p:]
+
+
+def _plan_new_page(pdf: PdfText, edits: dict, info: dict | None) -> tuple[list, str, str]:
+    """When an edit sends part of a page to a new page: that page gets the old page's running headers and footers,
+    and every page number in them is renumbered (the pages after it move on one, the page count grows by one).
+    Returns ([(page, segment, plan, ranges)] for the renumbering, the new page's header text, its footer text).
+    Page numbers that can't be re-set are left as they were (info["page_numbers_kept"]), never guessed at."""
+    overflows = [(n, p.shift) for n, page_edits in edits.items() for _, p in page_edits
+                 if p.shift is not None and p.shift.overflow is not None]
+    if not overflows:
+        return [], "", ""
+    if len(overflows) > 1:
+        raise CantKeepLayout("Two of the changes would each need a new page; make them one at a time.")
+    n, shift = overflows[0]
+    total = len(pdf.doc) + 1
+    repeated = _repeated(pdf)
+    fields = _page_numbers(pdf)
+    renumbering = []
+    try:
+        for s in pdf.segments:
+            if id(s) in fields:
+                ranges = [r for r in _renumbered(fields[id(s)], s.page + (s.page > n), total)
+                          if s.text[r[0]:r[1]] != r[2]]
+                if ranges:
+                    plan = _whole_line(pdf, s, _plan_segment(pdf, s, ranges))
+                    plan.chrome = True
+                    renumbering.append((s.page, s, plan, ranges))
+        own = [s for s in pdf.segments if s.page == n and id(s) in repeated]
+        written = []
+        for s in own:
+            if id(s) in fields:
+                written.append((s, _whole_line(pdf, s, _plan_segment(pdf, s, _renumbered(fields[id(s)], n + 1,
+                                                                                            total)))))
+    except (CantKeepLayout, NeedsRewrap) as e:
+        log.info("Page numbers can't be re-set (%s); they stay as they were", e)
+        if info is not None:
+            info["page_numbers_kept"] = True
+        renumbering, written = [], []
+        own = [s for s in pdf.segments if s.page == n and id(s) in repeated and id(s) not in fields]
+    width = pdf.doc[n].rect.width
+    shift.chrome_bands = [pymupdf.Rect(0, s.top - 1, width, s.bottom + 1) for s in own]
+    shift.chrome_skip = [pymupdf.Rect(s.x0 - 0.5, s.top - 0.5, s.x1 + 0.5, s.bottom + 0.5) for s, _ in written]
+    shift.chrome_write = [t for _, plan in written for t in plan.write]
+    texts = {id(s): s.text for s in own}
+    for s, plan in written:
+        texts[id(s)] = "".join(t.c for t in plan.write) if plan.write else s.text
+    head = " ".join(texts[id(s)] for s in own if s.top < shift.to_top)
+    foot = " ".join(texts[id(s)] for s in own if s.top >= shift.to_top)
+    return renumbering, head, foot
 
 
 def _stand_ins(plans) -> dict[str, str]:

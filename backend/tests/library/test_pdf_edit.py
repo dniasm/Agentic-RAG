@@ -331,9 +331,13 @@ def test_what_no_longer_fits_on_a_full_page_moves_to_a_new_page(stacked_pdf, tmp
     with pymupdf.open(str(out)) as doc:
         assert len(doc) == 3
         assert "Body text already as low" not in doc[0].get_text()           # moved off its page...
-        assert "Page 1 of 2" in doc[0].get_text()                            # ...the footer stays there
-        assert doc[1].get_text().split() == "Body text already as low as the other page goes.".split()
+        assert "Page 1 of 3" in doc[0].get_text()                            # ...its footer stays, renumbered
+        assert doc[1].get_text().split() == "Body text already as low as the other page goes. Page 2 of 3".split()
         assert "The second page reaches lower down." in doc[2].get_text()   # the old page 2, now 3
+        assert "Page 3 of 3" in doc[2].get_text()
+        assert all("of 2" not in page.get_text() for page in doc)
+        footers = [next(b for *_, b, t in lines_of(out, n) if t.startswith("Page")) for n in range(3)]
+        assert len(set(footers)) == 1                                        # all at the footer's height
     baseline = lines_of(out, 1)[0][2]
     assert baseline < 120                                                    # at the top of the body, not at 705
 

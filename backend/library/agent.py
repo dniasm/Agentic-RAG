@@ -667,6 +667,10 @@ def compose_reply(results: list[dict]) -> str:
             elif r.get("added_lines"):
                 lines.append(f'The text grew by {r["added_lines"]} line(s); what is below it moved down. Check it, '
                              f'or undo.')
+            if r.get("page_numbers_kept"):
+                lines.append("The page numbers couldn't be updated for the new page, so they stay as they were.")
+            if r.get("markdown_removed"):
+                lines.append("Formatting marks (** and #) were left out: a PDF's text can't carry them.")
             for pdf_font, drawn in (r.get("stand_in") or {}).items():    # a look-alike font: say so
                 lines.append(f"{pdf_font} isn't available here, so the new text uses {drawn}, which has the same "
                              f"letter widths but looks slightly different.")
