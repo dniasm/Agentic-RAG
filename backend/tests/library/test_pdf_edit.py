@@ -260,8 +260,9 @@ def test_a_longer_edit_rewraps_its_justified_paragraph(layout_pdf):
         assert abs(x0 - 72) < 0.3 and abs(x1 - 540) < 0.3                           # still justified
     assert body[-1][1] < 540                                                        # the last line ragged
     (new,) = spans(out, "fuss")
-    (old,) = spans(layout_pdf, "quickly")
-    assert new["font"] == old["font"] and new["size"] == old["size"]
+    (old,) = spans(out, "daily.")        # a word the edit didn't touch (the saved file's fonts are subset, renamed)
+    (before,) = spans(layout_pdf, "daily.")
+    assert new["font"] == old["font"] and new["size"] == old["size"] == before["size"]
 
 
 def test_a_shorter_edit_pulls_words_back_up(layout_pdf):

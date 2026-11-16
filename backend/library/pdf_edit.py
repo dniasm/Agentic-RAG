@@ -1466,7 +1466,7 @@ def _draw_region(page: pymupdf.Page, shift: _Shift, original: pymupdf.Document, 
     for link in page.get_links():
         page.delete_link(link)
     for link in links:
-        link = {k: v for k, v in link.items() if k != "xref"}
+        link = {k: v for k, v in link.items() if k not in ("xref", "id")}
         if region.contains(link["from"]):
             link["from"] = link["from"] + (0, dy, 0, dy)
         page.insert_link(link)
@@ -1492,7 +1492,7 @@ def _write_plan(page: pymupdf.Page, plan: _Plan) -> None:
     have = {(tuple(round(v, 1) for v in link["from"]), link.get("uri"), link.get("page")) for link in page.get_links()}
     for link in links:      # links a redaction took with it come back
         if (tuple(round(v, 1) for v in link["from"]), link.get("uri"), link.get("page")) not in have:
-            page.insert_link({k: v for k, v in link.items() if k != "xref"})
+            page.insert_link({k: v for k, v in link.items() if k not in ("xref", "id")})
     fonts_before = {f[0] for f in page.get_fonts(full=True)}
     runs: list[tuple[int, pymupdf.TextWriter]] = []     # in order: text readers read the letters as written
     for t in plan.write:
@@ -1783,6 +1783,17 @@ def _check_picture(before: pymupdf.Page, after: pymupdf.Page, plan: _Plan) -> No
                              f"did (near {xs[0] / CHECK_ZOOM:.0f}, {ys[0] / CHECK_ZOOM:.0f} pt).")
 
 
+def _save_small(doc: pymupdf.Document, out: Path) -> None:
+    """Save without the weight an edit adds: fonts it embedded (each text run embeds its own full copy) are cut to
+    the letters used, copies of the same font or object (a moved region brings the page's fonts again) are merged,
+    and objects are packed into compressed streams. The checks after saving cover the result."""
+    try:
+        doc.subset_fonts()
+    except Exception as e:     # a font that can't be subset stays whole: larger, still right
+        log.info("Couldn't subset the fonts: %s", str(e)[:200])
+    doc.save(str(out), garbage=4, deflate=True, use_objstms=1)
+
+
 def _write_checked(path: Path, out: Path, plans: dict[int, _Plan], expected: tuple[str, str] | None = None) -> None:
     """Apply the plans to a fresh copy of the PDF, save it to `out` and check it: every edited page letter by letter
     and picture by picture, and (given `expected`) the whole document's text. CantKeepLayout, with `out` removed,
@@ -1792,7 +1803,7 @@ def _write_checked(path: Path, out: Path, plans: dict[int, _Plan], expected: tup
                       len(original[n].get_links())) for n in plans}
         for n, plan in plans.items():
             _apply_page(target[n], plan, original)
-        target.save(str(out), garbage=3, deflate=True)
+        _save_small(target, out)
         try:
             with pymupdf.open(str(out)) as edited:
                 for n, plan in plans.items():
