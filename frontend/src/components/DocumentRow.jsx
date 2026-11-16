@@ -1,7 +1,7 @@
 /** One document in the Documents table. The name opens the preview (where the text can be edited); everything else
     is in the row's "⋯" menu: Rename, Undo / Redo the latest edit, Download, Download as PDF, Remove. A choice that
     changes something asks first, in the row itself, one question at a time. */
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { FileText } from 'lucide-react';
 import { API_BASE_URL } from '../services/api';
 import { documentFiles } from '../lib/documentFiles';
@@ -26,11 +26,13 @@ const QUESTIONS = {
 
 function Confirm({ kind, onYes, onNo }) {
   const [busy, setBusy] = useState(false);
+  const yes = useRef(null);
   const q = QUESTIONS[kind];
+  useEffect(() => { yes.current?.focus(); }, []);   // the question came from the menu: the keyboard goes to it
   return (
     <span className="inline-flex items-center gap-3 whitespace-nowrap text-body" role="group" aria-label={q.question}>
       <span className="text-muted">{q.question}</span>
-      <button type="button" disabled={busy}
+      <button type="button" ref={yes} disabled={busy}
               className={`font-medium hover:underline underline-offset-4 disabled:opacity-50 ${q.danger ? 'text-negative' : 'text-ink'}`}
               onClick={async () => {
                 setBusy(true);
@@ -38,7 +40,10 @@ function Confirm({ kind, onYes, onNo }) {
               }}>
         {busy ? q.busy : q.yes}
       </button>
-      {!busy && <button type="button" className="text-muted hover:text-ink" onClick={onNo}>Cancel</button>}
+      {!busy && (
+        <button type="button" className="text-muted hover:text-ink" onClick={onNo}
+                onKeyDown={(e) => { if (e.key === 'Escape') onNo(); }}>Cancel</button>
+      )}
     </span>
   );
 }
@@ -47,6 +52,8 @@ function Confirm({ kind, onYes, onNo }) {
 export default function DocumentRow({ doc, onPreview, onRenamed, onUndo, onRedo, onRemove, onError }) {
   const [renaming, setRenaming] = useState(false);
   const [asking, setAsking] = useState(null);   // undo | redo | remove
+  const [backToMenu, setBackToMenu] = useState(false);   // a question or the rename field just closed: focus the menu
+  const done = (setter) => () => { setter(); setBackToMenu(true); };
   const ready = doc.status === 'indexed';
   const files = documentFiles(API_BASE_URL, doc);
   const run = { undo: onUndo, redo: onRedo, remove: onRemove };
@@ -65,7 +72,7 @@ export default function DocumentRow({ doc, onPreview, onRenamed, onUndo, onRedo,
     <tr className="border-t border-rule align-middle">
       <td className="px-4 py-3 max-w-0 w-full md:w-[42%]">
         {renaming ? (
-          <RenameField doc={doc} onRenamed={onRenamed} onError={onError} onClose={() => setRenaming(false)} />
+          <RenameField doc={doc} onRenamed={onRenamed} onError={onError} onClose={done(() => setRenaming(false))} />
         ) : (
           <span className="flex items-center gap-2.5 min-w-0">
             <FileText className="w-4 h-4 flex-none text-muted" strokeWidth={1.6} aria-hidden="true" />
@@ -102,9 +109,9 @@ export default function DocumentRow({ doc, onPreview, onRenamed, onUndo, onRedo,
       <td className="px-4 hidden md:table-cell"><Status doc={doc} /></td>
       <td className="px-2 py-2 text-right whitespace-nowrap">
         {asking ? (
-          <Confirm kind={asking} onYes={() => run[asking](doc)} onNo={() => setAsking(null)} />
+          <Confirm kind={asking} onYes={() => run[asking](doc)} onNo={done(() => setAsking(null))} />
         ) : (
-          <ActionMenu label={`Actions for ${doc.title}`} items={menu} />
+          <ActionMenu key={String(backToMenu)} label={`Actions for ${doc.title}`} items={menu} autoFocus={backToMenu} />
         )}
       </td>
     </tr>

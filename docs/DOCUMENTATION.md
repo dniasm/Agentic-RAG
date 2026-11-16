@@ -249,7 +249,9 @@ overridden by an environment variable / `.env` entry with the same name (case-in
 | `LIBRARY_DATA_DIR` | `backend/data` | The library's files, versions, fonts and logs (§22). |
 | `LIBRARY_AGENT_MODEL` / `LIBRARY_BACKUP_MODEL` / `LIBRARY_AGENT_REASONING` | `openai/gpt-oss-120b` / `openai/gpt-oss-20b` / `low` | The document agent, and the model that takes over when it is rate-limited. |
 | `LIBRARY_TPM_LIMIT` / `LIBRARY_BACKUP_TPM_LIMIT` | `8000` / `8000` | Groq tokens per minute the queue paces itself to. |
-| `CORS_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | Allowed origins (any localhost port is also allowed). |
+| `CORS_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | Other origins allowed to call the API (also trusted by the cross-site check). Empty in production: the app is served from the API's own origin. |
+| `ALLOWED_HOSTS` | `*.ts.net` | Host names the site answers to besides local addresses; any other `Host` is refused (400). In production, the exact public name. |
+| `API_DOCS` | `False` | `/docs`, `/redoc` and `/openapi.json`; development only. |
 | `BOT_CONTACT` | `https://github.com/` | Contact in the User-Agent (required by Wikipedia's API). |
 
 Frontend: `VITE_API_URL` (optional) overrides the API base URL; by default the app calls `/api` and the Vite dev
@@ -874,6 +876,18 @@ Accounts live in `backend/library/auth.py` (one login for the chat and the libra
   so a copied database holds no usable login. Logout deletes it on the server.
 - Wrong passwords are throttled: after 5 for one name from one address within 15 minutes, or 20 from one address,
   that name or address waits (`429`).
+
+### Web hardening (`backend/security.py`, `backend/web.py`)
+- **Host check:** only `ALLOWED_HOSTS` and local addresses are served.
+- **Cross-site changes refused:** a POST/PUT/PATCH/DELETE whose `Origin` (else `Referer`) is another site gets 403. A page from the visitor's own machine or network counts as another site on the public name; it is accepted only for a request made to a local address (the Vite dev proxy).
+- **Headers:** `nosniff`, `Referrer-Policy: same-origin`, no framing, and HSTS on the public name.
+- **Content-Security-Policy on the page:** scripts and workers from the site only (pdf.js is bundled), the inline theme script by its hash, styles and fonts from the site and Google Fonts, requests to the site only.
+
+### Going public (Tailscale Funnel)
+1. `npm run build`, then start the backend bound to `127.0.0.1:8000` (uvicorn trusts forwarding headers from 127.0.0.1 only, which is where Funnel connects from).
+2. In `.env`: `ALLOWED_HOSTS=<machine>.<tailnet>.ts.net` (the exact name), `CORS_ORIGINS=` (empty), and a long random `SIGNUP_CODE`.
+3. `tailscale funnel --bg 127.0.0.1:8000`; turn it off with `tailscale funnel --https=443 off`.
+4. **Before sharing the link:** from outside the tailnet, make one wrong login with a forged header (`curl -H "X-Forwarded-For: 1.2.3.4" …/api/auth/login`) and check that the backend's log shows your real address, not `1.2.3.4`. Otherwise one visitor could dodge, or exhaust, the wrong-password limit.
 
 ### Request guard
 `dependencies.get_current_user` reads the cookie, looks up the token's hash and returns `{id, username}`. Every

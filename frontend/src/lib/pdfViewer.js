@@ -1,7 +1,9 @@
 import "./pdfViewer.css";
 /** A PDF viewer drawn with pdf.js into the page, so it takes the site's own look: drag to pan, pinch / Ctrl+wheel /
     Ctrl +/- to zoom (anchored at the pointer), selectable / copyable text (press on text to select, elsewhere to pan), page box, fit-to-width, a narrow thumbnail rail and download.
-    No knowledge of any one site: createPdfViewer({ url, downloadUrl, fileName, onError }) -> { element, destroy }. */
+    No knowledge of any one site: createPdfViewer({ url, downloadUrl, fileName, onError, initialScroll }) ->
+    { element, destroy, getScroll }. initialScroll / getScroll: the view's scroll offset, so a redraw (after an edit)
+    can come back to where the reader was. */
 
 // pdf.js is bundled (pdfjs-dist, pinned in package.json) and served by the site itself: nothing loads from a CDN, so
 // the page's script policy can stay 'self'. The worker is its own hashed file, loaded as a module worker.
@@ -30,7 +32,7 @@ const icon = (name) =>
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
-export function createPdfViewer({ url, downloadUrl = url, fileName = "document.pdf", onError = () => {} }) {
+export function createPdfViewer({ url, downloadUrl = url, fileName = "document.pdf", onError = () => {}, initialScroll = 0 }) {
   const root = document.createElement("div");
   root.className = "pdfv";
   root.innerHTML = `
@@ -307,6 +309,7 @@ export function createPdfViewer({ url, downloadUrl = url, fileName = "document.p
       thumbsBtn.hidden = doc.numPages < 2;
       setCurrent(1);
       pages[0].thumbBox.classList.add("current");
+      if (initialScroll > 0) view.scrollTop = initialScroll;   // every page is sized by now: back where the reader was
       view.focus({ preventScroll: true });
     } catch (err) {
       if (destroyed) return;
@@ -325,5 +328,5 @@ export function createPdfViewer({ url, downloadUrl = url, fileName = "document.p
     doc?.destroy();
   }
 
-  return { element: root, destroy };
+  return { element: root, destroy, getScroll: () => view.scrollTop };
 }

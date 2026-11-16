@@ -56,6 +56,8 @@ export default function Documents({ onChanged }) {
   const indexingBefore = useRef('');
   useEffect(() => {
     if (indexingBefore.current && indexing !== indexingBefore.current) onChanged?.(); // one finished
+    // "… is being indexed": once nothing is, the rows say it themselves
+    if (!indexing) setNotice((n) => (n?.untilIndexed ? null : n));
     indexingBefore.current = indexing;
     if (!indexing) return undefined;
     const timer = setTimeout(load, POLL_MS);
@@ -70,6 +72,7 @@ export default function Documents({ onChanged }) {
       const data = await apiService.uploadDocument(file);
       return {
         ok: true,
+        indexing: data.status !== 'duplicate',
         text: data.status === 'duplicate'
           ? `${data.filename} was already added (${formatCount(data.chunks_indexed)} passages).`
           : `${data.filename} is being indexed. It's listed below and can be asked about once it shows Ready.`,
@@ -90,7 +93,8 @@ export default function Documents({ onChanged }) {
       setUploading((q) => q.slice(1));
     }
     if (fileInput.current) fileInput.current.value = '';
-    setNotice({ type: results.some((r) => !r.ok) ? 'error' : 'success', lines: results.map((r) => r.text) });
+    const failedSome = results.some((r) => !r.ok);
+    setNotice({ type: failedSome ? 'error' : 'success', lines: results.map((r) => r.text), untilIndexed: !failedSome && results.some((r) => r.indexing) });
     await load();
     onChanged?.();
   };
@@ -99,6 +103,7 @@ export default function Documents({ onChanged }) {
     try {
       await apiService.deleteDocument(doc.id);
       setDocuments((prev) => prev.filter((d) => d.id !== doc.id));
+      setNotice({ type: 'success', lines: [`Removed “${doc.title}”.`] });   // replaces an older note, which may be about it
       onChanged?.();
     } catch (err) {
       setNotice({ type: 'error', lines: [`${doc.title}: ${err.message}`] });

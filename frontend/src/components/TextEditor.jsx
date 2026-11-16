@@ -5,7 +5,8 @@ import { Loader2 } from 'lucide-react';
 import { apiService } from '../services/api';
 
 /** doc: { id, title, ext }. onSaved(result), onCancel(). */
-export default function TextEditor({ doc, onSaved, onCancel }) {
+/** onDirtyChange(bool): whether there is unsaved text (the preview asks before closing then). */
+export default function TextEditor({ doc, onSaved, onCancel, onDirtyChange }) {
   const [opened, setOpened] = useState(null);   // { text, sha256 } as loaded
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
@@ -22,6 +23,7 @@ export default function TextEditor({ doc, onSaved, onCancel }) {
     }
   };
   useEffect(() => { load(); }, [doc.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { onDirtyChange?.(Boolean(opened) && text !== opened.text); }, [text, opened]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const save = async () => {
     setBusy(true);

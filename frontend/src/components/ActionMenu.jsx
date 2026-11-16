@@ -4,12 +4,15 @@ import React, { useEffect, useRef, useState } from 'react';
 import { MoreHorizontal } from 'lucide-react';
 
 /** items: [{ label, onSelect?, href?, download?, danger?, separatorBefore? }] (falsy entries are skipped).
-    label: what the button is for, for screen readers ("Actions for Report.pdf"). */
-export default function ActionMenu({ items, label }) {
+    label: what the button is for, for screen readers ("Actions for Report.pdf"). autoFocus: take the focus when
+    shown (back from a question the menu led to, so the keyboard isn't left on the page). */
+export default function ActionMenu({ items, label, autoFocus = false }) {
   const shown = items.filter(Boolean);
   const [open, setOpen] = useState(false);
   const root = useRef(null);
   const button = useRef(null);
+
+  useEffect(() => { if (autoFocus) button.current?.focus(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!open) return undefined;

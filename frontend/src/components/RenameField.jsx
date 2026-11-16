@@ -11,7 +11,7 @@ export default function RenameField({ doc, onRenamed, onError, onClose }) {
   const [busy, setBusy] = useState(false);
   const input = useRef(null);
 
-  useEffect(() => { input.current?.select(); }, []);
+  useEffect(() => { input.current?.focus(); input.current?.select(); }, []);
 
   const save = async () => {
     const wanted = title.trim();
