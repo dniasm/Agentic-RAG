@@ -111,3 +111,5 @@ def test_the_page_policy_allows_only_its_own_inline_script():
     assert script_src == f"script-src 'self' 'sha256-{digest}' https://cdn.jsdelivr.net"
     assert "'unsafe-inline'" not in script_src and "frame-ancestors 'none'" in policy
     assert "connect-src 'self'" in policy and "object-src 'none'" in policy
+    # the PDF viewer's worker (a blob importing pdf.js's worker module from the CDN): blocked without the CDN here
+    assert "worker-src 'self' blob: https://cdn.jsdelivr.net" in policy

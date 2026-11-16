@@ -32,7 +32,8 @@ def content_security_policy(html: str) -> str:
     return "; ".join([
         "default-src 'self'",
         f"script-src 'self' {hashes} {PDFJS_CDN}".replace("  ", " "),
-        "worker-src 'self' blob:",
+        # the PDF worker: a blob that imports pdf.js's worker module, and a module worker's imports are worker loads
+        f"worker-src 'self' blob: {PDFJS_CDN}",
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",   # React, KaTeX and pdf.js set inline styles
         "font-src 'self' data: https://fonts.gstatic.com",
         "img-src 'self' data: blob:",
