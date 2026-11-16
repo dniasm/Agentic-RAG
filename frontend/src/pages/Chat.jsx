@@ -4,7 +4,7 @@ import ChatDocuments from '../components/ChatDocuments';
 import InputBox from '../components/InputBox';
 import Message from '../components/Message';
 import { hrefFor } from '../lib/route';
-import { undoableEdits } from '../lib/chatActions';
+import { redoableEdits, undoableEdits } from '../lib/chatActions';
 import { readStored, writeStored } from '../lib/storage';
 import { apiService } from '../services/api';
 import { useChatDocuments } from '../state/chatDocuments';
@@ -70,10 +70,12 @@ export default function Chat({ conversationId, title, documents, onConversationC
   const [panelOpen, setPanelOpen] = useState(() => readStored(PANEL_KEY, false));
   const [undone, setUndone] = useState(() => new Set());   // edit ids taken back with an Undo button here
   const [undoError, setUndoError] = useState(null);
+  const [buttonChanges, setButtonChanges] = useState(0);   // Undo and Redo clicks: the panel and buttons look again
   const togglePanel = (open) => { setPanelOpen(open); writeStored(PANEL_KEY, open); };
   // fetched again after each answer and each Undo; the Undo buttons go by the server's latest edit of each document
-  const chatDocs = useChatDocuments(conversationId, `${conv.messages.length}:${conv.streaming}:${undone.size}`);
+  const chatDocs = useChatDocuments(conversationId, `${conv.messages.length}:${conv.streaming}:${buttonChanges}`);
   const undoable = useMemo(() => undoableEdits(chatDocs.docs, undone), [chatDocs.docs, undone]);
+  const redoable = useMemo(() => redoableEdits(chatDocs.docs), [chatDocs.docs]);
 
   const undo = async (action) => {
     setUndoError(null);
@@ -85,6 +87,22 @@ export default function Chat({ conversationId, title, documents, onConversationC
       if (err.status === 409) setUndone((s) => new Set(s).add(action.edit_id));   // already undone, or superseded
       setUndoError(`Couldn't undo the edit to “${action.title}”: ${err.message}`);
       throw err;
+    } finally {
+      setButtonChanges((n) => n + 1);
+    }
+  };
+
+  const redo = async (action) => {
+    setUndoError(null);
+    try {
+      await apiService.redoEdit(action.doc_id, action.edit_id);
+      setUndone((s) => { const next = new Set(s); next.delete(action.edit_id); return next; });   // undoable again
+      onAnswered?.();
+    } catch (err) {
+      setUndoError(`Couldn't bring back the edit to “${action.title}”: ${err.message}`);
+      throw err;
+    } finally {
+      setButtonChanges((n) => n + 1);
     }
   };
 
@@ -152,7 +170,7 @@ export default function Chat({ conversationId, title, documents, onConversationC
         {empty && !conv.loading && !conv.error && <NewChat documents={documents} onSuggestion={send} />}
         {!empty && (
           <div className="max-w-[760px] mx-auto flex flex-col gap-8 py-8">
-            {conv.messages.map((m) => <Message key={m.id} msg={m} undoable={undoable} onUndo={undo} />)}
+            {conv.messages.map((m) => <Message key={m.id} msg={m} undoable={undoable} redoable={redoable} onUndo={undo} onRedo={redo} />)}
           </div>
         )}
       </div>

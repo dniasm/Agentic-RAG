@@ -121,6 +121,19 @@ def undo_edit(doc_id: str, body: UndoIn | None = None, user: dict = Depends(curr
     return {**result, "documents": list_documents(user)}
 
 
+@router.post("/documents/{doc_id}/redo")
+def redo_edit(doc_id: str, body: UndoIn | None = None, user: dict = Depends(current_user)):
+    """Bring back the edit undone most recently (the Redo button under an undone edit in the chat)."""
+    doc = _own_doc(doc_id, user)
+    from backend.library import editing
+    try:
+        result = editing.redo(doc["id"], body.edit_id if body else None)
+    except editing.EditError as e:
+        raise HTTPException(409, str(e)) from e
+    event("redo_button", doc=doc_id, title=doc["title"])
+    return {**result, "documents": list_documents(user)}
+
+
 @router.get("/documents/{doc_id}/file")
 def download(doc_id: str, inline: bool = False, user: dict = Depends(current_user)):
     """The stored file; inline=true shows it in the browser (the PDF preview) instead of downloading it."""

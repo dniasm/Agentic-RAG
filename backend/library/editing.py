@@ -431,6 +431,8 @@ def undo(doc_id: str, edit_id: int | None = None) -> dict:
     before = _plain_text(path)
     current = backup.with_name("current" + path.suffix)
     shutil.copy2(path, current)
+    redo = backup.with_name(f"redo-{last['id']}{path.suffix}")     # the edited file, for a redo
+    shutil.copy2(path, redo)
     try:
         shutil.copy2(backup, target)
         reloaded = _reindex(doc)
@@ -439,6 +441,7 @@ def undo(doc_id: str, edit_id: int | None = None) -> dict:
             target.unlink(missing_ok=True)
         else:
             shutil.copy2(current, path)
+        redo.unlink(missing_ok=True)
         log.exception("Undo on %s failed", doc["title"])
         raise EditError(f"The undo failed and the document is unchanged: {str(e)[:200]}") from e
     finally:
@@ -447,13 +450,69 @@ def undo(doc_id: str, edit_id: int | None = None) -> dict:
         path.unlink(missing_ok=True)
     catalog.update_document(doc_id, ext=doc["ext"], file_name=doc["file_name"])
     refreshed = _finish(doc, reloaded, before)
-    backup.unlink(missing_ok=True)
-    catalog.delete_edit(last["id"])
+    catalog.move_edit_to_undone({**last, "doc_id": doc_id}, redo.name, path.suffix)   # the backup stays for a redo
     event("undo", doc=doc_id, title=doc["title"], undid=last["detail"], chunks=reloaded["chunks"],
           embedded=reloaded["embedded"],
           summary_refreshed=refreshed)
-    return {"status": "undone", "undid": last["detail"], "title": doc["title"],
+    return {"status": "undone", "undid": last["detail"], "title": doc["title"], "redo_id": last["id"],
             "chunks_reindexed": reloaded["chunks"], "edits_left": len(catalog.edit_history(doc_id))}
+
+
+@library._exclusive
+def redo(doc_id: str, edit_id: int | None = None) -> dict:
+    """Bring back the edit undone most recently (Forward after Back). With edit_id, only if that is the one. A new
+    edit since the undo ends the redo history, so there is then nothing to bring back."""
+    doc = catalog.get_document(doc_id)
+    if not doc:
+        raise EditError("Document not found.")
+    if doc["status"] != "indexed":
+        raise EditError(f"The document is {doc['status']}, not ready to change.")
+    undone = catalog.last_undone(doc_id)
+    if not undone:
+        raise EditError("There is nothing to redo: no undone edit of this document is waiting.")
+    if edit_id is not None and undone["id"] != edit_id:
+        raise EditError("That edit can't be redone now: another edit was undone after it.")
+    saved = _versions_dir(doc_id) / undone["redo"]
+    path = config.LIBRARY_DIR / doc["file_name"]
+    if not saved.exists() or not path.exists():
+        raise EditError("The saved edited version is missing, so the edit can't be redone.")
+    if undone["ext"] != doc["ext"]:   # the edit had converted the file (PDF to Markdown): that copy comes back
+        new_name = library.stored_name(doc["owner"], doc["title"], undone["ext"], exclude_doc=doc)
+        doc = {**doc, "ext": undone["ext"], "file_name": new_name}
+    target = config.LIBRARY_DIR / doc["file_name"]
+    before = _plain_text(path)
+    current = saved.with_name("current" + path.suffix)
+    shutil.copy2(path, current)
+    try:
+        shutil.copy2(saved, target)
+        reloaded = _reindex(doc)
+    except Exception as e:
+        if target != path:
+            target.unlink(missing_ok=True)
+        else:
+            shutil.copy2(current, path)
+        log.exception("Redo on %s failed", doc["title"])
+        raise EditError(f"The redo failed and the document is unchanged: {str(e)[:200]}") from e
+    finally:
+        current.unlink(missing_ok=True)
+    if target != path:
+        path.unlink(missing_ok=True)
+    catalog.update_document(doc_id, ext=doc["ext"], file_name=doc["file_name"])
+    refreshed = _finish(doc, reloaded, before)
+    catalog.restore_undone(undone["id"])
+    saved.unlink(missing_ok=True)
+    event("redo", doc=doc_id, title=doc["title"], redid=undone["detail"], chunks=reloaded["chunks"],
+          embedded=reloaded["embedded"], summary_refreshed=refreshed)
+    return {"status": "redone", "redid": undone["detail"], "title": doc["title"], "edit_id": undone["id"],
+            "chunks_reindexed": reloaded["chunks"]}
+
+
+def _drop_redo_history(doc_id: str) -> None:
+    """A new edit: edits undone before it can't come back (their saved files go)."""
+    folder = _versions_dir(doc_id)
+    for u in catalog.clear_undone(doc_id):
+        (folder / u["redo"]).unlink(missing_ok=True)
+        (folder / u["backup"]).unlink(missing_ok=True)
 
 
 def _pdf_to_markdown(doc: dict) -> dict:
@@ -579,6 +638,7 @@ def _edit(source: dict, doc: dict, op: str, find: str, text: str, replace_all: b
     if converted:
         detail = ("converted the PDF to Markdown; " + detail)[:300]
     catalog.record_edit(doc_id, op, detail, backup.name)
+    _drop_redo_history(doc_id)
     event("edit", doc=doc_id, title=doc["title"], op=op, changes=changed, chunks=reloaded["chunks"],
           embedded=reloaded["embedded"], detail=detail,
           converted=converted, summary_refreshed=refreshed)

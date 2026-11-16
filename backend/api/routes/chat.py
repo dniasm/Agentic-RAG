@@ -377,7 +377,7 @@ def _changes_in(answer: dict | None) -> list[str]:
     """What a document agent's answer changed, in words ('edited "CV"'); empty for any other answer."""
     if not answer or answer.get("tool") != "manage_documents":
         return []
-    words = {"edit": "edited", "rename": "renamed", "undo": "undid an edit to"}
+    words = {"edit": "edited", "rename": "renamed", "undo": "undid an edit to", "redo": "redid an edit to"}
     out = []
     for a in (answer.get("meta") or {}).get("actions") or []:
         title = a.get("new_title") or a.get("title")

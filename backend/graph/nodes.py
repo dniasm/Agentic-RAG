@@ -299,7 +299,7 @@ def _code_route(state: AgentState) -> tuple | None:
 # straight to the documents in code.
 _ACTION_WORD = re.compile(r"\b(?:re-?name|re-?title|retitle|replace|append|undo|edit|delete|remove|export|download|"
                           r"convert|fix|update|queue|cancel|change\s+the\s+(?:name|title))\b", re.I)
-_BARE_UNDO = re.compile(r"^\s*(?:please\s+)?undo(?:\s+(?:that|it|this|the\s+last(?:\s+(?:change|edit|rename))?))?"
+_BARE_UNDO = re.compile(r"^\s*(?:please\s+)?(?:undo|redo)(?:\s+(?:that|it|this|the\s+last(?:\s+(?:change|edit|rename))?))?"
                         r"(?:\s+please)?[\s.!]*$", re.I)
 _QUEUE_STATUS = re.compile(r"^\s*(?:what'?s\s+(?:in\s+)?the\s+queue|queue\s+status|(?:how'?s|how\s+is)\s+the\s+"
                            r"(?:queue|batch)(?:\s+going)?|is\s+the\s+(?:batch|queue)\s+(?:done|finished))[\s?.!]*$", re.I)
@@ -539,8 +539,14 @@ def manage_node(state: AgentState) -> dict:
         emit_live(step)
 
     try:
-        out = agent.chat(state["conversation_id"], state["query"], owner=state["user_id"], on_step=on_step,
-                         context_doc_ids=state.get("cited_doc_ids") or [], other_answer=state.get("other_answer"))
+        if state.get("agent_changed") and _undo_typo(state["query"]) and not _BARE_UNDO.match(state["query"]):
+            titles = re.findall(r'"([^"]+)"', state["agent_changed"][-1])
+            out = agent.confirm_undo(state["conversation_id"], state["query"], titles[0] if titles else None,
+                                     owner=state["user_id"])
+        else:
+            out = agent.chat(state["conversation_id"], state["query"], owner=state["user_id"], on_step=on_step,
+                             context_doc_ids=state.get("cited_doc_ids") or [],
+                             other_answer=state.get("other_answer"))
     except PermissionError:
         out = {"reply": "That chat belongs to another user.", "actions": [], "failed": True}
     return {

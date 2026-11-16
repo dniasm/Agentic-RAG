@@ -165,7 +165,7 @@ function Disclosure({ label, count, open, onToggle }) {
   );
 }
 
-function AgentAnswer({ msg, undoable, onUndo }) {
+function AgentAnswer({ msg, undoable, redoable, onUndo, onRedo }) {
   const [open, setOpen] = useState(null); // 'sources' | 'steps' | null
   const toggle = (what) => setOpen((v) => (v === what ? null : what));
   const sources = msg.sources || [];
@@ -185,7 +185,9 @@ function AgentAnswer({ msg, undoable, onUndo }) {
       )}
 
       <Markdown text={msg.text} sources={sources} />
-      {msg.actions?.length > 0 && <DocumentActions actions={msg.actions} undoable={undoable} onUndo={onUndo} />}
+      {msg.actions?.length > 0 && (
+        <DocumentActions actions={msg.actions} undoable={undoable} redoable={redoable} onUndo={onUndo} onRedo={onRedo} />
+      )}
 
       <div className="mt-3 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-small text-muted">
         <Provenance msg={msg} />
@@ -241,7 +243,7 @@ function PendingAnswer({ msg }) {
   );
 }
 
-export default function Message({ msg, undoable = new Set(), onUndo }) {
+export default function Message({ msg, undoable = new Set(), redoable = new Set(), onUndo, onRedo }) {
   if (msg.sender === 'user') {
     return (
       <div className="flex justify-end">
@@ -257,5 +259,5 @@ export default function Message({ msg, undoable = new Set(), onUndo }) {
       </p>
     );
   }
-  return <AgentAnswer msg={msg} undoable={undoable} onUndo={onUndo} />;
+  return <AgentAnswer msg={msg} undoable={undoable} redoable={redoable} onUndo={onUndo} onRedo={onRedo} />;
 }

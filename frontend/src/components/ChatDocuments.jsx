@@ -5,7 +5,7 @@ import { FileText, Loader2, X } from 'lucide-react';
 import { openPreview } from '../state/previewStore';
 import DocumentLinks from './DocumentLinks';
 
-const ACTION_LABEL = { renamed: 'Renamed', edited: 'Edited', undone: 'Edit undone' };
+const ACTION_LABEL = { renamed: 'Renamed', edited: 'Edited', undone: 'Edit undone', redone: 'Edit redone' };
 
 /** docs, error: from useChatDocuments (state/chatDocuments.js). */
 export default function ChatDocuments({ docs, error, onClose }) {

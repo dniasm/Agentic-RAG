@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 
 from backend.library import catalog
 
-LAST_ACTION = {"rename": "renamed", "edit": "edited", "undo": "undone"}
+LAST_ACTION = {"rename": "renamed", "edit": "edited", "undo": "undone", "redo": "redone"}
 _OLDEST = datetime.min.replace(tzinfo=timezone.utc)
 
 
@@ -38,10 +38,16 @@ def documents_changed_in(messages: list[dict], owner: str, tasks: list[dict] = (
         if not doc or doc["owner"] != owner:
             continue
         edit_id = last.pop("edit_id")
-        if last["action"] == "edited" and edit_id is not None and not catalog.edit_exists(edit_id):
-            last["action"] = "undone"
+        if edit_id is not None and last["action"] in ("edited", "undone", "redone"):
+            exists = catalog.edit_exists(edit_id)      # undone or redone since, by a button or another chat
+            if last["action"] != "undone" and not exists:
+                last["action"] = "undone"
+            elif last["action"] == "undone" and exists:
+                last["action"] = "redone"
         out.append({"id": doc["id"], "title": doc["title"], "ext": doc["ext"], "status": doc["status"],
                     "pages": doc["pages"] or 0, **last,
                     # an Undo button applies only to this edit: the document's latest, from whichever chat
-                    "latest_edit_id": (catalog.last_edit(doc_id) or {}).get("id")})
+                    "latest_edit_id": (catalog.last_edit(doc_id) or {}).get("id"),
+                    # a Redo button applies only to the edit undone most recently
+                    "redo_edit_id": (catalog.last_undone(doc_id) or {}).get("id")})
     return sorted(out, key=lambda d: _when(d["at"]), reverse=True)

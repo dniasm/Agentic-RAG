@@ -7,11 +7,17 @@ export function undoableEdits(chatDocs, undone = new Set()) {
   return new Set((chatDocs || []).map((d) => d.latest_edit_id).filter((id) => id != null && !undone.has(id)));
 }
 
+/** The edit ids a Redo can bring back: each document's edit undone most recently, as the server last reported it. */
+export function redoableEdits(chatDocs) {
+  return new Set((chatDocs || []).map((d) => d.redo_edit_id).filter((id) => id != null));
+}
+
 /** A one-line description of an action, for screen readers and titles. */
 export function describeAction(a) {
   if (a.type === 'rename') return `Renamed “${a.old_title}” to “${a.new_title}”`;
   if (a.type === 'edit') return `Edited “${a.title}” (${a.operation}, ${a.changes} change${a.changes === 1 ? '' : 's'})`;
   if (a.type === 'undo') return `Undid an edit to “${a.title}”`;
+  if (a.type === 'redo') return `Brought back an edit to “${a.title}”`;
   if (a.type === 'queue') return `Queued ${a.tasks} task${a.tasks === 1 ? '' : 's'}`;
   return a.type;
 }

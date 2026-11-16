@@ -103,6 +103,17 @@ CREATE TABLE IF NOT EXISTS auth_tokens (
     created_at TEXT NOT NULL,
     expires_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS undone_edits (
+    id INTEGER PRIMARY KEY,           -- the edit's own id: a redo brings the edit back as it was
+    doc_id TEXT NOT NULL,
+    operation TEXT NOT NULL,
+    detail TEXT NOT NULL,
+    backup TEXT NOT NULL,             -- the file before the edit (what the undo put back), in data/versions/<doc_id>/
+    redo TEXT NOT NULL,               -- the file with the edit (what a redo puts back), same folder
+    ext TEXT NOT NULL,                -- the edited file's type (a PDF edit may have made it Markdown)
+    at TEXT NOT NULL,                 -- when the edit was made
+    undone_at TEXT NOT NULL
+);
 CREATE INDEX IF NOT EXISTS renames_doc ON renames (doc_id);
 CREATE INDEX IF NOT EXISTS edits_doc ON edits (doc_id);
 CREATE INDEX IF NOT EXISTS tasks_status ON batch_tasks (status);
@@ -312,6 +323,41 @@ def edit_exists(edit_id: int) -> bool:
     """False once the edit was undone (undo deletes its record)."""
     with _lock:
         return _db().execute("SELECT 1 FROM edits WHERE id = ?", (edit_id,)).fetchone() is not None
+
+
+def move_edit_to_undone(edit: dict, redo: str, ext: str) -> None:
+    """An undone edit leaves the edit history but is kept, with the edited file (`redo`), until a new edit."""
+    with tx() as c:
+        c.execute("DELETE FROM edits WHERE id = ?", (edit["id"],))
+        c.execute("INSERT OR REPLACE INTO undone_edits (id, doc_id, operation, detail, backup, redo, ext, at, "
+                  "undone_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                  (edit["id"], edit["doc_id"], edit["operation"], edit["detail"], edit["backup"], redo, ext,
+                   edit["at"], now()))
+
+
+def last_undone(doc_id: str) -> dict | None:
+    """The edit a redo would bring back: the one undone most recently."""
+    with _lock:
+        row = _db().execute("SELECT * FROM undone_edits WHERE doc_id = ? ORDER BY undone_at DESC, rowid DESC "
+                            "LIMIT 1", (doc_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def restore_undone(undone_id: int) -> None:
+    """A redo: the edit is back in the history under its own id (so its Undo button applies again)."""
+    with tx() as c:
+        c.execute("INSERT INTO edits (id, doc_id, operation, detail, backup, at) SELECT id, doc_id, operation, "
+                  "detail, backup, at FROM undone_edits WHERE id = ?", (undone_id,))
+        c.execute("DELETE FROM undone_edits WHERE id = ?", (undone_id,))
+
+
+def clear_undone(doc_id: str) -> list[dict]:
+    """A new edit ends the redo history (as a new page does a browser's Forward). Returns what was dropped, so its
+    files can be deleted."""
+    with tx() as c:
+        rows = [dict(r) for r in c.execute("SELECT * FROM undone_edits WHERE doc_id = ?", (doc_id,)).fetchall()]
+        c.execute("DELETE FROM undone_edits WHERE doc_id = ?", (doc_id,))
+    return rows
 
 
 def delete_edit(edit_id: int) -> None:

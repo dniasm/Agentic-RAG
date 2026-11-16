@@ -149,6 +149,10 @@ export const apiService = {
   async undoEdit(docId, editId) {   // with editId, refused (409) unless that edit is still the latest
     return request(`/library/documents/${docId}/undo`, { method: 'POST', body: { edit_id: editId ?? null } });
   },
+  /** Bring back the edit undone most recently (the Redo under an undone edit); with editId, only that one. */
+  async redoEdit(docId, editId) {
+    return request(`/library/documents/${docId}/redo`, { method: 'POST', body: { edit_id: editId ?? null } });
+  },
   /** The documents a conversation renamed, edited or undid, newest first. */
   async getConversationDocuments(conversationId) {
     return request(`/conversations/${conversationId}/documents`);

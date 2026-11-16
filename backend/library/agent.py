@@ -25,8 +25,8 @@ log = logging.getLogger(__name__)
 
 SYSTEM = """You manage the user's document library: find, rename, edit and undo, and queue many changes.
 
-- Act only on documents found with find_documents (pass the user's words: a name, part of one, or what it is
-  about; one call per document). Use the doc_id it returns; never invent one. Follow any `next` a tool returns.
+- Act only on documents found with find_documents (pass the user's words: a name, part of one, or its topic;
+  one call per document). Use the doc_id it returns; never invent one. Follow any `next` a tool returns.
 - Rename: with no new name, ask (or suggest one from document_details); asked for one fitting the content,
   choose it. "Add" to a name means to the current title.
 - Edit: copy the user's wording exactly; asked to reword, update or expand without wording, write it yourself
@@ -35,9 +35,9 @@ SYSTEM = """You manage the user's document library: find, rename, edit and undo,
 - Changes to three or more documents: call queue_tasks at once, with the titles as they are now (it finds them
   itself; don't look them up first). For queue progress call queue_status; never guess.
 - Undo an edit with undo_edit (one step per call), a rename by renaming back (document_details lists earlier names).
-- PDF copy: the document's "PDF" link. Never offer what no tool does.
+- PDF copy: its "PDF" link. Never offer what no tool does.
 - Never name the AI model or company behind you.
-- Never say something was renamed, edited or undone unless a tool returned that. Reply briefly and plainly,
+- Never claim a rename, edit or undo no tool returned. Reply briefly and plainly,
   naming documents by title, never doc_id."""
 
 
@@ -59,7 +59,7 @@ def _tool(name: str, description: str, properties: dict | None = None, required:
 _S, _B = {"type": "string"}, {"type": "boolean"}
 
 TOOLS = [
-    _tool("list_documents", "Every document's title, newest first: the first is the latest upload."),
+    _tool("list_documents", "Every document's title, newest upload first."),
     _tool("find_documents", "Which document the user means, by name or content: a decision (unique, ambiguous, "
           "uncertain, none) and the candidates.", {"description": {**_S, "description": "The user's words for it."}},
           ["description"]),
@@ -82,7 +82,8 @@ TOOLS = [
               "find": _S, "text": _S, "replace_all": _B}, "required": ["document", "action"]}},
            "tasks": {"type": "array", "items": _S}}),
     _tool("queue_status", "Progress of the queued changes."),
-    _tool("undo_edit", "Undo a document's latest edit.", {"doc_id": _S}, ["doc_id"]),
+    _tool("undo_edit", "Undo a document's latest edit (redo=true: undo the undo).",
+          {"doc_id": _S, "redo": _B}, ["doc_id"]),
     _tool("rename_document", "Rename a document. confirmed=true only after the user agreed to a needs_confirmation.",
           {"doc_id": _S, "new_title": {**_S, "description": "The complete new title, no extension."},
            "confirmed": _B}, ["doc_id", "new_title"]),
@@ -100,6 +101,7 @@ class Guard:
         self.pending: list = state.get("pending", [])         # renames waiting for confirmation
         self.weak: dict = state.get("weak", {})               # doc_id -> turn it was offered as a near miss
         self.asked: int | None = state.get("asked")            # turn whose reply asked the user something
+        self.confirm_undo: int | None = state.get("confirm_undo")   # turn that asked "did you mean undo?"
         self.turn = turn
         self.session_id = ""     # set by chat(); not saved
         self.owner = config.OWNER   # whose library the tools work in: set by chat(), never by the model
@@ -107,7 +109,8 @@ class Guard:
 
     def state(self) -> dict:
         return {"resolved": self.resolved, "needs_user": self.needs_user, "listed": self.listed,
-                "pending": self.pending, "weak": self.weak, "asked": self.asked}
+                "pending": self.pending, "weak": self.weak, "asked": self.asked,
+                "confirm_undo": self.confirm_undo}
 
     def saw_find(self, result: dict) -> None:
         ids = [c["doc_id"] for c in result.get("candidates", [])]
@@ -393,10 +396,15 @@ def _undo(args: dict, guard: Guard, actions: list) -> dict:
     if guard.weak_match_unconfirmed(doc_id):
         return _weak_match(doc, "undo_edit")
     try:
-        result = editing.undo(doc_id)
+        result = editing.redo(doc_id) if args.get("redo") else editing.undo(doc_id)
     except editing.EditError as e:
         return {"status": "error", "error": str(e)}
-    actions.append({"type": "undo", "doc_id": doc_id, "title": doc["title"], "undid": result["undid"]})
+    if args.get("redo"):
+        actions.append({"type": "redo", "doc_id": doc_id, "title": doc["title"], "redid": result["redid"],
+                        "edit_id": result["edit_id"]})
+    else:
+        actions.append({"type": "undo", "doc_id": doc_id, "title": doc["title"], "undid": result["undid"],
+                        "edit_id": result["redo_id"]})
     return result
 
 
@@ -590,7 +598,7 @@ def _shorten(history: list) -> list:
 
 
 PDF_CONVERSION = "(convert pdf to markdown)"   # what a pending PDF confirmation is recorded under
-DONE_STATUSES = ("renamed", "edited", "undone")
+DONE_STATUSES = ("renamed", "edited", "undone", "redone")
 # results the reply can be written for in code, with no closing model call: finished changes, and the questions
 # the guard asks (the next message answers them; the model sees this exchange whole then)
 CODE_REPLY_STATUSES = (*DONE_STATUSES, "needs_confirmation")
@@ -633,7 +641,10 @@ def compose_reply(results: list[dict]) -> str:
         elif r["status"] == "renamed":
             parts.append(f'Renamed "{_md(r["old_title"])}" to "{_md(r["new_title"])}".')
         elif r["status"] == "undone":
-            parts.append(f'Undid the last edit to "{_md(r["title"])}" ({_md(r["undid"])}).')
+            parts.append(f'Undid the last edit to "{_md(r["title"])}" ({_md(r["undid"])}). Say "redo" to bring '
+                         f'it back.')
+        elif r["status"] == "redone":
+            parts.append(f'Brought back the edit to "{_md(r["title"])}" ({_md(r["redid"])}).')
         else:
             n = r["changes"]
             lines = ['Converted the PDF to Markdown (layout and images are not kept); undo restores the PDF.'] if r.get("converted") else []
@@ -664,6 +675,8 @@ def _action_text(a: dict) -> str:
         return f'edited "{a["title"]}" ({a["operation"]}, {a["changes"]} change{"" if a["changes"] == 1 else "s"})'
     if a["type"] == "undo":
         return f'undid the last edit to "{a["title"]}" ({a["undid"]})'
+    if a["type"] == "redo":
+        return f'brought back the edit to "{a["title"]}" ({a["redid"]})'
     if a["type"] == "queue":
         return f'queued {a["tasks"]} change{"" if a["tasks"] == 1 else "s"}'
     return a["type"]
@@ -727,6 +740,31 @@ def has_open_question(session_id: str) -> bool:
 _ENDS_WITH_QUESTION = re.compile(r"\?[\s\"'”)*_]*$")
 
 
+_YES = re.compile(r"^\s*(?:y|yes|yeah|yep|yup|sure|ok(?:ay)?|correct|right|please|do\s+it|go\s+ahead|"
+                  r"yes\s+please|that'?s\s+right)\b[\s.!]*$", re.I)
+
+
+def confirm_undo(session_id: str, message: str, title: str | None, owner: str = config.OWNER) -> dict:
+    """A message that looks like a misspelled undo ("udno") right after a change: nothing is undone yet, the user
+    is asked. A yes next turn is turned into "undo the last change" (chat); anything else goes on as usual."""
+    session = catalog.load_session(session_id)
+    session["turn"] += 1
+    if session["owner"] not in (None, owner):
+        raise PermissionError("This chat belongs to another user.")
+    session["owner"] = owner
+    guard = Guard(session["guard"], session["turn"])
+    what = f' (the last change to "{title}")' if title else " (the last change)"
+    reply = f'Did you mean "undo"{what}? Reply yes to undo it.'
+    guard.asked, guard.confirm_undo = session["turn"], session["turn"]
+    session["llm_messages"] = messages_to_dict(messages_from_dict(session["llm_messages"])
+                                               + [HumanMessage(message), AIMessage(reply)])
+    session["guard"] = guard.state()
+    session["display"] += [{"role": "user", "text": message}, {"role": "assistant", "text": reply, "actions": []}]
+    catalog.save_session(session)
+    event("undo_confirm_asked", session=session_id[:8], turn=session["turn"])
+    return {"reply": reply, "actions": [], "tokens": 0, "failed": False}
+
+
 def asks_user(reply: str) -> bool:
     """The reply ends by asking the user something ("What wording would you like?"): their answer is for this
     agent, however it is worded ("anything you'd like" would otherwise read as small talk)."""
@@ -759,6 +797,9 @@ def chat(session_id: str, message: str, model=None, batch: bool = False, owner: 
     # they are only named in the note, and the guard still asks which one
     if len(context_docs) == 1:
         guard.saw_list_before([context_docs[0]["id"]])
+    if guard.confirm_undo == session["turn"] - 1 and _YES.match(message):
+        message = "Yes: undo the last change."      # the answer to "Did you mean undo?"
+    guard.confirm_undo = None
     new = [HumanMessage(message + _context_note(context_docs) + _other_answer_note(message, other_answer))]
     actions: list = []
     reply = ""

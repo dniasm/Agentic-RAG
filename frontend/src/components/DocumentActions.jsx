@@ -1,25 +1,14 @@
-/** Under an answer from the document agent: one row for each thing it did, with Preview and (for the latest edit
-    of a document in this chat) Undo. */
-import React, { useState } from 'react';
+/** Under an answer from the document agent: one row for each thing it did, with Preview, Undo (the latest edit of
+    a document in this chat) and Redo (the edit undone most recently), each asking first. Like a browser's Back
+    and Forward: a new edit ends what Redo can bring back. */
+import React from 'react';
 import { describeAction, LAYOUT_NOTE } from '../lib/chatActions';
 import { openPreview } from '../state/previewStore';
+import ConfirmAction from './ConfirmAction';
 
-function UndoButton({ action, onUndo }) {
-  const [state, setState] = useState('idle');   // idle | busy | failed
-  return (
-    <button type="button" className="link-action disabled:opacity-50" disabled={state === 'busy'}
-            title={state === 'failed' ? 'Undo failed: see the message above' : undefined}
-            onClick={async () => {
-              setState('busy');
-              try { await onUndo(action); setState('idle'); } catch { setState('failed'); }
-            }}>
-      {state === 'busy' ? 'Undoing…' : 'Undo'}
-    </button>
-  );
-}
-
-/** actions: meta.actions of one answer. undoable: edit ids that can still be undone. onUndo(action) -> promise. */
-export default function DocumentActions({ actions, undoable, onUndo }) {
+/** actions: meta.actions of one answer. undoable / redoable: edit ids an Undo / a Redo applies to.
+    onUndo(action), onRedo(action) -> promise. */
+export default function DocumentActions({ actions, undoable, redoable = new Set(), onUndo, onRedo }) {
   const shown = actions.filter((a) => a.type !== 'queue' || a.tasks);
   if (!shown.length) return null;
   return (
@@ -42,7 +31,14 @@ export default function DocumentActions({ actions, undoable, onUndo }) {
                       onClick={() => openPreview({ id: a.doc_id, title: a.new_title || a.title, ext: a.ext })}>
                 Preview
               </button>
-              {a.type === 'edit' && undoable.has(a.edit_id) && <UndoButton action={a} onUndo={onUndo} />}
+              {['edit', 'redo'].includes(a.type) && undoable.has(a.edit_id) && (
+                <ConfirmAction label="Undo" question="Undo this edit?" busyLabel="Undoing…"
+                               onConfirm={() => onUndo(a)} />
+              )}
+              {['edit', 'undo'].includes(a.type) && onRedo && redoable.has(a.edit_id) && (
+                <ConfirmAction label="Redo" question="Bring this edit back?" busyLabel="Redoing…"
+                               onConfirm={() => onRedo(a)} />
+              )}
             </span>
           )}
         </li>
