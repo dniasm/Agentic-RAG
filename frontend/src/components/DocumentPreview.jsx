@@ -5,8 +5,13 @@
     selected on the page fills it in ("Edit selection"), or it can be typed, so the keyboard reaches it too. A TXT or
     Markdown file also opens whole in "Edit text" (TextEditor). After a save the page is drawn again where the reader
     was, a note says what changed (with Undo), and the document lists are told (state/documentEvents). Closing with
-    unsaved changes asks first. A phone's Back closes an open editor first, then the preview (state/previewStore). */
+    unsaved changes asks first. A phone's Back closes an open editor first, then the preview (state/previewStore).
+
+    For the keyboard: the preview is rendered outside the app (a portal) and the app is inert while it is open, so Tab
+    stays in the preview; focus moves into it on open and, on close, back to what opened it, or, when that is gone (a
+    menu that closed, a removed document), to the document's "⋯" button, else the page's heading. */
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Pencil, X } from 'lucide-react';
 import { API_BASE_URL, apiService } from '../services/api';
 import { documentFiles } from '../lib/documentFiles';
@@ -61,6 +66,30 @@ export default function DocumentPreview({ documents = [] }) {
   const closing = useRef(false);                  // X or Escape asked to close: Back closes, no second question
   modeNow.current = mode;
   dirtyNow.current = dirty;
+
+  // keyboard: the app behind is inert while the preview is open; focus goes in, and back to the opener on close
+  const opener = useRef(null);
+  const closeButton = useRef(null);
+  const titleNow = useRef('');
+  if (doc?.title) titleNow.current = doc.title;   // kept after close: the fallback finds the row's "⋯" by it
+  const isOpen = Boolean(asked);
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    opener.current = document.activeElement;
+    const app = document.getElementById('root');
+    if (app) app.inert = true;
+    requestAnimationFrame(() => closeButton.current?.focus());
+    return () => {
+      if (app) app.inert = false;
+      const back = [
+        opener.current,
+        document.querySelector(`button[aria-label="Actions for ${CSS.escape(titleNow.current)}"]`),
+        document.querySelector('main h1'),
+      ].find((el) => el && el.isConnected && el !== document.body);   // (a menu that closed leaves the body focused)
+      if (back?.tagName === 'H1' && !back.hasAttribute('tabindex')) back.setAttribute('tabindex', '-1');
+      back?.focus();
+    };
+  }, [isOpen]);
 
   // a new document: start over
   useEffect(() => {
@@ -149,7 +178,7 @@ export default function DocumentPreview({ documents = [] }) {
     }
   };
 
-  return (
+  return createPortal((
     <div className="fixed inset-0 z-50 bg-black/40 flex items-stretch justify-center p-0 sm:p-6" onMouseDown={(e) => {
       if (e.target === e.currentTarget && mode === 'view') close();
     }}>
@@ -169,7 +198,7 @@ export default function DocumentPreview({ documents = [] }) {
             <button type="button" className="link-action" onClick={() => { setMode('text'); setNote(null); }}>Edit text</button>
           )}
           {mode === 'view' && <DocumentLinks doc={doc} />}
-          <button type="button" className="btn-ghost h-8 w-8 p-0 -mr-2" onClick={close} aria-label="Close preview">
+          <button type="button" ref={closeButton} className="btn-ghost h-8 w-8 p-0 -mr-2" onClick={close} aria-label="Close preview">
             <X className="w-4 h-4" aria-hidden="true" />
           </button>
         </div>
@@ -203,5 +232,5 @@ export default function DocumentPreview({ documents = [] }) {
         )}
       </div>
     </div>
-  );
+  ), document.body);
 }
