@@ -5,13 +5,13 @@
     selected on the page fills it in ("Edit selection"), or it can be typed, so the keyboard reaches it too. A TXT or
     Markdown file also opens whole in "Edit text" (TextEditor). After a save the page is drawn again where the reader
     was, a note says what changed (with Undo), and the document lists are told (state/documentEvents). Closing with
-    unsaved changes asks first. */
+    unsaved changes asks first. A phone's Back closes an open editor first, then the preview (state/previewStore). */
 import React, { useEffect, useRef, useState } from 'react';
 import { Pencil, X } from 'lucide-react';
 import { API_BASE_URL, apiService } from '../services/api';
 import { documentFiles } from '../lib/documentFiles';
 import { LAYOUT_NOTE } from '../lib/chatActions';
-import { closePreview, usePreview } from '../state/previewStore';
+import { closePreview, onPreviewBack, usePreview } from '../state/previewStore';
 import { documentsChanged } from '../state/documentEvents';
 import ConfirmAction from './ConfirmAction';
 import DocumentLinks from './DocumentLinks';
@@ -55,11 +55,26 @@ export default function DocumentPreview({ documents = [] }) {
   const [editing, setEditing] = useState('');     // the passage being replaced ('' : typed in the editor)
   const [dirty, setDirty] = useState(false);      // an editor holds unsaved text
   const [note, setNote] = useState(null);         // after a save: { lines, editId }
+  // the latest of these for the Back handler, which runs outside React's render
+  const modeNow = useRef('view');
+  const dirtyNow = useRef(false);
+  const closing = useRef(false);                  // X or Escape asked to close: Back closes, no second question
+  modeNow.current = mode;
+  dirtyNow.current = dirty;
 
   // a new document: start over
   useEffect(() => {
     setMode('view'); setSelected(''); setNote(null); setExtNow(null); setDirty(false); scrollBack.current = 0;
+    closing.current = false;
   }, [asked?.id]);
+
+  // Back (a phone's gesture): an open editor closes first (asking about unsaved text), then the preview
+  useEffect(() => onPreviewBack(() => {
+    if (closing.current) { closing.current = false; return true; }
+    if (modeNow.current === 'view') return true;
+    if (!dirtyNow.current || window.confirm(DISCARD)) { setDirty(false); setMode('view'); }
+    return false;   // the preview stays
+  }), []);
 
   useEffect(() => {
     if (!doc || mode === 'text') return undefined;
@@ -83,11 +98,12 @@ export default function DocumentPreview({ documents = [] }) {
   }, [dirty]);
 
   const leave = (then) => {   // out of an editor, or the preview: asks first when there is unsaved text
-    if (dirty && !window.confirm(DISCARD)) return;
+    if (dirtyNow.current && !window.confirm(DISCARD)) return;
+    dirtyNow.current = false;
     setDirty(false);
     then();
   };
-  const close = () => leave(closePreview);
+  const close = () => leave(() => { closing.current = true; closePreview(); });
   const toView = () => leave(() => setMode('view'));
 
   useEffect(() => {
@@ -138,7 +154,7 @@ export default function DocumentPreview({ documents = [] }) {
       if (e.target === e.currentTarget && mode === 'view') close();
     }}>
       <div role="dialog" aria-modal="true" aria-label={`Preview of ${doc.title}`}
-           className="bg-surface w-full max-w-[1000px] sm:rounded-card border border-line flex flex-col min-h-0 overflow-hidden">
+           className="bg-surface w-full min-w-0 max-w-[1000px] sm:rounded-card border border-line flex flex-col min-h-0 overflow-hidden">
         <div className="flex-none flex items-center gap-3 min-h-12 px-4 py-2 border-b border-line flex-wrap">
           <h2 className="flex-1 min-w-0 truncate text-section font-medium" title={doc.title}>{doc.title}</h2>
           {mode === 'view' && (
@@ -179,7 +195,7 @@ export default function DocumentPreview({ documents = [] }) {
           <TextEditor doc={doc} onCancel={toView} onDirtyChange={setDirty}
                       onSaved={(r) => saved(r, 'Saved. The document was indexed again.')} />
         ) : (
-          <div ref={host} className="flex-1 min-h-0"><p className="p-6 text-body text-muted">Loading…</p></div>
+          <div ref={host} className="flex-1 min-h-0 min-w-0"><p className="p-6 text-body text-muted">Loading…</p></div>
         )}
         {mode === 'selection' && (
           <SelectionEditor doc={doc} selected={editing} onCancel={toView} onDirtyChange={setDirty}

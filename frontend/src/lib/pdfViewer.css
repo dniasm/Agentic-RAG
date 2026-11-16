@@ -1,6 +1,6 @@
 /* The PDF viewer (lib/pdfViewer.js), from the document library's own page. Its tokens map to the app's. */
 .pdfv { --secondary-hover: var(--active); --hover: var(--raised); --data: var(--hue); --radius-control: 6px; }
-.pdfv { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.pdfv { display: flex; flex-direction: column; height: 100%; min-height: 0; min-width: 0; }
 .pdfv-bar { display: flex; align-items: center; gap: 4px; padding: 6px 12px; border-bottom: 1px solid var(--border); font-size: 13px; color: var(--muted); }
 .pdfv-btn, .pdfv-zoom {
   display: inline-grid; place-items: center; height: 30px; min-width: 30px; padding: 0 6px; border: 0;

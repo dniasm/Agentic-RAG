@@ -39,7 +39,9 @@ export default function SelectionEditor({ doc, selected, onSaved, onCancel, onDi
       if (err.status === 409 && err.data?.ambiguous) {
         setQuestion({ kind: 'ambiguous', message: err.data.message, contexts: err.data.contexts || [] });
       } else if (err.status === 409 && err.data?.needs_conversion) {
-        setQuestion({ kind: 'convert', message: err.data.message, tooLong: err.data.too_long, missing: err.data.missing });
+        setQuestion({ kind: 'convert', message: err.data.message, tooLong: err.data.too_long,
+                      missing: err.data.missing, missingNames: err.data.missing_names,
+                      convertible: err.data.convertible !== false });
       } else {
         setError(err.message);
       }
@@ -55,13 +57,13 @@ export default function SelectionEditor({ doc, selected, onSaved, onCancel, onDi
   };
 
   return (
-    <section className="flex-none border-t border-line bg-surface px-4 py-3 flex flex-col gap-2 max-h-[55%] overflow-y-auto"
+    <section className="flex-none border-t border-line bg-surface px-4 py-3 flex flex-col gap-2 max-h-[45%] sm:max-h-[55%] overflow-y-auto"
              aria-label="Edit a passage">
       {selected
         ? <span id="selection-find-label" className="text-small text-muted">Replace</span>
         : <label className="text-small text-muted" htmlFor="selection-find">Replace</label>}
       {selected ? (
-        <blockquote aria-labelledby="selection-find-label" className="text-body border-l-2 border-control pl-3 max-h-24 overflow-y-auto whitespace-pre-wrap">
+        <blockquote aria-labelledby="selection-find-label" className="text-body border-l-2 border-control pl-3 max-h-[4.5rem] overflow-y-auto whitespace-pre-wrap">
           {selected}
         </blockquote>
       ) : (
@@ -89,11 +91,13 @@ export default function SelectionEditor({ doc, selected, onSaved, onCancel, onDi
       {question?.kind === 'convert' && (
         <p className="text-body" role="alert">
           {question.missing
-            ? <>The PDF's font has no “{question.missing}”. Reword without {question.missing.length === 1 ? 'it' : 'them'} to keep the PDF as it is, or convert it: </>
+            ? <>The PDF's font has no {question.missingNames || `“${question.missing}”`}. Reword without {question.missing.length === 1 ? 'it' : 'them'} to keep the PDF as it is{question.convertible ? ', or convert it: ' : '.'}</>
             : <>{question.message}{' '}</>}
           {question.tooLong
             ? 'A shorter wording may fit.'
-            : 'The PDF can be converted to a Markdown copy and edited there instead (its layout and images are lost; Undo brings the PDF back).'}
+            : !question.convertible
+              ? ' This passage spans parts of the page (columns, dates, lists) that are changed one at a time: select one line or paragraph and edit that.'
+              : 'The PDF can be converted to a Markdown copy and edited there instead (its layout and images are lost; Undo brings the PDF back).'}
         </p>
       )}
       {error && <p className="text-body text-[var(--pill-negative-ink)]" role="alert">{error}</p>}
@@ -103,7 +107,7 @@ export default function SelectionEditor({ doc, selected, onSaved, onCancel, onDi
           <button type="button" className="btn-primary" disabled={busy} onClick={() => save({ replaceAll: true })}>
             {busy ? 'Saving…' : 'Change all of them'}
           </button>
-        ) : question?.kind === 'convert' && !question.tooLong ? (
+        ) : question?.kind === 'convert' && !question.tooLong && question.convertible ? (
           <button type="button" className="btn-primary" disabled={busy} onClick={() => save({ convertPdf: true })}>
             {busy ? 'Converting…' : 'Convert and edit'}
           </button>
