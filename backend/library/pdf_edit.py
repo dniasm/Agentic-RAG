@@ -62,6 +62,18 @@ class CantKeepLayout(Exception):
     """The edit can't be made in the PDF without breaking its look. The message says why, for the user."""
 
 
+class MissingLetters(CantKeepLayout):
+    """The PDF's font for this text has no copy of some of its letters (`missing`)."""
+
+    def __init__(self, message: str, missing: str):
+        super().__init__(message)
+        self.missing = missing
+
+
+class NoRoom(CantKeepLayout):
+    """The new text needs more lines than the page has room for: a shorter wording may still fit."""
+
+
 # ---------------------------------------------------------------- fonts
 FONT_DIRS = [Path(__file__).parent / "fonts", config.DATA_DIR / "fonts",
              Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts",
@@ -568,10 +580,10 @@ class PdfText:
                 font = candidate if _has(candidate, text) else None
         if font is None:
             missing = "".join(sorted({c for c in text if c not in self._used[style.font]}))
-            raise CantKeepLayout(
+            raise MissingLetters(
                 f'The PDF sets this text in the font "{style.font}", and no complete copy of that font is available'
                 + (f' for the letters "{missing}"' if missing else "")
-                + ". (A copy can be added to data/fonts.)")
+                + ". (A copy can be added to data/fonts.)", missing)
         self._fonts[(style.font, text)] = font
         return font
 
@@ -913,8 +925,8 @@ def _push(pdf: PdfText, para: list[Segment], left: float, right: float, dy: floa
               and r.x1 > body_left and r.x0 < body_right]
     lowest = max([s.bottom for s in below] + [r.y1 for r in inside] + [bottom])
     if dy > 0 and lowest + dy > _body_bottom_limit(pdf) + 0.5:
-        raise CantKeepLayout("The new text needs one more line, and the page has no room left at the bottom to move "
-                             "the rest of it down.")
+        raise NoRoom("The new text needs one more line, and the page has no room left at the bottom to move "
+                     "the rest of it down.")
     if lowest <= bottom:
         return None
     # 2pt to spare at the sides: a rule's stroke reaches past its path, and a drawing only counts as inside (and so is

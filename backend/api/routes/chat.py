@@ -124,6 +124,9 @@ def _prepare(
         # "rename that one": the documents the previous answer was based on
         "cited_doc_ids": [src["doc_id"] for src in (last_answer or {}).get("meta", {}).get("sources", [])
                           if src.get("doc_id")],
+        # a draft another part of the chat wrote, which the document agent never saw ("yup use that")
+        "other_answer": last_answer["content"] if last_answer and last_answer.get("tool") != "manage_documents"
+                        else None,
     }
 
     # Exact facts and preferences from SQLite.

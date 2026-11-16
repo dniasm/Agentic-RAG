@@ -38,7 +38,12 @@ class EditError(Exception):
 
 class NeedsConversion(EditError):
     """The PDF can't be changed in place without breaking its look (the message says why), and the caller has not
-    agreed to convert it to a Markdown copy."""
+    agreed to convert it to a Markdown copy. too_long: only because the new text needs more room than the page has,
+    so a shorter wording may still fit."""
+
+    def __init__(self, message: str, too_long: bool = False):
+        super().__init__(message)
+        self.too_long = too_long
 
 
 def _pattern(find: str, ignore_case: bool = False) -> re.Pattern:
@@ -206,6 +211,35 @@ def _pdf_text(path: Path) -> str:
         raise pdf_edit.CantKeepLayout("The PDF's text layout can't be read for an in-place edit.") from e
 
 
+# Typographic letters a PDF's embedded font often lacks (a model writes non-breaking hyphens and curly quotes),
+# and the plain ones typed on a keyboard: used only when the PDF can't take the text as given.
+_PLAIN_LETTERS = str.maketrans({"\u2010": "-", "\u2011": "-", "\u2012": "-", "\u2013": "-", "\u2014": "-",
+                                "\u2212": "-", "\u2018": "'", "\u2019": "'", "\u201a": "'", "\u201c": '"',
+                                "\u201d": '"', "\u201e": '"', "\u2026": "...", "\u00a0": " ", "\u202f": " ",
+                                "\u2009": " "})
+
+
+def _pdf_replace(path: Path, tmp: Path, pattern: re.Pattern, text: str, replace_all: bool, info: dict | None):
+    """pdf_edit.replace. Where the PDF's font has no copy of a typographic dash, quote or space in the text, only
+    those letters become their keyboard ones (listed in info["plain_letters"]); any other refusal stands."""
+    swapped: set[str] = set()
+    for _ in range(4):   # each try can find another font (bold, italic) lacking another letter
+        try:
+            out = pdf_edit.replace(path, tmp, pattern, text, replace_all, info)
+        except pdf_edit.MissingLetters as e:
+            lacking = {c for c in e.missing if c in text}
+            if not lacking or any(ord(c) not in _PLAIN_LETTERS for c in lacking):
+                raise
+            swapped |= lacking
+            text = text.translate({ord(c): _PLAIN_LETTERS[ord(c)] for c in lacking})
+            log.info("Edit of %s: its font lacks %r; using plain letters for them", path.name, "".join(sorted(lacking)))
+            continue
+        if info is not None and swapped:
+            info["plain_letters"] = "".join(sorted(swapped))
+        return (*out, text)
+    raise pdf_edit.CantKeepLayout("The PDF's fonts lack too many of the new text's letters.")
+
+
 def _apply(doc: dict, op: str, pattern: re.Pattern | None, text: str, replace_all: bool,
            info: dict | None = None) -> tuple[int, list]:
     """Write the edited file. Returns (how many places changed, previews of the first few). For a PDF, `info` gets
@@ -216,7 +250,7 @@ def _apply(doc: dict, op: str, pattern: re.Pattern | None, text: str, replace_al
     if doc["ext"] == ".pdf":
         if op == "append":
             raise pdf_edit.CantKeepLayout("Text added at the end of a PDF can't yet be laid out to match the rest of it.")
-        changed, spans, content = pdf_edit.replace(path, tmp, pattern, text, replace_all, info)
+        changed, spans, content, text = _pdf_replace(path, tmp, pattern, text, replace_all, info)
         previews = [_preview(content, a, b, text) for a, b in spans[:MAX_PREVIEWS]]
     elif doc["ext"] == ".docx":
         import docx
@@ -456,10 +490,10 @@ def edit(doc_id: str, op: str, *, find: str = "", text: str = "", replace_all: b
     try:
         return _edit(doc, doc, op, find, text, replace_all)
     except pdf_edit.CantKeepLayout as e:
-        reason = str(e)
+        reason, too_long = str(e), isinstance(e, pdf_edit.NoRoom)
         event("pdf_edit_refused", doc=doc_id, title=doc["title"], reason=reason)
     if not convert_pdf:
-        raise NeedsConversion(reason)
+        raise NeedsConversion(reason, too_long)
     markdown = _pdf_to_markdown(doc)
     try:
         result = _edit(doc, markdown, op, find, text, replace_all)
@@ -540,4 +574,5 @@ def _edit(source: dict, doc: dict, op: str, find: str, text: str, replace_all: b
           converted=converted, summary_refreshed=refreshed)
     return {"status": "edited", "operation": op, "changes": changed, "chunks_reindexed": reloaded["chunks"],
             "chunks_embedded": reloaded["embedded"], "title": doc["title"], "previews": previews, "converted": converted,
-            "layout": info.get("layout")}
+            "layout": info.get("layout"),
+            **({"plain_letters": info["plain_letters"]} if info.get("plain_letters") else {})}

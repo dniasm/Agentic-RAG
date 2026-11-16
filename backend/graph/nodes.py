@@ -493,7 +493,7 @@ def manage_node(state: AgentState) -> dict:
 
     try:
         out = agent.chat(state["conversation_id"], state["query"], owner=state["user_id"], on_step=on_step,
-                         context_doc_ids=state.get("cited_doc_ids") or [])
+                         context_doc_ids=state.get("cited_doc_ids") or [], other_answer=state.get("other_answer"))
     except PermissionError:
         out = {"reply": "That chat belongs to another user.", "actions": [], "failed": True}
     return {

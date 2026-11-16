@@ -9,6 +9,7 @@ class AgentState(TypedDict, total=False):
     conversation_id: str            # the document agent's session is the conversation
     agent_pending: bool             # the document agent asked a question last turn (route the answer to it)
     cited_doc_ids: list[str]        # documents the previous answer was based on ("rename that one")
+    other_answer: str | None        # the previous answer, when not the document agent's ("use that" in an edit)
     actions: list[dict]             # what the document agent changed (Preview / Undo buttons)
     username: str
     history: list[dict]             # [{"role": "user"|"assistant", "content": str}]
