@@ -688,20 +688,30 @@ def _pdf_to_markdown(doc: dict) -> dict:
     return {**doc, "ext": ".md", "file_name": name}
 
 
+def _damage(text: str) -> int:
+    """Letters a reading couldn't map: replacement characters, and private-use ones (a font without a proper letter map
+    often gives those instead)."""
+    return sum(1 for c in text if c == "\ufffd" or "\ue000" <= c <= "\uf8ff")
+
+
 def _conversion_text(doc: dict) -> str:
-    """The text a PDF becomes when converted: what the PDF editor reads (its ToUnicode map: real dashes, words whole,
-    the text the preview selects), else what indexing read (pypdf) for a PDF the editor can't read."""
+    """The text a PDF becomes when converted: the PDF editor's reading (its ToUnicode map: real dashes, words whole,
+    the text the preview selects), unless indexing's reading (pypdf) has fewer letters it couldn't map; on a tie the
+    editor's, since that is what a selection in the preview matches. Indexing's for a PDF the editor can't read."""
     path = config.LIBRARY_DIR / doc["file_name"]
     try:
-        text = pdf_edit.document_text(path)
+        editor = pdf_edit.document_text(path)
     except Exception:
-        text = ""
-    if not text.strip():
-        try:
-            pages, _ = ingestion.load_file(path)
-        except Exception:
-            pages = []
-        text = "\n\n".join(p.page_content for p in pages)
+        editor = ""
+    try:
+        pages, _ = ingestion.load_file(path)
+        indexed = "\n\n".join(p.page_content for p in pages)
+    except Exception:
+        indexed = ""
+    if editor.strip() and (not indexed.strip() or _damage(editor) <= _damage(indexed)):
+        text = editor
+    else:
+        text = indexed
     if not text.strip():
         raise EditError("This PDF has no extractable text (it is probably scanned images), so it can't be converted.")
     return text
