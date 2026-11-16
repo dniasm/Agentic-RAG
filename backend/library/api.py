@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
 from backend.api.dependencies import get_current_user
-from backend.library import agent, batch, catalog, config, export, library, logs
+from backend.library import agent, batch, catalog, config, export, library, logs, naming
 from backend.library.logs import event
 
 router = APIRouter(prefix="/library", tags=["Library"])
@@ -102,6 +102,34 @@ def delete_document(doc_id: str, user: dict = Depends(current_user)):
     if doc["status"] == "processing":
         raise HTTPException(409, "The document is still being indexed")
     library.delete(doc_id)
+
+
+class RenameIn(BaseModel):
+    title: str = Field(min_length=1, max_length=400)
+    confirmed: bool = False   # use the name though another document already has it
+
+
+@router.post("/documents/{doc_id}/rename")
+def rename_document(doc_id: str, body: RenameIn, user: dict = Depends(current_user)):
+    """The Library page's Rename. A name another document already has is refused (409, with `conflicts`) until
+    it is sent again with confirmed=true."""
+    doc = _own_doc(doc_id, user)
+    if doc["status"] != "indexed":
+        raise HTTPException(409, "The document is still being indexed" if doc["status"] == "processing"
+                            else "The document failed to index, so it can't be renamed")
+    try:
+        title = naming.clean_title(body.title)
+    except naming.TitleError as e:
+        raise HTTPException(400, str(e)) from e
+    if title == doc["title"]:
+        return {"old_title": title, "new_title": title, "file_name": Path(doc["file_name"]).name, "unchanged": True}
+    conflicts = [c["title"] for c in library.name_conflicts(title, exclude=doc_id)]
+    if conflicts and not body.confirmed:
+        raise HTTPException(409, {"message": f"Another document is already called “{title}”.",
+                                  "conflicts": conflicts, "title": title})
+    result = library.rename(doc_id, title)
+    event("rename_button", doc=doc_id, old=result["old_title"], new=result["new_title"])
+    return {**result, "file_name": Path(result["file_name"]).name}
 
 
 class UndoIn(BaseModel):

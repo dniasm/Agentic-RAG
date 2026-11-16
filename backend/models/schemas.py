@@ -22,6 +22,8 @@ class DocumentOut(BaseModel):
     status: str
     error: str | None = None
     created_at: str
+    edit_id: int | None = None   # the latest edit, which Undo takes back
+    redo_id: int | None = None   # the edit undone most recently, which Redo brings back
 
 
 class UploadOut(BaseModel):

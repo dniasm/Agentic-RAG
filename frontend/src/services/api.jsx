@@ -31,13 +31,19 @@ async function request(path, { method = 'GET', body, headers = {}, raw = false }
   if (res.status === 401 && !path.startsWith('/auth/')) onUnauthorized();
   if (!res.ok) {
     let detail = `Request failed (${res.status})`;
+    let data = null;
     try {
-      const data = await res.json();
-      if (typeof data.detail === 'string') detail = data.detail;
-      else if (Array.isArray(data.detail)) detail = data.detail.map((d) => d.msg).join(', ');
+      const body = await res.json();
+      if (typeof body.detail === 'string') detail = body.detail;
+      else if (Array.isArray(body.detail)) detail = body.detail.map((d) => d.msg).join(', ');
+      else if (body.detail && typeof body.detail === 'object') {   // { message, ...what the caller can act on }
+        data = body.detail;
+        if (typeof data.message === 'string') detail = data.message;
+      }
     } catch { /* non-JSON error body */ }
     const err = new Error(detail);
     err.status = res.status; // callers can tell "not logged in" (401) from "backend down" (503)
+    err.data = data;         // e.g. a rename's name conflict: { conflicts, title }
     throw err;
   }
   if (raw) return res;
@@ -144,6 +150,17 @@ export const apiService = {
   },
   async deleteDocument(docId) {
     return request(`/documents/${docId}`, { method: 'DELETE' });
+  },
+  /** Rename a document. A name another document has is refused (409, err.data.conflicts) unless confirmed. */
+  async renameDocument(docId, title, confirmed = false) {
+    return request(`/library/documents/${docId}/rename`, { method: 'POST', body: { title, confirmed } });
+  },
+  /** Batches of queued tasks still running or queued in the last hour: { batches: [{ id, created_at, tasks }] }. */
+  async getQueue() {
+    return request('/library/queue');
+  },
+  async cancelBatch(batchId) {
+    return request(`/library/batches/${batchId}`, { method: 'DELETE' });
   },
   /** Take back a document's latest edit (the Undo under an edit in a chat). */
   async undoEdit(docId, editId) {   // with editId, refused (409) unless that edit is still the latest

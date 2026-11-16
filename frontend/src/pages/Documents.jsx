@@ -2,7 +2,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import { FileText, Loader2, Upload, X } from 'lucide-react';
 import { apiService } from '../services/api';
 import { formatCount, formatDay, formatSize } from '../lib/format';
+import ConfirmAction from '../components/ConfirmAction';
 import DocumentLinks from '../components/DocumentLinks';
+import QueuePanel from '../components/QueuePanel';
+import RenameAction from '../components/RenameAction';
 import { openPreview } from '../state/previewStore';
 
 const ACCEPTED = ['.pdf', '.docx', '.txt', '.md'];
@@ -133,6 +136,24 @@ export default function Documents({ onChanged }) {
     }
   };
 
+  // Rename, Undo and Redo: the list is read again afterwards (the name, and which edit Undo/Redo now apply to).
+  const changed = async (line) => {
+    setNotice({ type: 'success', lines: [line] });
+    await load();
+    onChanged?.();
+  };
+  const failed = (line) => setNotice({ type: 'error', lines: [line] });
+  const undo = async (doc) => {
+    try { await apiService.undoEdit(doc.id, doc.edit_id); }
+    catch (err) { failed(`${doc.title}: ${err.message}`); await load(); throw err; }
+    await changed(`Undid the latest edit to “${doc.title}”. Redo brings it back.`);
+  };
+  const redo = async (doc) => {
+    try { await apiService.redoEdit(doc.id, doc.redo_id); }
+    catch (err) { failed(`${doc.title}: ${err.message}`); await load(); throw err; }
+    await changed(`Brought back the edit to “${doc.title}”.`);
+  };
+
   const ready = documents.filter((d) => d.status === 'indexed');
   const passages = ready.reduce((sum, d) => sum + d.chunks, 0);
   const pages = ready.reduce((sum, d) => sum + d.pages, 0);
@@ -172,6 +193,8 @@ export default function Documents({ onChanged }) {
                onChange={(e) => handleFiles(e.target.files)} />
 
         {notice && <div className="mt-6"><Notice notice={notice} onClose={() => setNotice(null)} /></div>}
+
+        <QueuePanel onTaskFinished={() => { load(); onChanged?.(); }} />
 
         <div className={`mt-6 ${emptyLibrary ? '' : 'panel'}`}>
           {loadError && (
@@ -268,10 +291,22 @@ export default function Documents({ onChanged }) {
                     <td className="px-4 text-right num text-muted hidden md:table-cell whitespace-nowrap">{formatSize(doc.size_bytes)}</td>
                     <td className="px-4 text-right text-muted hidden md:table-cell whitespace-nowrap">{formatDay(doc.created_at)}</td>
                     <td className="px-4 hidden md:table-cell"><Status doc={doc} /></td>
-                    <td className="px-4 text-right whitespace-nowrap">
-                      <span className="inline-flex items-center gap-3">
+                    <td className="px-4 py-2 text-right">
+                      <span className="inline-flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
                         {doc.status === 'indexed' && (
-                          <button className="link-action" onClick={() => openPreview(doc)}>Preview</button>
+                          <>
+                            <button className="link-action" onClick={() => openPreview(doc)}>Preview</button>
+                            <RenameAction doc={doc} onError={failed}
+                                          onRenamed={(r) => !r.unchanged && changed(`Renamed “${r.old_title}” to “${r.new_title}”.`)} />
+                            {doc.edit_id != null && (
+                              <ConfirmAction label="Undo edit" question="Undo the latest edit?" busyLabel="Undoing…"
+                                             onConfirm={() => undo(doc)} />
+                            )}
+                            {doc.redo_id != null && (
+                              <ConfirmAction label="Redo" question="Bring the undone edit back?" busyLabel="Redoing…"
+                                             onConfirm={() => redo(doc)} />
+                            )}
+                          </>
                         )}
                         <DocumentLinks doc={doc} className="hidden sm:inline-flex" />
                         <RemoveAction doc={doc} onRemove={remove} />

@@ -21,6 +21,7 @@ from backend.config.settings import settings
 from backend.library import api as library_api
 from backend.memory.store import ensure_memory_collection
 from backend.models.database import init_db
+from backend.web import mount_frontend
 from backend.rag.vectorstore import get_client, close_client
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -70,8 +71,10 @@ for module in (health, auth, chat, documents):
     app.include_router(module.router, prefix = "/api")
 app.include_router(library_api.router, prefix = "/api")  # /api/library/*
 
-@app.get("/")
-def root():
-    return{
-        "message" : "Agentic RAG API is running"
-    }
+# Production: the built front end at / (backend/web.py); without a build, / only says the API is up.
+if not mount_frontend(app):
+    @app.get("/")
+    def root():
+        return{
+            "message" : "Agentic RAG API is running"
+        }
