@@ -1,49 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { FileText, Loader2, Upload, X } from 'lucide-react';
 import { apiService } from '../services/api';
-import { formatCount, formatDay, formatSize } from '../lib/format';
-import ConfirmAction from '../components/ConfirmAction';
-import DocumentLinks from '../components/DocumentLinks';
+import { formatCount, formatSize } from '../lib/format';
+import DocumentRow from '../components/DocumentRow';
 import QueuePanel from '../components/QueuePanel';
-import RenameAction from '../components/RenameAction';
 import { openPreview } from '../state/previewStore';
 import { onDocumentsChanged } from '../state/documentEvents';
 
 const ACCEPTED = ['.pdf', '.docx', '.txt', '.md'];
 const MAX_MB = 20;
 const POLL_MS = 2000;
-const plural = (n, word) => `${formatCount(n)} ${word}${n === 1 ? '' : 's'}`;
-
-function Status({ doc }) {
-  if (doc.status === 'failed') return <span className="pill-negative">Failed</span>;
-  if (doc.status !== 'indexed') return <span className="pill-warning">Indexing</span>;
-  return <span className="text-body text-muted">Ready</span>;
-}
-
-function RemoveAction({ doc, onRemove }) {
-  const [confirming, setConfirming] = useState(false);
-  const [busy, setBusy] = useState(false);
-  if (!confirming) {
-    return (
-      <button className="font-medium text-body hover:underline underline-offset-4" onClick={() => setConfirming(true)}>
-        Remove
-      </button>
-    );
-  }
-  return (
-    <span className="inline-flex items-center gap-3 text-body whitespace-nowrap">
-      <button
-        className="font-medium text-negative hover:underline underline-offset-4 disabled:opacity-50"
-        disabled={busy}
-        onClick={async () => { setBusy(true); await onRemove(doc); setBusy(false); setConfirming(false); }}
-      >
-        {busy ? 'Removing…' : 'Remove'}
-      </button>
-      <button className="text-muted hover:text-ink" onClick={() => setConfirming(false)}>Keep</button>
-    </span>
-  );
-}
-
 function Notice({ notice, onClose }) {
   const tone = notice.type === 'error'
     ? 'bg-[var(--pill-negative-bg)] text-[var(--pill-negative-ink)]'
@@ -267,55 +233,11 @@ export default function Documents({ onChanged }) {
                 ))}
 
                 {documents.map((doc) => (
-                  <tr key={doc.id} className="border-t border-rule align-middle">
-                    <td className="px-4 py-3 max-w-0 w-full md:w-[42%]">
-                      <span className="flex items-center gap-2.5 min-w-0">
-                        <FileText className="w-4 h-4 flex-none text-muted" strokeWidth={1.6} aria-hidden="true" />
-                        <span className="min-w-0">
-                          {/* the library's name for it (the agent renames it); the uploaded name underneath */}
-                          <span className="block truncate font-medium" title={doc.title}>{doc.title}</span>
-                          {doc.filename !== doc.title && (
-                            <span className="block truncate text-small text-muted" title="Uploaded as">{doc.filename}</span>
-                          )}
-                          {/* Phone: the other fields move to a second line instead of being dropped. */}
-                          <span className="md:hidden block text-small text-muted num">
-                            {doc.status === 'indexed'
-                              ? `${doc.pages ? `${plural(doc.pages, 'page')} · ` : ''}${plural(doc.chunks, 'passage')} · ${formatSize(doc.size_bytes)}`
-                              : formatSize(doc.size_bytes)}
-                            {doc.status !== 'indexed' && <span className="ml-2 align-middle"><Status doc={doc} /></span>}
-                          </span>
-                          {doc.error && <span className="block text-small text-[var(--pill-negative-ink)] truncate" title={doc.error}>{doc.error}</span>}
-                        </span>
-                      </span>
-                    </td>
-                    {/* A document still being indexed has no pages or passages yet: a dash, not a zero. */}
-                    <td className="px-4 text-right num hidden md:table-cell">{doc.status === 'indexed' && doc.pages ? formatCount(doc.pages) : <span className="text-muted">—</span>}</td>
-                    <td className="px-4 text-right num hidden md:table-cell">{doc.status === 'indexed' ? formatCount(doc.chunks) : <span className="text-muted">—</span>}</td>
-                    <td className="px-4 text-right num text-muted hidden md:table-cell whitespace-nowrap">{formatSize(doc.size_bytes)}</td>
-                    <td className="px-4 text-right text-muted hidden md:table-cell whitespace-nowrap">{formatDay(doc.created_at)}</td>
-                    <td className="px-4 hidden md:table-cell"><Status doc={doc} /></td>
-                    <td className="px-4 py-2 text-right">
-                      <span className="inline-flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
-                        {doc.status === 'indexed' && (
-                          <>
-                            <button className="link-action" onClick={() => openPreview(doc)}>Preview</button>
-                            <RenameAction doc={doc} onError={failed}
-                                          onRenamed={(r) => !r.unchanged && changed(`Renamed “${r.old_title}” to “${r.new_title}”.`)} />
-                            {doc.edit_id != null && (
-                              <ConfirmAction label="Undo edit" question="Undo the latest edit?" busyLabel="Undoing…"
-                                             onConfirm={() => undo(doc)} />
-                            )}
-                            {doc.redo_id != null && (
-                              <ConfirmAction label="Redo" question="Bring the undone edit back?" busyLabel="Redoing…"
-                                             onConfirm={() => redo(doc)} />
-                            )}
-                          </>
-                        )}
-                        <DocumentLinks doc={doc} className="hidden sm:inline-flex" />
-                        <RemoveAction doc={doc} onRemove={remove} />
-                      </span>
-                    </td>
-                  </tr>
+                  <DocumentRow
+                    key={doc.id} doc={doc} onPreview={openPreview} onUndo={undo} onRedo={redo} onRemove={remove}
+                    onError={failed}
+                    onRenamed={(r) => !r.unchanged && changed(`Renamed “${r.old_title}” to “${r.new_title}”.`)}
+                  />
                 ))}
               </tbody>
             </table>

@@ -466,7 +466,9 @@ Most backend folders contain an empty `__init__.py`; it only lets Python import 
 | `lib/theme.js` | `useTheme()`: System / Light / Dark, saved in `localStorage`. |
 | `pages/Login.jsx` | Sign in / sign up, with an offline notice. |
 | `pages/Chat.jsx` | New-chat screen with suggestions, or the conversation and composer. |
-| `pages/Documents.jsx` | Upload (drop zone, type/size checks, progress); the document list with Preview, Rename, Undo edit, Redo, Download, PDF and Remove; the queue panel. |
+| `pages/Documents.jsx` | Upload (drop zone, type/size checks, progress); the document list (one `DocumentRow` each); the queue panel. |
+| `components/DocumentRow.jsx` | One document: its name opens the preview; a "⋯" menu holds Rename, Undo / Redo the latest edit, Download, Download as PDF and Remove, each change asking first in the row. |
+| `components/ActionMenu.jsx` | The "⋯" menu: closes on a choice, a click elsewhere or Escape; arrow keys move between items. |
 | `pages/Overview.jsx` | Usage numbers, where answers came from, document library. |
 | `components/Sidebar.jsx` | New chat, chats by recency (rename, delete), navigation, theme switch, log out. |
 | `components/Message.jsx` | One message: notices, Markdown with citation marks, provenance line, **Sources** and **Steps**, live progress while answering. |
@@ -474,10 +476,12 @@ Most backend folders contain an empty `__init__.py`; it only lets Python import 
 | `components/Mark.jsx` | The logo as a React component. |
 | `components/DocumentActions.jsx` | Under an answer from the document agent: what it did, with Preview, Undo and Redo. |
 | `components/ChatDocuments.jsx` | The chat's side panel: documents this conversation changed. |
-| `components/DocumentPreview.jsx` | The document preview (PDF viewer). |
+| `components/DocumentPreview.jsx` | The document preview (PDF viewer), with **Edit selection** (select a passage, replace it) and, for TXT / MD, **Edit text**. |
+| `components/SelectionEditor.jsx`, `TextEditor.jsx` | The two editors: a selected passage (the chat's edit, asking when it appears in several places or a PDF must be converted); a whole TXT / MD file (refused if it changed meanwhile). |
+| `state/documentEvents.js` | "A document changed": an edit saved in the preview tells the lists to read again. |
 | `components/DocumentLinks.jsx` | Download and PDF links for a document. |
 | `components/ConfirmAction.jsx` | A link that asks first ("Undo this edit?") before it acts. |
-| `components/RenameAction.jsx` | Inline rename field; asks before using a name another document has. |
+| `components/RenameField.jsx` | The inline rename field; asks before using a name another document has. |
 | `components/QueuePanel.jsx` | Queued tasks with their state and replies, and Cancel. |
 | `dev/preview.jsx` | Design preview: runs the real app with the API replaced by sample data. |
 | `dev/fixtures.js` | Sample documents, chats and stats for the preview. |
@@ -964,6 +968,9 @@ need the login cookie. Errors have the shape `{"detail": "message"}` (a rename's
 | `GET /conversations/{id}/documents` | — | Documents this conversation changed, newest first, with `latest_edit_id` / `redo_edit_id` |
 | `GET /conversations/{id}/pending` | — | `{"tasks"}`: its queued tasks still to run |
 | `GET /stats` | — | `{documents, chunks, conversations, queries, by_tool, queries_rewritten, answers_evaluated, answers_sufficient, avg_latency_ms}` |
+| `POST /library/documents/{id}/edit` | `{"find", "text", "replace_all"?, "convert_pdf"?}` | The passage selected in the preview replaced (the chat's edit), with `edit_id` — `409` `{ambiguous, matches, contexts}` or `{needs_conversion, too_long}`, `400` with the reason |
+| `GET /library/documents/{id}/text` | — | A TXT / MD document's whole text and its `sha256` |
+| `PUT /library/documents/{id}/text` | `{"text", "sha256"}` | Saved as one edit — `409` when the file changed since it was opened |
 | `POST /library/documents/{id}/rename` | `{"title", "confirmed"?}` | `{old_title, new_title, file_name}` — `400` unusable name, `409` another document has it (until `confirmed`) or still indexing |
 | `POST /library/documents/{id}/undo` | `{"edit_id"?}` | The document as it was before its latest edit, with `redo_id` — `409` when `edit_id` is no longer the latest |
 | `POST /library/documents/{id}/redo` | `{"edit_id"?}` | The undone edit back, under its own id — `409` when it isn't the one to redo |
@@ -1015,7 +1022,7 @@ App.jsx ── session, health polling, conversations, documents, routing
 | `services/api.jsx` | `request()` sends the login cookie (`credentials: 'include'`) and handles errors (401 → login; an object `detail` is kept on `err.data`); `streamMessage()` reads the SSE stream (`onMeta`, `onStatus`, `onStep`, `onDraft`, `onFinal`). |
 | `pages/Login.jsx` | Sign-in / sign-up with the backend's rules, offline notice, and an example answer. |
 | `pages/Chat.jsx` | New chat with suggestions based on your documents; otherwise the conversation and composer. |
-| `pages/Documents.jsx` | Drop zone + picker, type/size checks, upload progress, status list (re-checked every 2 s while a file is indexing). Each ready document: Preview, Rename (inline), Undo edit and Redo (each asks first), Download / PDF, Remove (inline confirmation). The queue panel above the list. |
+| `pages/Documents.jsx` | Drop zone + picker, type/size checks, upload progress, status list (re-checked every 2 s while a file is indexing). Each document's name opens the preview (where it can be edited); its "⋯" menu has Rename (inline), Undo latest edit and Redo, Download, Download as PDF and Remove, each change asking first in the row. The queue panel above the list. |
 | `components/QueuePanel.jsx` | Queued tasks of the last hour, polled every 3 s while any run (15 s otherwise); Cancel the waiting ones; the list reloads when a task finishes. |
 | `components/DocumentActions.jsx`, `ChatDocuments.jsx` | In the chat: what the document agent did, with Preview / Undo / Redo; the documents this chat changed. |
 | `pages/Overview.jsx` | Key numbers, where answers came from, document library. |
