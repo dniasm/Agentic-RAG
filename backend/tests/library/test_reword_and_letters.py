@@ -80,3 +80,41 @@ def test_the_reply_says_which_letters_were_written_plainly():
     reply = agent.compose_reply([{"status": "edited", "title": "Resume", "changes": 1, "previews": [],
                                   "plain_letters": "‑"}])
     assert "‑" in reply and "keyboard version" in reply
+
+
+def test_a_font_lacking_letters_of_the_new_text_says_which(monkeypatch):
+    doc = {"id": "d1", "title": "Resume", "status": "indexed", "ext": ".pdf", "file_name": "r.pdf"}
+    monkeypatch.setattr(editing.catalog, "get_document", lambda doc_id: doc)
+    monkeypatch.setattr(editing, "event", lambda *a, **k: None)
+
+    def lacking(*a, **k):
+        raise _missing(" jq")   # a space can't be worded around; q isn't in the text
+
+    monkeypatch.setattr(editing, "_edit", lacking)
+    with pytest.raises(editing.NeedsConversion) as e:
+        editing.edit("d1", "replace", find="old", text="a joyful job")
+    assert e.value.missing == "j" and not e.value.too_long
+
+
+def test_the_agent_rewords_its_own_text_without_the_missing_letters(library_docs, monkeypatch):
+    doc = library_docs["svm.txt"]
+    calls = []
+
+    def edit(doc_id, op, find, text, **k):
+        calls.append(text)
+        if "j" in text:
+            raise editing.NeedsConversion('no copy of the font for the letters "j"', missing="j")
+        return {"status": "edited", "operation": op, "changes": 1, "previews": [], "title": doc["title"]}
+
+    monkeypatch.setattr(editing, "edit", edit)
+    guard = agent.Guard({}, 1)
+    guard.saw_find({"decision": "unique", "reason": "name", "candidates": [{"doc_id": doc["id"]}]})
+    out = agent.run_tool("edit_document", {"doc_id": doc["id"], "operation": "replace", "find": "x",
+                                           "text": "a joyful job"}, guard, [])
+    # not a question put to the user in code: the agent gets another step, told which letters to avoid
+    assert out["status"] == "letters_missing" and '"j"' in out["next"]
+    assert out["status"] not in agent.CODE_REPLY_STATUSES
+    assert [p["reason"] for p in guard.pending] == ["pdf_conversion"]   # the user may still be asked to convert
+    out = agent.run_tool("edit_document", {"doc_id": doc["id"], "operation": "replace", "find": "x",
+                                           "text": "a glad task"}, guard, [])
+    assert out["status"] == "edited" and guard.pending == []   # the rewording went through: nothing left to ask

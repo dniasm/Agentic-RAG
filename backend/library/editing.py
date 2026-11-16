@@ -39,11 +39,13 @@ class EditError(Exception):
 class NeedsConversion(EditError):
     """The PDF can't be changed in place without breaking its look (the message says why), and the caller has not
     agreed to convert it to a Markdown copy. too_long: only because the new text needs more room than the page has,
-    so a shorter wording may still fit."""
+    so a shorter wording may still fit. missing: the new text's letters the PDF's font has no copy of, so a wording
+    without them may still fit."""
 
-    def __init__(self, message: str, too_long: bool = False):
+    def __init__(self, message: str, too_long: bool = False, missing: str = ""):
         super().__init__(message)
         self.too_long = too_long
+        self.missing = missing
 
 
 def _pattern(find: str, ignore_case: bool = False) -> re.Pattern:
@@ -576,9 +578,10 @@ def _edit_locked(doc_id: str, op: str, *, find: str = "", text: str = "", replac
         return _edit(doc, doc, op, find, text, replace_all)
     except pdf_edit.CantKeepLayout as e:
         reason, too_long = str(e), isinstance(e, pdf_edit.NoRoom)
+        missing = "".join(c for c in getattr(e, "missing", "") if c in text and not c.isspace())
         event("pdf_edit_refused", doc=doc_id, title=doc["title"], reason=reason)
     if not convert_pdf:
-        raise NeedsConversion(reason, too_long)
+        raise NeedsConversion(reason, too_long, missing)
     markdown = _pdf_to_markdown(doc)
     try:
         result = _edit(doc, markdown, op, find, text, replace_all)

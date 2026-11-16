@@ -169,6 +169,11 @@ class Guard:
         self.pending = [p for p in self.pending if not (p["doc_id"] == doc_id and p.get("reason") == reason)]
         self.pending.append({"doc_id": doc_id, "new_title": title, "turn": self.turn, "reason": reason})
 
+    def withdraw_question(self, doc_id: str, reason: str) -> None:
+        """A question asked this turn that no longer stands (the agent found another way)."""
+        self.pending = [p for p in self.pending
+                        if not (p["doc_id"] == doc_id and p.get("reason") == reason and p["turn"] == self.turn)]
+
     def used_confirmation(self, doc_id: str, title: str) -> None:
         """An agreement counts once: after it was acted on, the same change needs asking again."""
         self.pending = [p for p in self.pending if not (p["doc_id"] == doc_id and naming.same_name(p["new_title"], title))]
@@ -288,6 +293,12 @@ def _edit(args: dict, guard: Guard, actions: list) -> dict:
                             f"write it again in at most {old} characters and call edit_document again. If the user "
                             "wrote it, ask them for a shorter version."}
         guard.ask_confirmation(doc_id, PDF_CONVERSION, "pdf_conversion")
+        if e.missing:   # not a fixed question: the agent gets another step to reword its own text
+            return {"status": "letters_missing", "document": doc["title"], "why": str(e), "next": (
+                f"The PDF's font has no \"{e.missing}\". If you wrote the new text, write it again without those "
+                "letters (other words, same meaning) and call edit_document again; don't ask the user. If the user "
+                "wrote it, ask whether to convert the PDF to a Markdown copy (layout and images lost; undo restores "
+                "it); if they agree, call edit_document again with convert_pdf=true.")}
         return {"status": "needs_confirmation", "reason": "pdf_conversion", "document": doc["title"], "why": str(e),
                 "next": "This change can't be made in the PDF while keeping its look (see why). The user was asked to "
                         "agree to converting the PDF to a Markdown copy instead (layout and images lost; undo restores "
@@ -299,6 +310,7 @@ def _edit(args: dict, guard: Guard, actions: list) -> dict:
     if result.get("converted"):
         guard.used_confirmation(doc_id, PDF_CONVERSION)   # after an undo brings the PDF back, ask again
     if result["status"] == "edited":
+        guard.withdraw_question(doc_id, "pdf_conversion")   # a rewording went through in place: nothing to ask
         actions.append({"type": "edit", "doc_id": doc_id, "title": doc["title"], "operation": result["operation"],
                         "changes": result["changes"], "previews": result["previews"],
                         "layout": result.get("layout"), "ext": doc["ext"],
