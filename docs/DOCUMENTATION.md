@@ -203,7 +203,7 @@ Runtime data is created automatically:
 To reset everything: stop the backend and delete those paths.
 
 ### Backups
-`python -m backend.scripts.backup` copies the data to a new folder `D:\onboarding_tasksackups\day7-<date>_<time>`
+`python -m backend.scripts.backup` copies the data to a new folder `D:\onboarding_tasks\backups\day7-<date>_<time>`
 (`--dest` for another place): `app.db` through SQLite's backup API (consistent even while the backend runs), the
 stored documents (`library/`) and their edit history (`versions/`), and, **only while the backend is stopped**, the
 search index (`qdrant_data/`). Each backup says FULL or PARTIAL in its `BACKUP.txt`. It never overwrites a folder or
