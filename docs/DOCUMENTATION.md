@@ -313,6 +313,8 @@ Most backend folders contain an empty `__init__.py`; it only lets Python import 
 | File | What it does |
 |---|---|
 | `app.py` | The FastAPI application: checks required keys at startup, creates the database and Qdrant collections, starts the library's indexing queue and batch worker, sets CORS, mounts the routers and, when `frontend/dist` exists, the front end. |
+| `compression.py` | Gzip for scripts, styles, pages and JSON; never for the chat's stream, a ranged request, PDFs, Word files, images or fonts, or bodies under 1 KB. |
+| `security.py` | Host and cross-site checks and security headers on every response (§13). |
 | `web.py` | Serves `frontend/dist`: `index.html` with `no-cache` (also for the app's own routes such as `/documents`), hashed `assets/` cached for a year, a JSON 404 for unknown `/api` paths, nothing outside the folder. |
 
 #### `backend/api/` — the HTTP layer
@@ -457,7 +459,7 @@ Most backend folders contain an empty `__init__.py`; it only lets Python import 
 | `index.css` | Colour tokens for light and dark themes, component classes and Markdown styles. |
 | `services/api.jsx` | HTTP client: requests with the login cookie, error handling (401 → login), the SSE stream reader, document actions (rename, undo, redo, queue). |
 | `state/chatDocuments.js` | The documents a conversation changed, re-read after each answer and while its queued tasks run. |
-| `state/previewStore.js` | The one open document preview. |
+| `state/previewStore.js` | The one open document preview, holding one browser-history entry so a phone's Back closes it (an open editor first) instead of leaving the site. |
 | `lib/chatActions.js` | What a chat's document actions allow (which edits Undo / Redo apply to) and their descriptions. |
 | `lib/queue.js` | The queue panel's figures and labels. |
 | `lib/documentFiles.js` | Where a document's files are served (preview, download, PDF). |
@@ -1065,6 +1067,8 @@ then `python -m pytest` from the project root. `conftest.py` blocks font downloa
 | `test_citations.py` | The code citation check: uncited claims, invalid `[n]`, unsupported claims, numbers, lists under a cited lead-in |
 | `test_rerank.py` | Reranker zones; fallback to the LLM check when Voyage can't score |
 | `test_conversations.py` | Renaming chats (title trimmed, empty or too long rejected, other users' chats not found); fresh databases skip the old memory table |
+| `test_security.py`, `test_compression.py` | Host / cross-site checks, headers, the page's policy, the login cookie; gzip and what it leaves alone (the chat's stream checked over a real server) |
+| `test_frontend_logic.py` | Through node: what the chat's Undo / Redo apply to, the preview's history entry |
 | `library/` | The document library: accounts and privacy, the agent's guard, routing to it and follow-ups, renames, edits (TXT, DOCX, PDF in place, growth onto a new page, fonts, size), undo / redo, the queue, the API, the Documents page's routes and the served build |
 | `test_documents.py` | Background indexing: upload returns `processing`, then indexed or failed; no second job for the same file; vectors removed if the document was deleted meanwhile; indexing cut off by a restart is resumed |
 
@@ -1782,6 +1786,23 @@ HTTPS URL each, verified against `fonts/manifest.json`, cached in `data/fonts/fe
 Calibri and similar are drawn with metric-compatible free fonts, and the reply says so), cut down to just those
 letters (`tiny_font.py`). When the agent wrote the text and a letter is still missing, it rewords around it.
 When the look can't be kept, the user is asked whether to convert the PDF to a Markdown copy instead.
+
+### Editing on the website
+A document's preview offers **Edit a passage**: a passage selected on the page fills it in, or it can be typed, so
+the keyboard reaches it too. Saving goes through the same edit as the chat's (`POST /library/documents/{id}/edit`),
+with two differences for text selected in a preview: the match tolerates a word broken at a line end ("exam- ple"),
+either kind of quote (' ’ ‘, " “ ”) and, in a Markdown file only, bold / italic / code marks around words, refusing a
+selection that would take half of a pair. The chat agent quotes the file, so its edits are matched as written.
+A TXT or Markdown file also opens whole in **Edit text** (`GET` / `PUT /library/documents/{id}/text`): saved as one
+undoable edit, refused when the file changed since it was opened, refused for a file that isn't UTF-8, and keeping
+the file's line endings and byte-order mark. After a save the page is drawn again where the reader was, with a note
+and Undo; closing an editor with unsaved text asks first.
+
+When a PDF's font lacks a letter of the new text, a typographic dash, quote or space becomes the keyboard one, and a
+keyboard quote becomes the typographic one when that is all the font has (TeX's Computer Modern draws ' as ’); each
+letter is swapped once. Converting a PDF to Markdown takes the PDF editor's reading of it (the text the preview
+shows, with its dashes), and is offered, on the website and by the chat agent, only when the passage would be found
+in that text.
 
 ### Undo and redo
 Undo puts back the backup of the document's latest edit; Redo brings back the edit undone most recently, under its

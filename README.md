@@ -71,12 +71,30 @@ and every change to them.
   fonts, kerning and justification; content below moves down, onto a new page when needed (headers, footers and page
   numbers follow). Every edit is checked letter by letter, by its whole text and pixel by pixel before it is saved.
   Fonts a PDF lacks are fetched on demand from pinned URLs, verified against `backend/library/fonts/manifest.json`
-  (SHA-256), and cached in `backend/data/fonts/`. When the layout can't be kept, the user is asked whether to convert
-  the PDF to a Markdown copy.
+  (SHA-256), and cached in `backend/data/fonts/`. Quotes typed on a keyboard become the typographic ones when the
+  font only has those (TeX's fonts). When the layout can't be kept, the user is asked whether to convert the PDF to a
+  Markdown copy, but only when the passage would be found in it.
+- **On the website**: a document's preview has **Edit a passage** (select it on the page, or type it) and, for TXT and
+  Markdown, **Edit text** (the whole file; refused if it changed meanwhile). Text selected in the preview is matched
+  across line-end hyphens, Markdown marks and either kind of quote. The Documents page gives each document one "⋯"
+  menu (Rename, Undo / Redo, Download, Remove), each change asking first.
 - **Undo / Redo** step back and forward through a document's edits like a browser's Back and Forward. The buttons
   and a misspelled "undo" ask first.
 - **Queue**: jobs over many documents run one task at a time, paced to the Groq per-minute limit; the Documents page
   shows them, with Cancel.
+
+### Using the site (for invited users)
+
+1. Open the link you were given and choose **Create account**: a username, a password of 8 characters or more, and the
+   invite code you were given.
+2. **Documents** → **Upload documents** (PDF, Word, TXT or Markdown, up to 20 MB). Each is titled and indexed; it can
+   be asked about once it shows **Ready**.
+3. **Chat**: ask about your documents, or ask for changes ("rename the GDPR one", "change 2024 to 2025 in my CV").
+   Every change has **Undo** and **Redo** under it.
+4. To change a document yourself, open it (its name on the Documents page) and use **Edit a passage**. Each
+   document's "⋯" menu has Rename, Undo, Redo, Download and Remove.
+
+Your documents and chats are visible only to you. On a phone, Back closes an open editor, then the preview.
 
 ## Measured improvements
 
@@ -167,7 +185,8 @@ sample data from `frontend/src/dev/fixtures.js` and is not part of the productio
 Create an account on the login screen (the first one needs no invite code), upload files on **Documents**, then chat.
 
 Production: `cd frontend && npm run build`, then start the backend: it serves the app at `http://localhost:8000`
-(`index.html` uncached, the hashed assets cached for a year).
+(`index.html` uncached, the hashed assets cached for a year, scripts, styles and JSON gzipped; pdf.js is bundled, so
+nothing loads from a CDN). Making it public over HTTPS: [`docs/DOCUMENTATION.md` §13](docs/DOCUMENTATION.md#13-authentication--security).
 
 Tests (no API calls; the PDF layout ones take a few minutes): `pip install -r requirements-dev.txt`, then
 `python -m pytest` from the project root.
