@@ -21,6 +21,7 @@ from backend.config.settings import settings
 from backend.library import api as library_api
 from backend.memory.store import ensure_memory_collection
 from backend.models.database import init_db
+from backend.compression import Compression
 from backend.security import SecurityMiddleware
 from backend.web import mount_frontend
 from backend.rag.vectorstore import get_client, close_client
@@ -70,6 +71,10 @@ app.add_middleware(
     allow_methods = ["*"],
     allow_headers = ["*"],
 )
+
+# Gzip for scripts, styles, pages and JSON (backend/compression.py), inside the security checks: added first, it
+# runs after them, so a refused request is never compressed and the security headers are on every response.
+app.add_middleware(Compression)
 
 # Host and cross-site checks, security headers (backend/security.py). Added last, so it runs first.
 app.add_middleware(SecurityMiddleware)
