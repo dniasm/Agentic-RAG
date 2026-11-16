@@ -99,9 +99,9 @@ def test_repeated_wrong_passwords_are_throttled(signed_in):
 
 def test_every_page_api_needs_a_login():
     c = browser()
-    for path in ("/api/library/documents", "/api/library/queue", "/api/library/limits", "/api/library/sessions/abcdef", "/api/library/documents/x/file"):
+    for path in ("/api/library/documents", "/api/library/queue", "/api/library/limits", "/api/library/documents/x/file"):
         assert c.get(path).status_code == 401, path
-    assert c.post("/api/library/chat", json={"session_id": "abcdef", "message": "hi"}).status_code == 401
+    assert c.post("/api/library/documents/x/rename", json={"title": "y"}).status_code == 401
 
 
 # ---------------------------------------------------------------- one user can't reach another's library
@@ -144,11 +144,8 @@ def test_a_queued_change_cannot_reach_another_users_document(two_users):
     assert catalog.get_document(theirs["id"])["title"] == theirs["title"]
 
 
-def test_chats_and_queues_are_private(two_users):
+def test_queues_are_private(two_users):
     tester_browser, mallory_browser, tester, mallory = two_users
-    agent.chat("tester-chat", "hello", model=Scripted(), owner=tester["id"])
-    assert mallory_browser.get("/api/library/sessions/tester-chat").status_code == 404
-    assert mallory_browser.post("/api/library/chat", json={"session_id": "tester-chat", "message": "hi"}).status_code == 404
     mine = catalog.add_batch("s", ["a"], owner=tester["id"])
     assert mallory_browser.get("/api/library/queue").json()["batches"] == []
     assert mallory_browser.delete(f"/api/library/batches/{mine['id']}").status_code == 404

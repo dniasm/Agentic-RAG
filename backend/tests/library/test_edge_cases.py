@@ -10,7 +10,7 @@ from backend.library import agent, batch, catalog, config, library
 from test_agent import turn
 from test_editing import stored
 
-WEB = config.PROJECT_ROOT / "frontend" / "renamer-web"
+QUEUE_JS = config.PROJECT_ROOT / "frontend" / "src" / "lib" / "queue.js"
 
 
 # ---------------------------------------------------------------- a big library can still be listed
@@ -45,27 +45,22 @@ def test_titles_with_asterisks_are_escaped_too():
     assert reply == 'Renamed "A\\*B" to "C".'
 
 
-# ---------------------------------------------------------------- the page's Markdown renderer
+# ---------------------------------------------------------------- the queue panel's helpers (frontend/src/lib/queue.js)
 @pytest.mark.skipif(shutil.which("node") is None, reason="Node is not installed")
-def test_the_chat_markdown_renderer():
-    cases = {
-        "Before: …key\\*\\* point is that **cases rose** by …":
-            "<p>Before: …key** point is that <strong>cases rose</strong> by …</p>",
-        "The area is 2 * 3 * 4 = 24.": "<p>The area is 2 * 3 * 4 = 24.</p>",
-        "This is *really* important.": "<p>This is <em>really</em> important.</p>",
-        "a ** b ** c": "<p>a ** b ** c</p>",
-        "<img src=x onerror=alert(1)> **x**": "<p>&lt;img src=x onerror=alert(1)&gt; <strong>x</strong></p>",
-        "1. one\n2. two": "<ol><li>one</li><li>two</li></ol>",
-    }
-    url = (WEB / "js" / "lib" / "markdown.js").as_uri()
-    script = (f"const m = await import({json.dumps(url)});"
-              f"const cases = {json.dumps(list(cases))};"
-              "console.log(JSON.stringify({html: cases.map(m.markdown), "
-              "plain: m.plainText('Before: …key\\\\*\\\\* point **cases rose** …')}));")
-    out = subprocess.run(["node", "--input-type=module", "-e", script], capture_output=True, text=True, encoding="utf-8", check=True)
+def test_the_queue_panel_helpers():
+    url = (QUEUE_JS).as_uri()
+    script = (f"const q = await import({json.dumps(url)});"
+              "const batches = {batches: [{id: 'a', tasks: [{status: 'done'}, {status: 'queued'}, {status: 'running'}]},"
+              "                           {id: 'b', tasks: []}]};"
+              "console.log(JSON.stringify({summary: q.queueSummary(batches), waiting: q.waitingTasks(batches.batches[0]),"
+              f"  plain: q.plainReply({json.dumps('Renamed **GDPR**' + chr(10) + ' to `Notes`')})}}));")
+    out = subprocess.run(["node", "--input-type=module", "-e", script], capture_output=True, text=True,
+                         encoding="utf-8", check=True)
     result = json.loads(out.stdout)
-    assert result["html"] == list(cases.values())
-    assert result["plain"] == "Before: …key** point cases rose …"     # the queue panel shows this, no markup
+    assert result["summary"]["done"] == 1 and result["summary"]["total"] == 3 and result["summary"]["active"]
+    assert [b["id"] for b in result["summary"]["batches"]] == ["a"]   # an empty batch isn't shown
+    assert result["waiting"] == 1
+    assert result["plain"] == "Renamed GDPR to Notes"                   # the agent's Markdown, as one plain line
 
 
 # ---------------------------------------------------------------- a queued change interrupted by a restart

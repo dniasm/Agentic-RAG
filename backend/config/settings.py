@@ -57,7 +57,6 @@ class Settings(BaseSettings):
     collection_name: str = "agentic_rag_docs_v2"
 
     # --- Ingestion ---
-    upload_dir: str = str(BACKEND_DIR / "documents")
     chunk_size: int = 1000
     chunk_overlap: int = 200
     max_upload_mb: int = 20

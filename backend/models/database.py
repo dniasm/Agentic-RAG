@@ -175,6 +175,7 @@ def _all(cur) -> list[dict]:
 
 # ---------------------------------------------------------------- users
 def create_user(username: str, password_hash: str) -> dict:
+    """For tests that use this module alone: the app makes accounts with backend/library/auth.py (catalog)."""
     user = {"id": uuid.uuid4().hex, "username": username, "password_hash": password_hash, "created_at": _now()}
     with tx() as c:
         c.execute(
@@ -183,11 +184,6 @@ def create_user(username: str, password_hash: str) -> dict:
             user,
         )
     return user
-
-
-def get_user_by_username(username: str) -> dict | None:
-    with tx() as c:
-        return _one(c.execute("SELECT * FROM users WHERE username = ?", (username,)))
 
 
 def get_user(user_id: str) -> dict | None:

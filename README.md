@@ -8,16 +8,21 @@ with an agent that decides for each message whether to **chat**, **answer from t
 **search the web**, or **answer from its own knowledge**. It rewrites and expands weak queries and
 checks its own answers before replying.
 
+The same chat also manages the documents: **rename**, **edit** (PDFs in place, keeping their fonts and layout),
+**undo** and **redo**, and queues longer jobs ("rename every report by its date") to run in the background.
+The **Documents** page does the same with buttons. See [Document library](#document-library).
+
 | Layer | Tech |
 |---|---|
 | Frontend | React 18 + Vite + Tailwind, `react-markdown` |
-| API | FastAPI, SSE streaming, JWT auth (bcrypt), SQLite |
+| API | FastAPI, SSE streaming, cookie login (PBKDF2, server-side tokens), SQLite |
 | Agent | LangGraph state machine |
 | LLMs (Groq) | `openai/gpt-oss-120b`: every reply (answers and small talk), the knowledge gate, answer evaluation, decision reviews. `openai/gpt-oss-20b`: routing and query rewrites. `qwen/qwen3.8-27b`: memory extraction and conversation summaries (own rate limit, no hidden reasoning) |
 | Embeddings | Gemini `gemini-embedding-001` (768-d) for documents; Voyage `voyage-4-lite` for conversation memory |
 | Reranking | Voyage `rerank-2.5` (hosted); if it can't score, an LLM relevance check is used |
 | Vector DB | Qdrant (embedded on-disk by default, or a server via `QDRANT_URL`) |
 | Web search | Tavily if `TAVILY_API_KEY` is set, then DuckDuckGo, then Wikipedia |
+| Document library | PyMuPDF + fontTools (in-place PDF edits), python-docx, fpdf2 (PDF export), pyphen (hyphenation) |
 
 ## Agent workflow
 
@@ -52,6 +57,27 @@ START → router ─┬─ greeting (small talk) ──────────�
 - **Tokens**: every model call is counted per model and step; each request is logged to `backend/data/token_usage.jsonl`.
 - Each node emits a trace step. The UI streams these live and shows them under each answer (**Steps**, next to **Sources**).
 
+## Document library
+
+`backend/library/` (merged in from the renaming pipeline) owns the documents: the catalog, the stored files, indexing,
+and every change to them.
+
+- **Routing**: messages about documents ("rename the GDPR one", "fix the typo in my resume", "undo") go to the
+  `manage` node, which runs the document agent (120B with tools). Short follow-ups to its last edit or question
+  ("regenerate it", "yes", a misspelled "undo") stay with it.
+- **Rename**: titles are cleaned and checked; a name another document has is asked about first. The stored file is
+  renamed to match, and the search index is updated without re-embedding.
+- **Edit** TXT, MD and DOCX directly. **PDFs are edited in place**: the paragraph is re-wrapped in the document's own
+  fonts, kerning and justification; content below moves down, onto a new page when needed (headers, footers and page
+  numbers follow). Every edit is checked letter by letter, by its whole text and pixel by pixel before it is saved.
+  Fonts a PDF lacks are fetched on demand from pinned URLs, verified against `backend/library/fonts/manifest.json`
+  (SHA-256), and cached in `backend/data/fonts/`. When the layout can't be kept, the user is asked whether to convert
+  the PDF to a Markdown copy.
+- **Undo / Redo** step back and forward through a document's edits like a browser's Back and Forward. The buttons
+  and a misspelled "undo" ask first.
+- **Queue**: jobs over many documents run one task at a time, paced to the Groq per-minute limit; the Documents page
+  shows them, with Cancel.
+
 ## Measured improvements
 
 Old vs current, from the benchmarks and the token log (details: [`docs/DOCUMENTATION.md` §21](docs/DOCUMENTATION.md#21-measurements-before-and-after)):
@@ -85,7 +111,8 @@ Old vs current, from the benchmarks and the token log (details: [`docs/DOCUMENTA
 
 | Folder | Holds |
 |---|---|
-| `backend/api/` | HTTP routes (auth, chat + SSE streaming, documents, health), JWT and password security |
+| `backend/api/` | HTTP routes (auth, chat + SSE streaming, documents, health) and the login dependency |
+| `backend/library/` | The document library: catalog, files, indexing queue, document agent, rename/edit/undo, PDF editing, accounts, batch queue, its own API at `/api/library/*` |
 | `backend/config/` | Settings, model clients per role, token accounting |
 | `backend/models/` | SQLite data access and API schemas |
 | `backend/graph/` | The LangGraph agent: state, nodes, edges |
@@ -94,7 +121,7 @@ Old vs current, from the benchmarks and the token log (details: [`docs/DOCUMENTA
 | `backend/memory/` | Conversation memory (Voyage embeddings in Qdrant) |
 | `backend/evaluation/` | Code citation check, LLM answer check, decision reviews |
 | `backend/tests/` | Unit tests (no API calls) |
-| `frontend/` | React app: pages, components, API client, chat store |
+| `frontend/` | React app: pages, components, API client, chat store; `backend/web.py` serves its build in production |
 | `benchmark/` | Benchmark scripts, question sets, corpus, saved results |
 | `scripts/experiments/` | One-off model experiments |
 | `docs/` | Documentation |
@@ -112,7 +139,7 @@ GEMINI_API_KEY=...
 GROQ_API_KEY_2=...         # up to GROQ_API_KEY_4: keys from other Groq accounts, used when a model's limit runs out
 TAVILY_API_KEY=...
 VOYAGE_API_KEY=...         # reranking and conversation memory
-JWT_SECRET=...            # auto-generated into backend/data/.jwt_secret if omitted
+SIGNUP_CODE=...            # invite code for every sign-up after the first (empty: sign-ups closed)
 QDRANT_URL=http://localhost:6333
 ```
 
@@ -137,11 +164,13 @@ Design preview (no backend or login needed): with `npm run dev` running, open
 for a new account or `?state=offline` for the login screen with the server down). It renders the real app with
 sample data from `frontend/src/dev/fixtures.js` and is not part of the production build.
 
-Create an account on the login screen, upload files on **Documents**, then chat.
+Create an account on the login screen (the first one needs no invite code), upload files on **Documents**, then chat.
 
-Unit tests (122, no API calls): `python -m unittest discover backend/tests -p "test_*.py"` (routing, memory, streaming,
-citation check, reranker fallbacks, renaming chats, the Voyage rate limit,
-background indexing)
+Production: `cd frontend && npm run build`, then start the backend: it serves the app at `http://localhost:8000`
+(`index.html` uncached, the hashed assets cached for a year).
+
+Tests (no API calls; the PDF layout ones take a few minutes): `pip install -r requirements-dev.txt`, then
+`python -m pytest` from the project root.
 
 Model experiments (they call the APIs) live in `scripts/experiments/`; run them from the project root,
 e.g. `python -m scripts.experiments.test_gate`.
@@ -176,13 +205,19 @@ and `claude_wiki.docx` are committed. `python benchmark/build_wiki_corpus.py` re
 
 | Method | Path | |
 |---|---|---|
-| POST | `/api/auth/register`, `/api/auth/login` | returns a bearer token |
+| GET | `/api/auth/state` | signed in or not; whether sign-up is open (`first`, `invite`, `closed`) |
+| POST | `/api/auth/signup`, `/api/auth/login`, `/api/auth/logout` | sets / clears the HttpOnly `login` cookie |
 | GET | `/api/auth/me` | |
 | GET / POST / DELETE | `/api/documents`, `/api/documents/upload`, `/api/documents/{id}` | PDF, DOCX, TXT, MD; deduplicated by SHA-256; indexed in the background (`status: "processing"`) |
 | POST | `/api/chat` | full JSON response (answer, tool, sources, trace, evaluation) |
 | POST | `/api/chat/stream` | SSE stream: `meta` → `step`… → `final` |
 | GET / PATCH / DELETE | `/api/conversations`, `/api/conversations/{id}/messages`, `/api/conversations/{id}` | PATCH `{"title"}` renames a chat |
+| GET | `/api/conversations/{id}/documents`, `/api/conversations/{id}/pending` | documents a chat changed (with the edit Undo / Redo apply to); its queued tasks still to run |
 | GET | `/api/stats` | Overview page metrics |
+| POST | `/api/library/documents/{id}/rename` | `{"title", "confirmed"?}`; `409` with `conflicts` when another document has the name |
+| POST | `/api/library/documents/{id}/undo`, `/redo` | `{"edit_id"?}`: refused (`409`) unless that edit is still the one to undo / redo |
+| GET | `/api/library/documents/{id}/file`, `/pdf`, `/preview` | download (`?inline=true` to view), as a PDF, text for the preview |
+| GET / DELETE | `/api/library/queue`, `/api/library/batches/{id}` | queued tasks of the last hour; cancel a batch's waiting tasks |
 
 Tuning knobs (chunk size, `RETRIEVAL_K`, `VOYAGE_RELEVANCE_HIGH` / `VOYAGE_RELEVANCE_LOW`, `MAX_RETRIEVAL_ATTEMPTS`, models, …) live in
 `backend/config/settings.py`. Each one can be overridden from `.env`.

@@ -1,6 +1,6 @@
 # Agentic RAG — Project Documentation
 
-> Full technical documentation, updated 4 November 2026. For a quick start, see [`README.md`](../README.md).
+> Full technical documentation, updated 16 November 2026. For a quick start, see [`README.md`](../README.md).
 
 ## Table of contents
 
@@ -25,6 +25,7 @@
 19. [Extending the system](#19-extending-the-system)
 20. [Known limitations](#20-known-limitations)
 21. [Measurements: before and after](#21-measurements-before-and-after)
+22. [Document library](#22-document-library)
 
 ---
 
@@ -39,6 +40,7 @@ private vector store, and chats with an **agent** that decides, per message, whe
 | **Model knowledge** | Answered from the model's own training, after a *knowledge gate* confirms it can answer reliably. |
 | **Documents (RAG)** | Answered strictly from the user's uploaded documents, with `[n]` citations. |
 | **Web search** | Current or online information, answered with links. |
+| **Document actions** | Rename, edit (PDFs in place), undo / redo, or queue changes to many documents (§22). |
 
 What makes it *agentic* rather than a fixed pipeline:
 
@@ -65,11 +67,11 @@ What makes it *agentic* rather than a fixed pipeline:
 ┌──────────────────────── Browser (React, Vite :5173) ──────────────────────────┐
 │  Login ─ Chat (SSE stream) ─ Documents ─ Overview        hash routes, themes  │
 └───────────────┬───────────────────────────────────────────────────────────────┘
-                │  /api/*  (Vite dev proxy → 127.0.0.1:8000, Bearer JWT)
+                │  /api/*  (Vite dev proxy → 127.0.0.1:8000, login cookie)
 ┌───────────────▼──────────────────── FastAPI (:8000) ──────────────────────────┐
-│  routes/auth ─ routes/chat ─ routes/documents ─ routes/health                 │
+│  routes/auth ─ routes/chat ─ routes/documents ─ routes/health ─ library/api   │
 │        │            │   └── memory worker (background) ── tools/memory        │
-│  security.py   graph/workflow.py (LangGraph agent)      rag/ingestion.py      │
+│  library/auth  graph/workflow.py (LangGraph agent)      rag/ingestion.py      │
 │        │            │   │   │                                │                │
 │        ▼            │   │   └── tools/web_search ──► Tavily / DuckDuckGo / Wikipedia
 │  SQLite (app.db)    │   └────── rag/retrieval + rerank ──┐                    │
@@ -84,8 +86,8 @@ What makes it *agentic* rather than a fixed pipeline:
 
 **Request lifecycle (chat):**
 
-1. The frontend POSTs the message to `/api/chat/stream` with the user's JWT.
-2. `get_current_user` validates the token. `_prepare` loads or creates the conversation, the last 6 messages, the
+1. The frontend POSTs the message to `/api/chat/stream`; the browser sends the HttpOnly login cookie.
+2. `get_current_user` looks the token up (§13). `_prepare` loads or creates the conversation, the last 6 messages, the
    user's remembered facts, up to 3 relevant past-conversation summaries and the user's indexed document names, and
    saves the user message.
 3. The agent runs in its own thread (`stream_agent`), with a `UsageTracker` counting tokens. Its events (`status`,
@@ -113,7 +115,8 @@ What makes it *agentic* rather than a fixed pipeline:
 | Vector DB | Qdrant — embedded on-disk by default, or a server via `QDRANT_URL` | Cosine distance |
 | Web search | Tavily (if key set) → DuckDuckGo → Wikipedia | Results cached for an hour |
 | Persistence | SQLite (stdlib `sqlite3`) | Users, facts, documents, conversations, messages |
-| Auth | bcrypt password hashing, hand-rolled HS256 JWT (stdlib `hmac`) | No extra JWT dependency |
+| Auth | PBKDF2-SHA256 passwords (stdlib `hashlib`), random login tokens in an HttpOnly cookie, only their SHA-256 stored | Logout revokes the token on the server |
+| Document editing | PyMuPDF, fontTools, pyphen, python-docx, fpdf2 | In-place PDF edits, tiny font subsets, hyphenation, DOCX edits, PDF export (§22) |
 | Parsing | pypdf, python-docx, LangChain `RecursiveCharacterTextSplitter` | PDF, DOCX, TXT, MD |
 
 **Model roles** (all on Groq; each model has its own rate limits):
@@ -146,7 +149,7 @@ GEMINI_API_KEY=your-gemini-key
 # Optional
 TAVILY_API_KEY=your-tavily-key
 VOYAGE_API_KEY=your-voyage-key        # reranking + conversation memory
-JWT_SECRET=some-long-random-string
+SIGNUP_CODE=an-invite-code            # needed for every sign-up after the first; empty: sign-ups closed
 QDRANT_URL=http://localhost:6333
 ```
 
@@ -178,9 +181,10 @@ npm run dev        # http://localhost:5173
 
 ### 4) Use it
 
-1. Open the app and **create an account** (username 3–32 chars `A-Z a-z 0-9 _ . -`, password ≥ 6 chars).
+1. Open the app and **create an account** (username 3–32 chars `A-Z a-z 0-9 _ . -`, password ≥ 8 chars). The first
+   account needs no invite code; later ones need `SIGNUP_CODE`.
 2. Go to **Documents** and upload a PDF/DOCX/TXT/MD file.
-3. Start a **New chat** and ask questions. Under each answer, **Sources** and **Steps** show where it came from and
+3. Start a **New chat** and ask questions, or ask it to rename or edit a document (§22). Under each answer, **Sources** and **Steps** show where it came from and
    the path the agent took. The theme switch (System / Light / Dark) is at the bottom of the sidebar.
 
 Runtime data is created automatically:
@@ -190,9 +194,11 @@ Runtime data is created automatically:
 | `backend/data/app.db` | SQLite database |
 | `backend/data/embedding_cache.db` | Cached question embeddings |
 | `backend/data/token_usage.jsonl` | One line per request: tokens per model and step, route, path |
-| `backend/data/.jwt_secret` | Auto-generated JWT secret (if `JWT_SECRET` unset) |
+| `backend/data/library/<user_id>/` | The stored documents, named after their current titles |
+| `backend/data/versions/<doc_id>/` | Each edit's backup (what Undo puts back) and redo copy |
+| `backend/data/fonts/fetched/` | Fonts downloaded for PDF edits (§22) |
+| `backend/data/logs/` | `events.log` (major events) and `all.log` (everything), rotating |
 | `backend/vector_db/qdrant_data/` | Embedded Qdrant storage (documents and memory collections) |
-| `backend/documents/<user_id>/` | Uploaded original files |
 
 To reset everything: stop the backend and delete those paths.
 
@@ -219,7 +225,7 @@ overridden by an environment variable / `.env` entry with the same name (case-in
 | `VOYAGE_MEMORY_MODEL` / `VOYAGE_MEMORY_DIMENSIONS` / `VOYAGE_MEMORY_COLLECTION` | `voyage-4-lite` / `1024` / `user_memories` | Memory embeddings. |
 | `QDRANT_URL` / `QDRANT_API_KEY` / `QDRANT_PATH` | `""` / `""` / `backend/vector_db/qdrant_data` | Server or embedded store. |
 | `COLLECTION_NAME` | `agentic_rag_docs_v2` | Hybrid (dense + BM25) document collection. |
-| `UPLOAD_DIR` / `MAX_UPLOAD_MB` | `backend/documents` / `20` | Uploads. |
+| `MAX_UPLOAD_MB` | `20` | Largest upload. |
 | `CHUNK_SIZE` / `CHUNK_OVERLAP` | `1000` / `200` | Characters per chunk and overlap. |
 | `RETRIEVAL_K` | `6` | Passages finally used for an answer. |
 | `RETRIEVAL_MODE` | `hybrid` | `hybrid` (dense + BM25 with RRF) or `dense`. |
@@ -239,12 +245,15 @@ overridden by an environment variable / `.env` entry with the same name (case-in
 | `WEB_RESULTS` / `TAVILY_SEARCH_DEPTH` / `WEB_CACHE_TTL_SECONDS` | `5` / `basic` / `3600` | Web search. |
 | `HISTORY_TURNS` | `6` | Past messages passed to the agent. |
 | `DATABASE_PATH` | `backend/data/app.db` | SQLite file. |
-| `JWT_SECRET` / `JWT_EXPIRE_MINUTES` | `""` / `1440` | Token signing key (auto-generated if empty); lifetime. |
+| `SIGNUP_CODE` | `""` | Invite code for every sign-up after the first; empty: sign-ups closed. |
+| `LIBRARY_DATA_DIR` | `backend/data` | The library's files, versions, fonts and logs (§22). |
+| `LIBRARY_AGENT_MODEL` / `LIBRARY_BACKUP_MODEL` / `LIBRARY_AGENT_REASONING` | `openai/gpt-oss-120b` / `openai/gpt-oss-20b` / `low` | The document agent, and the model that takes over when it is rate-limited. |
+| `LIBRARY_TPM_LIMIT` / `LIBRARY_BACKUP_TPM_LIMIT` | `8000` / `8000` | Groq tokens per minute the queue paces itself to. |
 | `CORS_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | Allowed origins (any localhost port is also allowed). |
 | `BOT_CONTACT` | `https://github.com/` | Contact in the User-Agent (required by Wikipedia's API). |
 
 Frontend: `VITE_API_URL` (optional) overrides the API base URL; by default the app calls `/api` and the Vite dev
-server proxies it to `http://127.0.0.1:8000`.
+server proxies it to `http://127.0.0.1:8000`. In production the backend serves the build itself (`backend/web.py`).
 
 ---
 
@@ -257,7 +266,9 @@ day7/
 ├── app.py, requirements.txt, README.md, claude_wiki.docx
 ├── docs/                 documentation (this file)
 ├── backend/              FastAPI app, LangGraph agent, retrieval, memory, tests
+│   ├── app.py, web.py    the FastAPI app; serving the built front end
 │   ├── api/              HTTP layer: auth, chat, documents, health
+│   ├── library/          the document library: catalog, agent, rename/edit/undo, PDF editing, queue (§22)
 │   ├── config/           settings, model clients, token accounting
 │   ├── models/           SQLite data access and API schemas
 │   ├── graph/            the agent: state, nodes, edges
@@ -267,7 +278,7 @@ day7/
 │   ├── evaluation/       answer checks, LLM grading, decision reviews
 │   ├── scripts/          one-off maintenance scripts
 │   ├── tests/            unit tests (no API calls)
-│   └── data/ documents/ vector_db/    created at runtime (not committed)
+│   └── data/ vector_db/  created at runtime (not committed)
 ├── frontend/             React + Vite + Tailwind single-page app
 ├── benchmark/            benchmark scripts, question sets, corpus and saved results
 └── scripts/experiments/  one-off model experiments (call the live APIs)
@@ -299,18 +310,40 @@ Most backend folders contain an empty `__init__.py`; it only lets Python import 
 
 | File | What it does |
 |---|---|
-| `app.py` | The FastAPI application: checks required keys at startup, creates the database and Qdrant collections, warms up the local reranker if it's configured, sets CORS and mounts the routers. |
+| `app.py` | The FastAPI application: checks required keys at startup, creates the database and Qdrant collections, starts the library's indexing queue and batch worker, sets CORS, mounts the routers and, when `frontend/dist` exists, the front end. |
+| `web.py` | Serves `frontend/dist`: `index.html` with `no-cache` (also for the app's own routes such as `/documents`), hashed `assets/` cached for a year, a JSON 404 for unknown `/api` paths, nothing outside the folder. |
 
 #### `backend/api/` — the HTTP layer
 
 | File | What it does |
 |---|---|
-| `security.py` | Password hashing (SHA-256 pre-hash + bcrypt) and HS256 JWT creation/verification with the standard library; generates the JWT secret if none is set. |
-| `dependencies.py` | `get_current_user`: reads the bearer token on each request and returns the user, or a 401. |
-| `routes/auth.py` | `POST /auth/register`, `POST /auth/login`, `GET /auth/me`. |
-| `routes/chat.py` | `POST /chat` and `POST /chat/stream` (SSE): loads history, facts, past-conversation summaries and document names, runs the agent in its own thread, saves the answer, and queues memory work and token logging in the background. Also lists, renames and deletes conversations and serves `/stats`. |
-| `routes/documents.py` | Lists, uploads (size check, filename cleanup, dedup by hash; ingestion on a background worker) and deletes documents. |
+| `dependencies.py` | `get_current_user`: reads the login cookie on each request and returns the user, or a 401. |
+| `routes/auth.py` | `GET /auth/state`, `POST /auth/signup`, `/auth/login`, `/auth/logout`, `GET /auth/me`, on `backend/library/auth.py`. |
+| `routes/chat.py` | `POST /chat` and `POST /chat/stream` (SSE): loads history, facts, past-conversation summaries and document names, runs the agent in its own thread, saves the answer, and queues memory work and token logging in the background. Document requests go to the `manage` node (the document agent). Also lists, renames and deletes conversations, lists the documents a conversation changed and its queued tasks, and serves `/stats`. |
+| `routes/documents.py` | Lists (with the edit Undo and Redo apply to), uploads (size check, dedup by hash; indexing on the library's queue) and deletes documents. |
 | `routes/health.py` | `GET /health`: reports the configured models and web-search providers. |
+
+#### `backend/library/` — the document library (§22)
+
+| File | What it does |
+|---|---|
+| `api.py` | `/api/library/*`: rename, undo, redo, file / PDF / preview downloads, the queue and batch cancel; starts and stops the library's workers. |
+| `auth.py` | Accounts: PBKDF2 passwords, login tokens (only their hashes stored), throttling of wrong passwords, the invite code (§13). |
+| `catalog.py` | SQLite tables of the library (documents, renames, edits, undone edits, batches, tasks, agent sessions, users, login tokens) in `app.db`. |
+| `library.py` | Add a file, index it (queue), title it, find a document by name or content, rename (file, catalog and chunks at once), delete. |
+| `titles.py` | A title, summary and keywords for each new document, written by the model from its opening text. |
+| `naming.py` | Cleaning titles, stored file names, and how closely a phrase matches a document's name. |
+| `agent.py` | The document agent: the 120B with tools (find, details, list, rename, edit, undo / redo, queue) and a guard in code that decides when a change may happen and asks the user first when it must. |
+| `editing.py` | Replace or append text in TXT / MD / DOCX / PDF, re-index, keep backups; undo and redo. |
+| `pdf_edit.py` | In-place PDF editing: finds lines and paragraphs, re-wraps in the document's own fonts, moves content below (onto a new page if needed), and checks the result before saving. |
+| `tiny_font.py` | A font cut down to the few letters an edit needs (fontTools), so a PDF grows by kilobytes, not a whole font. |
+| `font_fetch.py` | Fonts a PDF needs and the machine lacks: one pinned HTTPS URL each, verified against `fonts/manifest.json` (SHA-256), cached in `data/fonts/fetched/`. |
+| `batch.py` | The queue: many changes run one at a time by a background worker, within Groq's tokens-per-minute limit; restart-safe. |
+| `limits.py` | Groq's tokens-per-minute window, shared by the chat and the queue. |
+| `activity.py` | Which documents a conversation changed (its replies' and queued tasks' actions), for the chat's side panel. |
+| `export.py` | A document's text laid out as a PDF for download. |
+| `logs.py` | `data/logs/events.log` and `all.log`. |
+| `config.py` | The library's constants and its `library_*` settings. |
 
 #### `backend/config/` — settings and model clients
 
@@ -378,6 +411,9 @@ Most backend folders contain an empty `__init__.py`; it only lets Python import 
 | File | What it does |
 |---|---|
 | `migrate_hybrid.py` | One-off migration that copied the old dense-only collection into the hybrid (dense + BM25) collection without re-embedding. |
+| `merge_library.py` | One-off merge of the renaming pipeline's data into this app (users, documents with their vectors, chats). |
+| `recount_pages.py` | Recounts the pages of Word, text and Markdown documents. |
+| `build_font_manifest.py` | Writes `backend/library/fonts/manifest.json` from hand-checked font downloads. |
 
 #### `backend/tests/` — unit tests and reasoning cases
 
@@ -388,15 +424,15 @@ Most backend folders contain an empty `__init__.py`; it only lets Python import 
 | `test_citations.py` | The code citation check. |
 | `test_rerank.py` | Reranker zones and the fallback when Voyage can't score. |
 | `test_conversations.py` | Renaming chats; `/stats` from the message columns and the one-time backfill; a fresh database has no old `user_memory` table. |
-| `test_documents.py` | Uploads return before indexing; indexed / failed / removed-while-indexing / interrupted-by-restart outcomes. |
+| `test_documents.py` | Uploads are titled, stored in the user's folder and indexed in the background; failed / removed-while-waiting / uploaded-twice outcomes; indexing cut off by a restart is resumed. |
 | `test_stream.py` | The SSE stream ends with `final`, and the answer is saved even if the client disconnects. |
+| `library/` | The document library: accounts, the agent and its guard, routing to it, renames, edits, undo / redo, the queue, PDF editing (layout, growth onto a new page, fonts), the API and the Documents page's routes. |
 
 #### Runtime folders (created automatically, not committed)
 
 | Folder | Contents |
 |---|---|
-| `backend/data/` | `app.db` (SQLite), `embedding_cache.db`, `token_usage.jsonl`, `.jwt_secret`. |
-| `backend/documents/<user_id>/` | Uploaded original files. Only the folder's empty `__init__.py` is committed, so the folder exists. |
+| `backend/data/` | `app.db` (SQLite), `embedding_cache.db`, `token_usage.jsonl`; `library/`, `versions/`, `fonts/`, `logs/` (§4). |
 | `backend/vector_db/qdrant_data/` | Embedded Qdrant storage (same note). |
 
 #### `frontend/` — the web app
@@ -417,19 +453,32 @@ Most backend folders contain an empty `__init__.py`; it only lets Python import 
 | `main.jsx` | Mounts `App` into the page. |
 | `App.jsx` | Top-level shell: session restore, health polling, routing between pages, sidebar layout (top bar on phones). |
 | `index.css` | Colour tokens for light and dark themes, component classes and Markdown styles. |
-| `services/api.jsx` | HTTP client: token storage, authenticated requests, error handling (401 → login), and the SSE stream reader. |
+| `services/api.jsx` | HTTP client: requests with the login cookie, error handling (401 → login), the SSE stream reader, document actions (rename, undo, redo, queue). |
+| `state/chatDocuments.js` | The documents a conversation changed, re-read after each answer and while its queued tasks run. |
+| `state/previewStore.js` | The one open document preview. |
+| `lib/chatActions.js` | What a chat's document actions allow (which edits Undo / Redo apply to) and their descriptions. |
+| `lib/queue.js` | The queue panel's figures and labels. |
+| `lib/documentFiles.js` | Where a document's files are served (preview, download, PDF). |
+| `lib/pdfViewer.js` | PDF viewer on pdf.js in the site's own look: pan, zoom, selectable text. |
 | `state/chatStore.js` | Conversations and in-flight answers kept outside the pages, so an answer keeps streaming when you switch pages or chats. |
 | `lib/route.js` | Hash routes (`#/chat`, `#/chat/<id>`, `#/documents`, `#/overview`). |
 | `lib/format.js` | Formatting helpers: counts, sizes, times, percentages, recency groups, source labels. |
 | `lib/theme.js` | `useTheme()`: System / Light / Dark, saved in `localStorage`. |
 | `pages/Login.jsx` | Sign in / sign up, with an offline notice. |
 | `pages/Chat.jsx` | New-chat screen with suggestions, or the conversation and composer. |
-| `pages/Documents.jsx` | Upload (drop zone, type/size checks, progress), document list and delete. |
+| `pages/Documents.jsx` | Upload (drop zone, type/size checks, progress); the document list with Preview, Rename, Undo edit, Redo, Download, PDF and Remove; the queue panel. |
 | `pages/Overview.jsx` | Usage numbers, where answers came from, document library. |
 | `components/Sidebar.jsx` | New chat, chats by recency (rename, delete), navigation, theme switch, log out. |
 | `components/Message.jsx` | One message: notices, Markdown with citation marks, provenance line, **Sources** and **Steps**, live progress while answering. |
 | `components/InputBox.jsx` | The message box (Enter sends, Shift/Ctrl+Enter adds a line; drafts kept per chat). |
 | `components/Mark.jsx` | The logo as a React component. |
+| `components/DocumentActions.jsx` | Under an answer from the document agent: what it did, with Preview, Undo and Redo. |
+| `components/ChatDocuments.jsx` | The chat's side panel: documents this conversation changed. |
+| `components/DocumentPreview.jsx` | The document preview (PDF viewer). |
+| `components/DocumentLinks.jsx` | Download and PDF links for a document. |
+| `components/ConfirmAction.jsx` | A link that asks first ("Undo this edit?") before it acts. |
+| `components/RenameAction.jsx` | Inline rename field; asks before using a name another document has. |
+| `components/QueuePanel.jsx` | Queued tasks with their state and replies, and Cancel. |
 | `dev/preview.jsx` | Design preview: runs the real app with the API replaced by sample data. |
 | `dev/fixtures.js` | Sample documents, chats and stats for the preview. |
 
@@ -653,27 +702,29 @@ the migration is just marked done.
 
 ## 9. Ingestion pipeline
 
-`POST /api/documents/upload` → `routes/documents.py::upload_document`, which returns as soon as the file is saved
-(`status: "processing"`); `_index` → `rag/ingestion.py::ingest_file` then runs on a background worker, one file at a
-time (the embedded Qdrant store is not safe for concurrent writers). The Documents page checks `GET /documents`
+`POST /api/documents/upload` → `routes/documents.py::upload_document` → `library.add_file`, which returns as soon as
+the file is saved (`status: "processing"`); `library.process` then runs on the library's one indexing worker, one file
+at a time (the embedded Qdrant store is not safe for concurrent writers). The Documents page checks `GET /documents`
 every 2 s while a file is still processing. Steps 4–8 run in the background.
 
-1. **Validate** — extension in `{.pdf, .docx, .txt, .md}`; size ≤ `MAX_UPLOAD_MB` (reads at most limit+1 bytes);
-   filename sanitised.
-2. **Deduplicate** — SHA-256 of the bytes. Same user, already indexed → `status: "duplicate"`; still being indexed → that
-   document, `status: "processing"`, and no second job. A failed copy is cleaned up and re-ingested.
-3. **Record** — a `documents` row with `status="processing"`; the file is saved as `backend/documents/<user_id>/<doc_id><ext>`.
+1. **Validate** — extension in `{.pdf, .docx, .txt, .md}`; size ≤ `MAX_UPLOAD_MB` (reads at most limit+1 bytes).
+2. **Deduplicate** — SHA-256 of the bytes, against the file as it is now and as it was uploaded (an edited document's
+   original is still a duplicate). Already there → `status: "duplicate"` and no second job. A failed copy is removed
+   and indexed again.
+3. **Record** — a `documents` row with `status="processing"`, a provisional title from the file name, and the file
+   saved in `backend/data/library/<user_id>/`. Then, on the worker, the model writes a title, a summary and keywords
+   from the opening text (`library/titles.py`), and the stored file is renamed after the title.
 4. **Load** — PDF: one document per page (page numbers kept for citations); DOCX: paragraphs + table rows; TXT/MD as-is.
    `_clean` removes null bytes, re-joins hyphenated line breaks, collapses whitespace. No text → `IngestionError`: the document is marked failed with that message.
 5. **Chunk** — 1,000 chars / 200 overlap, splitting on paragraphs → lines → sentences → words; chunks ≤ 20 chars dropped.
 6. **Embed** — `embed_paced`: Gemini `RETRIEVAL_DOCUMENT`, batches of 90, waiting when the free tier's per-minute limit is hit.
 7. **Upsert** — Qdrant points with ids `uuid5(doc_id:chunk_index)`, a `dense` vector and a `bm25` sparse vector, and
-   payload `{page_content, metadata: {user_id, doc_id, source, page, chunk_index, start_index}}`.
+   payload `{page_content, metadata: {user_id, doc_id, source, title, file_name, page, chunk_index, start_index}}`.
 8. **Finish** — `indexed` with page/chunk counts, or `failed` with the error (partial vectors removed). A document
    removed while it was being indexed has its vectors removed when indexing ends.
 
-Deleting a document removes its vectors, the stored file and the DB row. Files still processing when the server
-stops are marked failed at the next start ("Indexing was interrupted…"); uploading the file again retries it.
+Deleting a document removes its vectors, the stored file, its versions and its rows. Files still processing when the
+server stops are indexed again at the next start.
 
 ---
 
@@ -743,7 +794,8 @@ the answer). It sums input, output and hidden-reasoning tokens per model and per
 
 ### `app.py`
 Adds the project root to `sys.path`; `lifespan` checks the required keys, runs `init_db()` (and migrations), opens the
-Qdrant collection, and on shutdown extracts any facts still waiting in the memory batch. CORS: `CORS_ORIGINS` plus any localhost port.
+Qdrant collection, starts the library (`library/api.startup`: logs, unfinished indexing, the batch worker), and on
+shutdown stops it and extracts any facts still waiting in the memory batch. Mounts `frontend/dist` when it exists. CORS: `CORS_ORIGINS` plus any localhost port.
 
 ### `config/llm.py`
 | Function | Description |
@@ -806,26 +858,29 @@ with meta and usage, queue memory work), `_remember` (background: facts, episode
 
 ## 13. Authentication & security
 
-### Passwords
-- `_prehash`: SHA-256 → base64 (44 bytes), so passwords longer than bcrypt's 72-byte limit remain fully significant.
-- `hash_password`: bcrypt with a random salt (cost 12). Only the hash is stored.
-- `verify_password`: `bcrypt.checkpw`; malformed hashes return `False`.
+Accounts live in `backend/library/auth.py` (one login for the chat and the library).
 
-### Tokens (JWT, HS256)
-- `create_access_token(user_id, username)` → `header.payload.signature` (base64url, HMAC-SHA256); payload
-  `{sub, name, iat, exp}`.
-- `decode_access_token(token)` verifies the signature in constant time, requires `alg == HS256`, rejects expired tokens.
-- Secret: `JWT_SECRET`, or a random value generated once into `backend/data/.jwt_secret`.
+### Passwords
+- PBKDF2-SHA256 with a random salt and 600,000 rounds; only the hash is stored.
+- Usernames: 3–32 characters `A-Z a-z 0-9 _ . -`. Passwords: at least 8 characters.
+- The first account can always be made. After that a sign-up needs `SIGNUP_CODE`; with none set, sign-ups are closed.
+
+### Login tokens
+- A login is a random token in an HttpOnly cookie (`login`, 30 days). The database keeps only the token's SHA-256,
+  so a copied database holds no usable login. Logout deletes it on the server.
+- Wrong passwords are throttled: after 5 for one name from one address within 15 minutes, or 20 from one address,
+  that name or address waits (`429`).
 
 ### Request guard
-`dependencies.get_current_user` reads the `Authorization: Bearer` header, decodes the token, confirms the user still
-exists and returns `{id, username}`. Every failure returns the same `401 Not authenticated`; the frontend then shows
-the login screen.
+`dependencies.get_current_user` reads the cookie, looks up the token's hash and returns `{id, username}`. Every
+failure returns `401 Please log in.`; the frontend then shows the login screen.
 
 ### Data isolation & input safety
 - Every SQL query filters by `user_id`; every Qdrant query (documents and memories) filters by the user.
 - SQL uses placeholders only; dynamic column names in `update_document` are allow-listed.
-- Upload filenames are sanitised and files stored under generated ids. Upload size is enforced while reading.
+- Upload size is enforced while reading. Stored file names are made from titles, inside the user's own folder.
+- Another user's document, chat or batch answers `404`, as if it did not exist; the document agent's tools are
+  limited to the user's own library.
 - Login errors don't reveal whether a username exists.
 
 ---
@@ -835,9 +890,12 @@ the login screen.
 ### SQLite (`backend/data/app.db`)
 
 ```
-users ──< documents
+users ──< documents ──< renames, edits, undone_edits
   ├──< user_facts
-  └──< conversations ──< messages
+  ├──< conversations ──< messages
+  ├──< batches ──< batch_tasks
+  ├──< sessions          (the document agent's state per conversation)
+  └──< auth_tokens
 ```
 
 | Table | Columns | Constraints |
@@ -846,7 +904,13 @@ users ──< documents
 | `user_facts` | `id`, `user_id`, `memory_key`, `value`, `created_at`, `updated_at` | `UNIQUE(user_id, memory_key, value)`, `value` case-insensitive |
 | `migrations` | `name`, `applied_at` | One-off data migrations applied |
 | `user_memory` | `id`, `user_id`, `memory_key`, `memory_value`, … | Pre-migration backup, no longer written; only in databases from before 1 November |
-| `documents` | `id`, `user_id`, `filename`, `file_hash`, `size_bytes`, `pages`, `chunks`, `status`, `error`, `created_at` | `UNIQUE(user_id, file_hash)` |
+| `documents` | `id`, `title`, `original_name`, `file_name`, `ext`, `sha256`, `original_sha256`, `size_bytes`, `pages`, `chunks`, `summary`, `keywords`, `owner`, `status`, `error`, `created_at`, `updated_at` | `owner` is the user's id; a re-upload of the same file (as uploaded, or as it is now) is a duplicate |
+| `renames` | `doc_id`, `old_title`, `new_title`, `reason`, `at` | A document's rename history |
+| `edits` | `id`, `doc_id`, `operation`, `detail`, `backup`, `at` | `backup`: the file before the edit, in `data/versions/<doc_id>/` |
+| `undone_edits` | as `edits`, plus `redo`, `ext`, `undone_at`, `undo_order` | Undone edits Redo can bring back (cleared by a new edit) |
+| `batches`, `batch_tasks` | a batch's tasks: `instruction`, `payload`, `checkpoint`, `status`, `reply`, `actions`, `tokens` | The queue (§22) |
+| `sessions` | the document agent's messages and guard, per conversation | |
+| `auth_tokens` | the login token's hash, its user, when it expires | Logins (§13) |
 | `conversations` | `id`, `user_id`, `title`, `created_at`, `updated_at` | cascade on user delete |
 | `messages` | `id`, `conversation_id`, `role`, `content`, `tool`, `meta` (JSON), `created_at`, `latency_ms`, `rewritten`, `sufficient` | cascade on conversation delete; the last three are copied out of `meta` when an answer is saved, so `/stats` is plain SQL (filled from `meta` once in databases from before 14 November) |
 
@@ -869,23 +933,26 @@ users ──< documents
 
 | Collection | Vectors | Payload |
 |---|---|---|
-| `agentic_rag_docs_v2` | `dense` (768, cosine) + `bm25` (sparse, IDF modifier) | `{page_content, metadata: {user_id, doc_id, source, page, chunk_index, start_index}}` |
+| `agentic_rag_docs_v2` | `dense` (768, cosine) + `bm25` (sparse, IDF modifier) | `{page_content, metadata: {user_id, doc_id, source, title, file_name, page, chunk_index, start_index}}`; a rename updates `source`, `title` and `file_name` in place |
 | `user_memories` | one unnamed vector (1,024, Voyage) | `{user_id, text, kind, conversation_id, updated_at}` |
 
 ---
 
 ## 15. HTTP API reference
 
-Base URL `http://localhost:8000/api`. All endpoints except `health`, `auth/register` and `auth/login` require
-`Authorization: Bearer <token>`. Errors have the shape `{"detail": "message"}`.
+Base URL `http://localhost:8000/api`. All endpoints except `health` and `auth/state`, `auth/signup`, `auth/login`
+need the login cookie. Errors have the shape `{"detail": "message"}` (a rename's name conflict:
+`{"detail": {"message", "conflicts", "title"}}`).
 
 | Method & path | Body | Response |
 |---|---|---|
 | `GET /health` | — | `{"status": "healthy", "llm", "embeddings", "web_search": "tavily → duckduckgo → wikipedia"}` |
-| `POST /auth/register` | `{"username", "password"}` | `201` `{"access_token", "token_type", "user"}` — `409` taken, `422` invalid |
-| `POST /auth/login` | `{"username", "password"}` | same — `401` on bad credentials |
+| `GET /auth/state` | — | Signed in or not, and whether a sign-up is open (`first`, `invite`, `closed`) |
+| `POST /auth/signup` | `{"username", "password", "invite"?}` | the user, and the login cookie set |
+| `POST /auth/login` | `{"username", "password"}` | the user, and the login cookie set — `429` while throttled |
+| `POST /auth/logout` | — | the token deleted, the cookie cleared |
 | `GET /auth/me` | — | `{"id", "username"}` |
-| `GET /documents` | — | `[DocumentOut]` newest first |
+| `GET /documents` | — | `[DocumentOut]`, each with `edit_id` (the edit Undo takes back) and `redo_id` (the one Redo brings back), or `null` |
 | `POST /documents/upload` | multipart `file` | `{"status": "processing" \| "duplicate", "filename", "chunks_indexed", "document"}` — `400`, `413`; indexing errors appear on the document (`status: "failed"`, `error`) |
 | `DELETE /documents/{id}` | — | `204` |
 | `POST /chat` | `{"message", "conversation_id"?}` | `ChatResponse` (below) |
@@ -894,7 +961,17 @@ Base URL `http://localhost:8000/api`. All endpoints except `health`, `auth/regis
 | `GET /conversations/{id}/messages` | — | `[{id, role, content, tool, meta, created_at}]` oldest first |
 | `PATCH /conversations/{id}` | `{"title"}` (1–60 characters) | the conversation; `updated_at` unchanged, so it keeps its place in the list — `404`, `422` |
 | `DELETE /conversations/{id}` | — | `204` (messages and remembered episodes removed) |
+| `GET /conversations/{id}/documents` | — | Documents this conversation changed, newest first, with `latest_edit_id` / `redo_edit_id` |
+| `GET /conversations/{id}/pending` | — | `{"tasks"}`: its queued tasks still to run |
 | `GET /stats` | — | `{documents, chunks, conversations, queries, by_tool, queries_rewritten, answers_evaluated, answers_sufficient, avg_latency_ms}` |
+| `POST /library/documents/{id}/rename` | `{"title", "confirmed"?}` | `{old_title, new_title, file_name}` — `400` unusable name, `409` another document has it (until `confirmed`) or still indexing |
+| `POST /library/documents/{id}/undo` | `{"edit_id"?}` | The document as it was before its latest edit, with `redo_id` — `409` when `edit_id` is no longer the latest |
+| `POST /library/documents/{id}/redo` | `{"edit_id"?}` | The undone edit back, under its own id — `409` when it isn't the one to redo |
+| `GET /library/documents/{id}/file` | `?inline=true` | The stored file (download, or shown in the browser) |
+| `GET /library/documents/{id}/pdf`, `/preview` | — | The document as a PDF; its text for the preview |
+| `GET /library/queue` | — | `{"batches": [{id, created_at, tasks: [{instruction, status, reply, …}]}]}` (the last hour, or still running) |
+| `DELETE /library/batches/{id}` | — | `{"cancelled"}`: the batch's waiting tasks |
+| `GET /library/limits` | — | Groq tokens used in the last minute and the user's queue |
 
 `ChatResponse`: `{conversation_id, message_id, answer, tool, intent, sources, notices, rewritten_queries, evaluation,
 trace, latency_ms}` (the stream's `final` event also carries `usage`); `tool` is `rag | web_search | direct | greeting | no_results`.
@@ -923,7 +1000,7 @@ App.jsx ── session, health polling, conversations, documents, routing
    ├── pages/Login            → apiService.login / register
    ├── components/Sidebar     → new chat, chats by recency, navigation, theme switch, log out
    ├── pages/Chat             → state/chatStore.sendMessage → apiService.streamMessage → Message; InputBox
-   ├── pages/Documents        → getDocuments / uploadDocument / deleteDocument
+   ├── pages/Documents        → getDocuments / uploadDocument / deleteDocument / renameDocument / undoEdit / redoEdit; QueuePanel
    └── pages/Overview         → getStats + document library
 ```
 
@@ -935,10 +1012,12 @@ App.jsx ── session, health polling, conversations, documents, routing
 | `state/chatStore.js` | Conversations and in-flight answers live outside the pages (`useSyncExternalStore`), so an answer keeps streaming when you switch pages or chats. A new chat is stored under `NEW_KEY` until the `meta` event gives its id. |
 | `lib/theme.js` | `useTheme()`: System / Light / Dark, saved in `localStorage` (`agentic_rag_theme`) and applied as `<html data-theme>`. `index.html` applies it before the first paint. |
 | `lib/format.js` | Counts, sizes, seconds, percentages, recency groups, source labels. |
-| `services/api.jsx` | Token in `localStorage` (`agentic_rag_token`); `request()` adds the bearer token and handles errors (401 → login); `streamMessage()` reads the SSE stream (`onMeta`, `onStatus`, `onStep`, `onDraft`, `onFinal`). |
+| `services/api.jsx` | `request()` sends the login cookie (`credentials: 'include'`) and handles errors (401 → login; an object `detail` is kept on `err.data`); `streamMessage()` reads the SSE stream (`onMeta`, `onStatus`, `onStep`, `onDraft`, `onFinal`). |
 | `pages/Login.jsx` | Sign-in / sign-up with the backend's rules, offline notice, and an example answer. |
 | `pages/Chat.jsx` | New chat with suggestions based on your documents; otherwise the conversation and composer. |
-| `pages/Documents.jsx` | Drop zone + picker, type/size checks, upload progress, status list (re-checked every 2 s while a file is indexing), delete with inline confirmation. |
+| `pages/Documents.jsx` | Drop zone + picker, type/size checks, upload progress, status list (re-checked every 2 s while a file is indexing). Each ready document: Preview, Rename (inline), Undo edit and Redo (each asks first), Download / PDF, Remove (inline confirmation). The queue panel above the list. |
+| `components/QueuePanel.jsx` | Queued tasks of the last hour, polled every 3 s while any run (15 s otherwise); Cancel the waiting ones; the list reloads when a task finishes. |
+| `components/DocumentActions.jsx`, `ChatDocuments.jsx` | In the chat: what the document agent did, with Preview / Undo / Redo; the documents this chat changed. |
 | `pages/Overview.jsx` | Key numbers, where answers came from, document library. |
 | `components/Sidebar.jsx` | New chat, chats grouped by recency (a dot marks one still answering; rename inline with the pencil or a double-click, Enter saves, Escape cancels; inline delete confirmation), navigation, theme switch, user and log out. |
 | `components/Message.jsx` | Answer with notices, Markdown and citation marks; a provenance line (source, checked or not, time); **Sources** and **Steps** disclosures; live status/steps/draft while pending. |
@@ -947,14 +1026,15 @@ App.jsx ── session, health polling, conversations, documents, routing
 | `preview.html`, `src/dev/` | Design preview with sample data (dev server only). |
 
 ### Dev proxy
-`vite.config.js` proxies `/api` to `http://127.0.0.1:8000`. For a production build, serve `frontend/dist` behind the
-same origin as the API, or set `VITE_API_URL`.
+`vite.config.js` proxies `/api` to `http://127.0.0.1:8000`. For production, `npm run build`: the backend then serves
+`frontend/dist` at `/` on the same origin as the API (`backend/web.py`).
 
 ---
 
 ## 17. Testing and benchmarks
 
-**Unit tests** (71 tests, no API calls, ~1 s): `python -m unittest discover backend/tests -p "test_*.py"`
+**Tests** (no API calls, no network; the PDF layout ones take a few minutes): `pip install -r requirements-dev.txt`,
+then `python -m pytest` from the project root. `conftest.py` blocks font downloads in every test.
 
 | File | Covers |
 |---|---|
@@ -964,7 +1044,8 @@ same origin as the API, or set `VITE_API_URL`.
 | `test_citations.py` | The code citation check: uncited claims, invalid `[n]`, unsupported claims, numbers, lists under a cited lead-in |
 | `test_rerank.py` | Reranker zones; fallback to the LLM check when Voyage can't score |
 | `test_conversations.py` | Renaming chats (title trimmed, empty or too long rejected, other users' chats not found); fresh databases skip the old memory table |
-| `test_documents.py` | Background indexing: upload returns `processing`, then indexed or failed; no second job for the same file; vectors removed if the document was deleted meanwhile; restart marks unfinished ones failed |
+| `library/` | The document library: accounts and privacy, the agent's guard, routing to it and follow-ups, renames, edits (TXT, DOCX, PDF in place, growth onto a new page, fonts, size), undo / redo, the queue, the API, the Documents page's routes and the served build |
+| `test_documents.py` | Background indexing: upload returns `processing`, then indexed or failed; no second job for the same file; vectors removed if the document was deleted meanwhile; indexing cut off by a restart is resumed |
 
 **Benchmarks** (`benchmark/`, see each script's docstring; retrieval ones need the backend stopped):
 
@@ -1033,13 +1114,15 @@ every schema in 7.8. Changing `VOYAGE_RERANK_MODEL` requires recalibrating `VOYA
 - **Voyage rate limits** — without a payment method on the Voyage account, 3 requests / 10,000 tokens per minute
   (one rerank ≈ 3,500 tokens), shared with memory embeddings; beyond that, answers use the slower LLM relevance check.
 - **Free-tier limits** — each Groq model allows 8,000 tokens/minute and 200,000/day; Gemini embeddings 1,000/day.
-- **Tokens cannot be revoked** — logout only removes the browser's copy; tokens live in `localStorage`.
 - **Single-process embedded Qdrant** — use a Qdrant server for multiple workers.
 - **One file indexed at a time** — uploads queue on one background worker; a large file delays those after it.
 - **No OCR** — image-only PDFs cannot be indexed.
 - **LLM judges are fallible** — the gate, grading and evaluation reduce, but don't eliminate, wrong routes and
   ungrounded answers.
-- **No rate limiting** on login or chat endpoints.
+- **No rate limiting** on chat endpoints (wrong passwords are throttled).
+- **PDF edits** keep the layout or refuse: text needing more than one new page, scanned PDFs, and PDFs without a
+  text map (some Word / Chrome exports) can only be converted to a Markdown copy. Page references in the body text and
+  table-of-contents numbers are not renumbered when a page is added.
 
 ---
 
@@ -1641,3 +1724,51 @@ no nickname or the nickname "hroptatyr".
 | Ordinary question, no name talk / no nickname or "hroptatyr" saved: unchanged | 2/2 / 4/4 | 3/3 / 6/6 |
 
 Results: `results/nickname_before.json`, `nickname_after.json` (`nickname_first_try.json`: the first wording).
+
+---
+
+## 22. Document library
+
+`backend/library/`, merged in from the renaming pipeline (design: `docs/superpowers/specs/2026-11-14-merge-renamer-design.md`).
+It owns every document: the catalog, the stored files (`data/library/<user_id>/`, named after their titles), indexing
+(day7's ingestion pipeline, one file at a time), and every change.
+
+### How a request reaches it
+The router sends document requests ("rename the GDPR one", "change 2023 to 2024 in my resume", "undo that") to the
+`manage` node, which runs the **document agent** (`agent.py`): the 120B with tools to find documents, read their
+details, rename, edit, undo / redo and queue tasks. Decisions that protect the library are made in code, not left to
+the prompt: a document must be identified before it is changed; a near match, a name another document has, or
+converting a PDF is asked about first; an answer like "yes" or "the second one" goes back to the agent without the
+router. Short follow-ups to its last edit or question ("regenerate it", "make it shorter", a misspelled "undo",
+which is asked about first) stay with it.
+
+### Renaming
+`library.rename` changes the title in the catalog, the stored file's name and the `source` / `title` / `file_name` of
+the document's chunks in Qdrant together, with no re-embedding. The history is kept in `renames`.
+
+### Editing
+`editing.py` replaces a passage or appends text, then re-indexes the document. TXT, MD and DOCX are edited directly.
+Each edit keeps a backup in `data/versions/<doc_id>/`.
+
+**PDFs are edited in place** (`pdf_edit.py`). A PDF holds letters at positions, so the module rebuilds the lines and
+paragraphs, then re-typesets as little as possible: the changed line, or the paragraph re-wrapped (TeX-style line
+breaking, the document's own hyphenation) in the same fonts, sizes, colours, kerning and justification. When the text
+grows, what is below moves down; what no longer fits goes onto a new page inserted after it, carrying the running
+headers and footers, with page numbers renumbered; a paragraph can continue across the break. Every edit is checked
+before it is saved: letter by letter, the whole text in reading order, and pixel by pixel outside the changed area.
+Letters the PDF's fonts lack are taken from complete copies (`font_fetch.py`: downloaded on demand from one pinned
+HTTPS URL each, verified against `fonts/manifest.json`, cached in `data/fonts/fetched/`; Arial, Times New Roman,
+Calibri and similar are drawn with metric-compatible free fonts, and the reply says so), cut down to just those
+letters (`tiny_font.py`). When the agent wrote the text and a letter is still missing, it rewords around it.
+When the look can't be kept, the user is asked whether to convert the PDF to a Markdown copy instead.
+
+### Undo and redo
+Undo puts back the backup of the document's latest edit; Redo brings back the edit undone most recently, under its
+own id. They step one edit at a time, like a browser's Back and Forward, and a new edit ends what Redo can bring back.
+The buttons (in the chat and on the Documents page) and a misspelled "undo" ask first.
+
+### The queue
+Changes to many documents ("rename every report by its date") are queued as a batch (`batch.py`). A background worker
+runs one task at a time within Groq's tokens-per-minute limit (`limits.py`, shared with the chat); structured changes
+run in code with no model call, and a checkpoint makes them safe across a restart. The Documents page shows the
+queue with Cancel; the chat's side panel shows what the tasks changed.

@@ -1,10 +1,10 @@
-"""The document library's HTTP API, mounted by backend/app.py at /api/library (until stages 4-6 unify the routes).
+"""The document library's HTTP API, mounted by backend/app.py at /api/library: the Documents page's actions
+(rename, undo, redo, preview, export, queue). Chat goes through /api/chat (backend/api/routes/chat.py).
 
 Every endpoint needs a login (the app's cookie: backend/api/routes/auth.py), and works only
 in that user's library: another user's document, chat or batch answers as if it did not exist.
 """
 import logging
-import threading
 from pathlib import Path
 from urllib.parse import quote
 
@@ -13,15 +13,10 @@ from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
 from backend.api.dependencies import get_current_user
-from backend.library import agent, batch, catalog, config, export, library, logs, naming
+from backend.library import batch, catalog, config, export, library, logs, naming
 from backend.library.logs import event
 
 router = APIRouter(prefix="/library", tags=["Library"])
-
-
-# One chat message at a time per session, so two quick messages can't race on the same session.
-_session_locks: dict[str, threading.Lock] = {}
-_locks_guard = threading.Lock()
 
 
 def _public(doc: dict) -> dict:
@@ -60,11 +55,6 @@ def _own_doc(doc_id: str, user: dict) -> dict:
     if not doc or doc["owner"] != user["id"]:
         raise HTTPException(404, "Document not found")
     return doc
-
-
-class ChatIn(BaseModel):
-    session_id: str = Field(min_length=6, max_length=64)
-    message: str = Field(min_length=1, max_length=4000)
 
 
 # ---------------------------------------------------------------- the user's library
@@ -208,26 +198,6 @@ def download_pdf(doc_id: str, user: dict = Depends(current_user)):
     name = export.pdf_file_name(doc)
     return Response(data, media_type="application/pdf",
                     headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(name)}"})
-
-
-@router.post("/chat")
-def chat(body: ChatIn, user: dict = Depends(current_user)):
-    with _locks_guard:
-        lock = _session_locks.setdefault(body.session_id, threading.Lock())
-    with lock:
-        try:
-            result = agent.chat(body.session_id, body.message.strip(), owner=user["id"])
-        except PermissionError:
-            raise HTTPException(404, "Chat not found") from None
-    return {**result, "documents": list_documents(user)}
-
-
-@router.get("/sessions/{session_id}")
-def session(session_id: str, user: dict = Depends(current_user)):
-    s = catalog.load_session(session_id)
-    if s["owner"] not in (None, user["id"]):
-        raise HTTPException(404, "Chat not found")
-    return {"messages": s["display"]}
 
 
 @router.get("/limits")
