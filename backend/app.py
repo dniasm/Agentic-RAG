@@ -21,6 +21,7 @@ from backend.config.settings import settings
 from backend.library import api as library_api
 from backend.memory.store import ensure_memory_collection
 from backend.models.database import init_db
+from backend import version
 from backend.compression import Compression
 from backend.security import SecurityMiddleware
 from backend.web import mount_frontend
@@ -38,6 +39,7 @@ async def lifespan(_: FastAPI):
     init_db()
     get_client()  # open / create the Qdrant collection up front
     library_api.startup()  # the document library: logs, unfinished files, the batch queue worker
+    version.log_startup()  # the commit it runs, so an old backend left running can be told apart
     try:  # once here, not on every message; a problem only disables recall of past conversations
         ensure_memory_collection()
     except Exception as e:
