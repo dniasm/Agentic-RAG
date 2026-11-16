@@ -303,13 +303,20 @@ def letter_names(letters: str) -> str:
 
 _MD_HEADING_MARK = re.compile(r"^[ \t]{0,3}#{1,6}[ \t]+", re.M)
 _MD_EMPHASIS = re.compile(r"(\*\*|__)(?=\S)(.+?)(?<=\S)\1|`([^`\n]+)`")
+# A single * or _ pair (italic), only where it can't be the text's own: the opening mark after the line's start, a space
+# or an opening bracket or quote, and before a non-space; the closing one after a non-space and before a space, the
+# line's end or punctuation; both on one line, nothing of the same mark between. "2 * 3", "a*b*c", "*args",
+# "snake_case", "_leading", "price* and terms*" stay as they are.
+_MD_ITALIC = re.compile(r"""(?:(?<=^)|(?<=[\s(\[{"'\u201c\u2018]))(?P<m>[*_])(?=[^\s*_])"""
+                        r"""(?P<t>(?:(?!(?P=m))[^\n])*?[^\s*_])(?P=m)(?=$|[\s.,;:!?)\]}"'\u201d\u2019])""", re.M)
 
 
 def without_markdown(text: str) -> tuple[str, bool]:
-    """A PDF's text can't carry Markdown: "**Profile**" would print its asterisks. Bold and code marks and heading
-    hashes are taken out (and line breaks become spaces: the PDF's layout sets the lines). Returns (text, whether any
+    """A PDF's text can't carry Markdown: "**Profile**" would print its asterisks. Bold, italic and code marks and
+    heading hashes are taken out (and line breaks become spaces: the PDF's layout sets the lines). Returns (text, whether any
     Markdown was taken out)."""
     plain = _MD_EMPHASIS.sub(lambda m: m[2] if m[2] is not None else m[3], _MD_HEADING_MARK.sub("", text))
+    plain = _MD_ITALIC.sub(lambda m: m["t"], plain)
     removed = plain != text
     return re.sub(r"\s*\n\s*", " ", plain).strip() if "\n" in plain else plain, removed
 
