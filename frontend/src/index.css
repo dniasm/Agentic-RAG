@@ -190,8 +190,11 @@
   /* Touch screens: small text-sized controls (a citation mark, Steps / Sources, Preview / Undo / Download) get an
      invisible hit area around them, at least about 32px tall, without moving anything on the page. */
   @media (pointer: coarse) {
-    a.cite-mark, .link-action, .tap-target { position: relative; }
+    a.cite-mark, .link-action, .tap-target, .tap-target-y { position: relative; }
     a.cite-mark::after, .link-action::after, .tap-target::after { content: ""; position: absolute; inset: -8px -5px; }
+    .tap-target-y::after { content: ""; position: absolute; inset: -8px 0; }   /* controls side by side: taller only */
+    /* 16px text in fields: iPhone Safari zooms the page into any smaller field it focuses */
+    .input, .text-field { font-size: 16px; }
   }
 }
 

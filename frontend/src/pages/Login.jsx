@@ -169,7 +169,7 @@ export default function Login({ onAuthenticated, systemOnline, signups = 'closed
               {registering ? 'Already have an account?' : 'New here?'}{' '}
               <button
                 type="button"
-                className="font-medium text-ink underline-offset-4 hover:underline"
+                className="tap-target font-medium text-ink underline-offset-4 hover:underline"
                 onClick={() => { setMode(registering ? 'login' : 'register'); setError(null); }}
               >
                 {registering ? 'Log in' : 'Create an account'}

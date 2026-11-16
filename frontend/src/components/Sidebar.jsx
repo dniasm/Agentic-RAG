@@ -96,7 +96,8 @@ function RenameField({ conv, onRename, onDone }) {
   );
 }
 
-const ROW_ACTION = 'w-6 h-6 grid place-items-center rounded text-muted hover:text-ink hover:bg-active';
+// tap-target-y: taller to the touch, not wider (the two icons sit side by side)
+const ROW_ACTION = 'tap-target-y w-6 h-6 grid place-items-center rounded text-muted hover:text-ink hover:bg-active';
 
 function ChatRow({ conv, active, answering, onDelete, onRename, onNavigate }) {
   const [mode, setMode] = useState('view'); // view | rename | confirm-delete
