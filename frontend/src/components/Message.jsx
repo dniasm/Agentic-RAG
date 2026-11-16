@@ -158,7 +158,7 @@ function Disclosure({ label, count, open, onToggle }) {
   const Icon = open ? ChevronDown : ChevronRight;
   return (
     <button type="button" onClick={onToggle} aria-expanded={open}
-            className="inline-flex items-center gap-0.5 font-medium text-ink hover:underline underline-offset-4">
+            className="tap-target inline-flex items-center gap-0.5 font-medium text-ink hover:underline underline-offset-4">
       {label} <span className="num">({count})</span>
       <Icon className="w-3.5 h-3.5" aria-hidden="true" />
     </button>
