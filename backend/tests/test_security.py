@@ -98,6 +98,7 @@ def library_docs_free_signup(monkeypatch):
     from backend.app import app
     from backend.library import catalog, config
     monkeypatch.setattr(config, "SIGNUP_CODE", "let-me-in")
+    monkeypatch.setattr(settings, "allowed_hosts", "*.ts.net")   # whatever the machine's .env pins it to
     made = []
 
     def sign_up(base_url):
