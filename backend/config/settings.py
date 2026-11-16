@@ -139,6 +139,10 @@ class Settings(BaseSettings):
     # --- Auth / persistence ---
     database_path: str = str(BACKEND_DIR / "data" / "app.db")
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+    # Web hardening (backend/security.py). The public name(s) the site answers to besides local addresses, e.g.
+    # "laptop.tailnet.ts.net" or "*.ts.net"; any other Host header is refused.
+    allowed_hosts: str = "*.ts.net"
+    api_docs: bool = False   # /docs, /redoc and /openapi.json: development only
 
     # --- Document library (backend/library) ---
     library_data_dir: str = str(BACKEND_DIR / "data")   # library/<user_id>/, versions/, logs/, catalog

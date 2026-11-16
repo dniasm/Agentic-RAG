@@ -21,6 +21,7 @@ from backend.config.settings import settings
 from backend.library import api as library_api
 from backend.memory.store import ensure_memory_collection
 from backend.models.database import init_db
+from backend.security import SecurityMiddleware
 from backend.web import mount_frontend
 from backend.rag.vectorstore import get_client, close_client
 
@@ -55,6 +56,10 @@ app = FastAPI(
     description = "Backend API for the Agentic RAG Application",
     version = "1.0.0",
     lifespan = lifespan,
+    # the API's own description only in development (API_DOCS=true): backend/security.py
+    docs_url = "/docs" if settings.api_docs else None,
+    redoc_url = "/redoc" if settings.api_docs else None,
+    openapi_url = "/openapi.json" if settings.api_docs else None,
 )
 
 #CORS
@@ -65,6 +70,9 @@ app.add_middleware(
     allow_methods = ["*"],
     allow_headers = ["*"],
 )
+
+# Host and cross-site checks, security headers (backend/security.py). Added last, so it runs first.
+app.add_middleware(SecurityMiddleware)
 
 #ROUTES
 for module in (health, auth, chat, documents):

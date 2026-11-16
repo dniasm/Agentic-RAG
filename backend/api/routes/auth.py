@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from backend.api.dependencies import get_current_user
+from backend import security
 from backend.library import auth
 from backend.models.schemas import UserOut
 
@@ -28,9 +29,9 @@ def _address(request: Request) -> str:
 
 def _signed_in(request: Request, user: dict, token: str) -> JSONResponse:
     response = JSONResponse({"user": auth.public(user)})
-    # Secure only over https: through the tunnel that needs uvicorn --proxy-headers (see docs/LIBRARY.md)
+    # Secure (HTTPS only) everywhere but local addresses: plain-HTTP development (backend/security.py)
     response.set_cookie(auth.COOKIE, token, max_age=auth.LOGIN_DAYS * 86400, path="/", httponly=True,
-                        samesite="lax", secure=request.url.scheme == "https")
+                        samesite="lax", secure=security.secure_cookie(request.headers.get("host", "")))
     return response
 
 
@@ -63,7 +64,8 @@ def log_in(body: LogInIn, request: Request):
 def log_out(request: Request):
     auth.log_out(request.cookies.get(auth.COOKIE))
     response = JSONResponse({"ok": True})
-    response.delete_cookie(auth.COOKIE, path="/")
+    response.delete_cookie(auth.COOKIE, path="/", httponly=True, samesite="lax",
+                           secure=security.secure_cookie(request.headers.get("host", "")))
     return response
 
 

@@ -9,7 +9,6 @@ os.environ.update({
     "QDRANT_URL": "",
     "QDRANT_PATH": os.path.join(TEST_DATA, "qdrant"),
     "DATABASE_PATH": os.path.join(TEST_DATA, "app.db"),
-    "UPLOAD_DIR": os.path.join(TEST_DATA, "uploads"),
     "LIBRARY_DATA_DIR": os.path.join(TEST_DATA, "library-data"),
 })
 
@@ -23,6 +22,11 @@ def pytest_sessionfinish(session, exitstatus):
 
 
 import pytest  # noqa: E402
+
+from backend import security  # noqa: E402
+
+# TestClient's host: served as a local address (plain-HTTP cookies), like localhost in development
+security.LOCAL_NAMES.add("testserver")
 
 
 @pytest.fixture(autouse=True)
