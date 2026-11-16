@@ -20,3 +20,17 @@ def pytest_sessionfinish(session, exitstatus):
     from backend.library import catalog
     catalog.reset_connection()
     shutil.rmtree(TEST_DATA, ignore_errors=True)
+
+
+import pytest  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _no_font_downloads(monkeypatch):
+    """Tests never download fonts: a test that wants one replaces font_fetch._download itself."""
+    from backend.library import font_fetch
+
+    def offline(*_args, **_kwargs):
+        raise font_fetch.FetchError("no network in tests")
+    monkeypatch.setattr(font_fetch, "_download", offline)
+    monkeypatch.setattr(font_fetch, "_failed", {})

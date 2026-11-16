@@ -466,9 +466,19 @@ def _pdf_to_markdown(doc: dict) -> dict:
     return {**doc, "ext": ".md", "file_name": name}
 
 
-@library._exclusive
 def edit(doc_id: str, op: str, *, find: str = "", text: str = "", replace_all: bool = False,
          convert_pdf: bool = False) -> dict:
+    """Fonts a PDF may need are downloaded first, outside the library lock (a slow server holds up nothing else);
+    then the edit itself (_edit_locked)."""
+    doc = catalog.get_document(doc_id)
+    if doc and doc.get("ext") == ".pdf":
+        pdf_edit.prefetch_fonts(config.LIBRARY_DIR / doc["file_name"])
+    return _edit_locked(doc_id, op, find=find, text=text, replace_all=replace_all, convert_pdf=convert_pdf)
+
+
+@library._exclusive
+def _edit_locked(doc_id: str, op: str, *, find: str = "", text: str = "", replace_all: bool = False,
+                 convert_pdf: bool = False) -> dict:
     """op = "replace" (find -> text) or "append" (text added at the end). Returns what happened.
 
     Raises EditError when nothing was changed. A replace that matches several places and replace_all is False
@@ -575,4 +585,5 @@ def _edit(source: dict, doc: dict, op: str, find: str, text: str, replace_all: b
     return {"status": "edited", "operation": op, "changes": changed, "chunks_reindexed": reloaded["chunks"],
             "chunks_embedded": reloaded["embedded"], "title": doc["title"], "previews": previews, "converted": converted,
             "layout": info.get("layout"),
-            **({"plain_letters": info["plain_letters"]} if info.get("plain_letters") else {})}
+            **({"plain_letters": info["plain_letters"]} if info.get("plain_letters") else {}),
+            **({"stand_in": info["stand_in"]} if info.get("stand_in") else {})}

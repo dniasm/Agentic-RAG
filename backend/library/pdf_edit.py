@@ -49,7 +49,7 @@ from pathlib import Path
 
 import pymupdf
 
-from backend.library import config
+from backend.library import config, font_fetch
 from backend.library.tiny_font import tiny_font
 
 log = logging.getLogger(__name__)
@@ -182,13 +182,25 @@ def _folder_index(folder: Path) -> dict[str, str]:
 
 def find_font_file(name: str) -> Path | None:
     """A complete font file for a PDF font name. The bundled and data folders come first, so they win over a system
-    font of the same name; the system folders are only read when those don't have it."""
+    font of the same name; the system folders are only read when those don't have it. Last, a copy downloaded by
+    prefetch_fonts (font_fetch): LaTeX's cm-super, or a free copy with the same widths (Liberation for Arial)."""
     key = font_key(name)
     for folder in FONT_DIRS:
         path = _folder_index(folder).get(key)
         if path:
             return Path(path)
-    return None
+    return font_fetch.cached(name)
+
+
+def prefetch_fonts(path: Path) -> None:
+    """Download the complete fonts this PDF may need that the machine doesn't have (see font_fetch). Called before
+    an edit takes the library lock; never raises, and gives up after a few seconds."""
+    try:
+        with pymupdf.open(path) as doc:
+            names = {base_name(f[3]) for page in doc for f in page.get_fonts()}
+        font_fetch.prefetch(n for n in names if find_font_file(n) is None)
+    except Exception as e:
+        log.info("Font prefetch for %s skipped: %s", Path(path).name, e)
 
 
 _FILE_OF: dict[int, Path] = {}     # fonts loaded from a file (kept for good by _file_font) -> the file
@@ -2136,16 +2148,34 @@ def replace(path: Path, out: Path, pattern: re.Pattern, new: str, replace_all: b
             expected += [pdf.text[at:m_start], text]
             at = m_end
         expected = "".join(expected) + pdf.text[at:]
+        written = ordered
         try:
             if any(p is None for p in ordered.values()):
                 raise CantKeepLayout("The page's reading order can't be kept.")
             _write_checked(path, out, ordered, (expected, pdf.text))
         except CantKeepLayout as e:
             log.info("Edit of %s: keeping the reading order failed (%s); the edit goes at the end", path.name, e)
+            written = simple
             _write_checked(path, out, simple, (expected, pdf.text))
+        if info is not None:
+            stand_ins = _stand_ins(written.values())
+            if stand_ins:
+                info["stand_in"] = stand_ins
         return len(matches), [(m.start(), m.end()) for m in matches], pdf.text
     finally:
         pdf.close()
+
+
+def _stand_ins(plans) -> dict[str, str]:
+    """{the PDF's font: the look-alike drawn instead} for new letters written with a downloaded stand-in font
+    (Liberation Sans for Arial: same widths, a slightly different design)."""
+    found: dict[str, str] = {}
+    for plan in plans:
+        own = {id(t) for t in plan.own}
+        for t in plan.write:
+            if id(t) not in own and not t.c.isspace() and font_fetch.stand_in(_FILE_OF.get(id(t.font))):
+                found.setdefault(base_name(t.style.font), t.font.name)
+    return found
 
 
 def document_text(path: Path) -> str:

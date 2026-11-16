@@ -647,6 +647,9 @@ def compose_reply(results: list[dict]) -> str:
             if r.get("plain_letters"):   # the user's text was altered: say so
                 shown = " ".join(f"\u201c{c}\u201d" for c in r["plain_letters"])
                 lines.append(f"The document's font has no {shown}, so the keyboard version was used.")
+            for pdf_font, drawn in (r.get("stand_in") or {}).items():    # a look-alike font: say so
+                lines.append(f"{pdf_font} isn't available here, so the new text uses {drawn}, which has the same "
+                             f"letter widths but looks slightly different.")
             parts.append("\n".join(lines))
     return "\n\n".join(parts)
 
