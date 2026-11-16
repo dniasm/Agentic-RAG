@@ -332,8 +332,8 @@ def test_no_room_at_the_bottom_is_refused(stacked_pdf, tmp_path):
 def test_a_failed_check_leaves_no_file(layout_pdf, monkeypatch):
     real = pdf_edit._apply_page
 
-    def and_a_stray_word(page, plan, original=None):
-        real(page, plan, original)
+    def and_a_stray_word(page, plan, original=None, own_fonts=True):
+        real(page, plan, original, own_fonts)
         write(page, 72, 400, "stray")
     monkeypatch.setattr(pdf_edit, "_apply_page", and_a_stray_word)
     with pytest.raises(pdf_edit.CantKeepLayout, match="Checking the edited page failed"):
@@ -394,8 +394,8 @@ def test_a_result_with_its_words_out_of_order_is_refused(layout_pdf, monkeypatch
 def test_a_stray_mark_outside_the_edit_is_refused(stacked_pdf, monkeypatch):
     real = pdf_edit._apply_page
 
-    def and_a_mark(page, plan, original=None):
-        real(page, plan, original)
+    def and_a_mark(page, plan, original=None, own_fonts=True):
+        real(page, plan, original, own_fonts)
         page.draw_rect(pymupdf.Rect(300, 40, 320, 50), fill=(0, 0, 0))
     monkeypatch.setattr(pdf_edit, "_apply_page", and_a_mark)
     with pytest.raises(pdf_edit.CantKeepLayout, match="looks different outside the edit"):

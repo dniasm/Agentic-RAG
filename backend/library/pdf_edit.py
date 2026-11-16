@@ -495,6 +495,7 @@ class _Plan:
     ordered: bool = False       # write is already in reading order (a re-wrapped paragraph: line by line)
     segments: list = field(default_factory=list)   # the lines it re-sets, when more than one
     shift: object = None        # a _Shift: what is below a re-wrapped paragraph moves to make room
+    own: list = field(default_factory=list)   # letters written by code in the page's own fonts (checked by glyph)
 
 
 class PdfText:
@@ -1472,18 +1473,183 @@ def _draw_region(page: pymupdf.Page, shift: _Shift, original: pymupdf.Document, 
         page.insert_link(link)
 
 
-def _apply_page(page: pymupdf.Page, plan: _Plan, original: pymupdf.Document | None = None) -> None:
+def _apply_page(page: pymupdf.Page, plan: _Plan, original: pymupdf.Document | None = None,
+                own_fonts: bool = True) -> None:
     if plan.shift is not None:
         original_links = page.get_links()
         _clear_region(page, plan.shift)
-        _write_plan(page, plan)
+        _write_plan(page, plan, own_fonts)
         _draw_region(page, plan.shift, original, original_links)
     else:
-        _write_plan(page, plan)
+        _write_plan(page, plan, own_fonts)
 
 
-def _write_plan(page: pymupdf.Page, plan: _Plan) -> None:
+# ---------------------------------------------------------------- writing in the document's own fonts
+# New text is written with the font objects the PDF already has, by their own codes, so nothing is added to the file
+# but the text itself. Only a letter none of them can draw (a subset without it, no copy-text map to find its code)
+# goes through MuPDF's text writer, which embeds the font it is given (the complete copy font_for found).
+def _utf16(hexstr: bytes) -> str:
+    try:
+        return bytes.fromhex(hexstr.decode()).decode("utf-16-be")
+    except (ValueError, UnicodeDecodeError):
+        return ""
+
+
+def _font_codes(doc: pymupdf.Document, xref: int) -> dict[str, bytes]:
+    """What the font's codes read as, turned round: {"a": b"a", "fi": b"\x0c"}, from its copy-text map (ToUnicode).
+    Codes keep the map's byte width (one for a simple font, two for a CID font)."""
+    kind, ref = doc.xref_get_key(xref, "ToUnicode")
+    if kind != "xref":
+        return {}
+    cmap = doc.xref_stream(int(ref.split()[0])) or b""
+    codes: dict[str, bytes] = {}
+
+    def add(code: int, digits: int, text: str) -> None:
+        if text:
+            codes.setdefault(text, code.to_bytes(digits // 2, "big"))
+    for block in re.findall(rb"beginbfchar(.*?)endbfchar", cmap, re.S):
+        for src, dst in re.findall(rb"<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]*)>", block):
+            add(int(src, 16), len(src), _utf16(dst))
+    for block in re.findall(rb"beginbfrange(.*?)endbfrange", cmap, re.S):
+        for lo, hi, dst in re.findall(rb"<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>\s*(<[0-9A-Fa-f]*>|\[[^\]]*\])", block):
+            a, b = int(lo, 16), int(hi, 16)
+            if b - a > 0xFFFF:
+                continue
+            if dst.startswith(b"["):
+                for k, d in enumerate(re.findall(rb"<([0-9A-Fa-f]*)>", dst)):
+                    add(a + k, len(lo), _utf16(d))
+            else:
+                first = bytes.fromhex(dst[1:-1].decode())
+                for k in range(b - a + 1):   # the last byte counts up
+                    value = (int.from_bytes(first, "big") + k).to_bytes(len(first), "big")
+                    add(a + k, len(lo), value.decode("utf-16-be", "ignore"))
+    for letters, lig in LIGATURES:          # a ligature reads as its letters; the plan writes it as one character
+        if letters in codes:
+            codes.setdefault(lig, codes[letters])
+    return codes
+
+
+class _OwnFonts:
+    """A page's font objects by name, with each one's codes and program (to be sure a subset has the letter)."""
+
+    def __init__(self, page: pymupdf.Page):
+        self.page, self.doc = page, page.parent
+        self.by_name: dict[str, list[int]] = defaultdict(list)
+        self._codes: dict[int, dict[str, bytes]] = {}
+        self._program: dict[int, pymupdf.Font | None] = {}
+        for xref, ext, _type, basefont, *_ in page.get_fonts(full=True):
+            if ext in ("n/a", ""):
+                continue
+            # the text reads back under the name in the font's program when it has one ("Helvetica" is embedded as
+            # NimbusSans-Regular), else under the PDF's name for it
+            program = self._load(xref)
+            for name in {font_key(basefont), font_key(program.name) if program else ""} - {""}:
+                if xref not in self.by_name[name]:
+                    self.by_name[name].append(xref)
+
+    def _load(self, xref: int) -> pymupdf.Font | None:
+        if xref not in self._program:
+            try:
+                self._program[xref] = pymupdf.Font(fontbuffer=self.doc.extract_font(xref)[3])
+            except Exception:
+                self._program[xref] = None
+        return self._program[xref]
+
+    def _has(self, xref: int, c: str) -> bool:
+        program = self._load(xref)
+        return program is not None and all(program.has_glyph(ord(ch)) for ch in c)
+
+    def code(self, name: str, c: str) -> tuple[int, bytes] | None:
+        """The font object of that name that draws `c`, and its code for it."""
+        for xref in self.by_name.get(font_key(name), []):
+            if xref not in self._codes:
+                self._codes[xref] = _font_codes(self.doc, xref)
+            code = self._codes[xref].get(c)
+            if code is not None and self._has(xref, c):
+                return xref, code
+        return None
+
+
+def _font_resource(page: pymupdf.Page, xref: int) -> str:
+    """The name the page's resources give the font object, adding one when only a form on the page uses it."""
+    doc = page.parent
+    for fx, _ext, _type, _base, name, _enc, *ref in page.get_fonts(full=True):
+        if fx == xref and (not ref or not ref[0]):
+            return name
+    name = f"FE{xref}"
+    kind, value = doc.xref_get_key(page.xref, "Resources")
+    owner, path = (int(value.split()[0]), "") if kind == "xref" else (page.xref, "Resources/")
+    kind, value = doc.xref_get_key(owner, path + "Font")
+    if kind == "xref":
+        doc.xref_set_key(int(value.split()[0]), name, f"{xref} 0 R")
+    else:
+        doc.xref_set_key(owner, path + "Font/" + name, f"{xref} 0 R")
+    return name
+
+
+def _own_font_runs(page: pymupdf.Page, plan: _Plan, fonts: _OwnFonts) -> list[tuple[bool, list]] | None:
+    """The plan's letters in order, in runs: (True, [(letter, font xref, code)]) for letters the page's own fonts
+    draw, (False, [letter]) for the rest. None when none of them can be (or the page is rotated): all go the old way.
+    A space the font has no glyph for (TeX's fonts have none) isn't written: the gap reads as a space anyway."""
+    if page.rotation or page.parent.xref_get_key(page.xref, "Resources")[0] == "null":
+        return None     # (resources inherited from the page tree: a page dictionary of its own would hide them)
+    runs: list[tuple[bool, list]] = []
+    for t in plan.write:
+        found = fonts.code(t.style.font, t.c)
+        own = found is not None
+        if not own and t.c.isspace():
+            if runs and runs[-1][0]:
+                continue
+            own = False
+        if not runs or runs[-1][0] != own:
+            runs.append((own, []))
+        runs[-1][1].append((t, *found) if own else t)
+    return runs if any(own for own, _ in runs) else None
+
+
+def _write_own_run(page: pymupdf.Page, placed: list[tuple[_Typeset, int, bytes]]) -> None:
+    """Letters drawn with the page's own font objects, by their codes, in a content stream added to the page."""
+    to_pdf = ~page.transformation_matrix
+    ops, current = [b"q BT 0 Tc 0 Tw 100 Tz 0 Ts 0 Tr"], (None, None, None)
+    names: dict[int, str] = {}
+    for t, xref, code in placed:
+        if xref not in names:
+            names[xref] = _font_resource(page, xref)
+            if not re.fullmatch(r"[A-Za-z0-9_.+-]+", names[xref]):
+                raise CantKeepLayout(f"The font resource name {names[xref]!r} can't be written as it is.")
+        if current[0] != t.style.color:
+            ops.append(b"%.4f %.4f %.4f rg" % _rgb(t.style.color))
+        if current[1:] != (xref, t.style.size):
+            ops.append(b"/%s %.4f Tf" % (names[xref].encode(), t.style.size))
+        current = (t.style.color, xref, t.style.size)
+        at = pymupdf.Point(t.x, t.y) * to_pdf
+        ops.append(b"1 0 0 1 %.3f %.3f Tm <%s> Tj" % (at.x, at.y, code.hex().encode()))
+    ops.append(b"ET Q")
+    doc = page.parent
+    if not page.is_wrapped:
+        page.wrap_contents()
+    stream = doc.get_new_xref()
+    doc.update_object(stream, "<<>>")
+    doc.update_stream(stream, b"\n".join(ops))
+    contents = page.get_contents()
+    doc.xref_set_key(page.xref, "Contents", "[" + " ".join(f"{x} 0 R" for x in [*contents, stream]) + "]")
+
+
+def _write_with_writer(page: pymupdf.Page, letters: list[_Typeset]) -> None:
+    """Letters through MuPDF's text writer, which embeds each font it is given."""
+    runs: list[tuple[int, pymupdf.TextWriter]] = []     # in order: text readers read the letters as written
+    for t in letters:
+        if not runs or runs[-1][0] != t.style.color:
+            runs.append((t.style.color, pymupdf.TextWriter(page.rect)))
+        runs[-1][1].append((t.x, t.y), t.c, font=t.font, fontsize=t.style.size)
+    for color, tw in runs:
+        tw.write_text(page, color=_rgb(color))
+
+
+def _write_plan(page: pymupdf.Page, plan: _Plan, own_fonts: bool = True) -> None:
     links = page.get_links()
+    # the page's fonts as they are before the old text goes: removing every letter in a font drops it from the page
+    fonts = _OwnFonts(page) if own_fonts else None
     for rect in _redact_rects(page, plan.remove):
         page.add_redact_annot(rect, fill=False, cross_out=False)
     if plan.remove:
@@ -1494,13 +1660,13 @@ def _write_plan(page: pymupdf.Page, plan: _Plan) -> None:
         if (tuple(round(v, 1) for v in link["from"]), link.get("uri"), link.get("page")) not in have:
             page.insert_link({k: v for k, v in link.items() if k not in ("xref", "id")})
     fonts_before = {f[0] for f in page.get_fonts(full=True)}
-    runs: list[tuple[int, pymupdf.TextWriter]] = []     # in order: text readers read the letters as written
-    for t in plan.write:
-        if not runs or runs[-1][0] != t.style.color:
-            runs.append((t.style.color, pymupdf.TextWriter(page.rect)))
-        runs[-1][1].append((t.x, t.y), t.c, font=t.font, fontsize=t.style.size)
-    for color, tw in runs:
-        tw.write_text(page, color=_rgb(color))
+    runs = (_own_font_runs(page, plan, fonts) if fonts else None) or [(False, plan.write)]
+    plan.own = [t for own, letters in runs if own for t, *_ in letters]
+    for own, letters in runs:
+        if own:
+            _write_own_run(page, letters)
+        elif letters:
+            _write_with_writer(page, letters)
     doc = page.parent
     for xref, *_ in page.get_fonts(full=True):      # the fonts just added: their copy-text maps are corrected
         if xref in fonts_before:
@@ -1610,6 +1776,22 @@ def _check(before: pymupdf.Page, after: pymupdf.Page, plan: _Plan, counts: tuple
             have.remove(hit)
     if len(after.get_links()) != counts[2]:
         raise CantKeepLayout("Checking the edited page failed: a link on the page changed.")
+
+
+def _check_own_glyphs(after: pymupdf.Page, letters: list[_Typeset]) -> None:
+    """Every letter written by code in the page's own fonts draws the glyph that font has for the letter. _check
+    reads the letters back through the same copy-text map that chose their codes, so a map that is wrong, or gives
+    one letter several codes, would pass it; the glyph actually drawn can't."""
+    if not letters:
+        return
+    fonts = _OwnFonts(after)
+    drawn = [(span["font"], gid, origin) for span in after.get_texttrace() for _u, gid, origin, _b in span["chars"]]
+    for t in letters:
+        here = [(font, gid) for font, gid, (x, y) in drawn if abs(x - t.x) < 0.25 and abs(y - t.y) < 0.25]
+        expected = {gid for xref in fonts.by_name.get(font_key(t.style.font), [])
+                    if (program := fonts._load(xref)) is not None and (gid := program.has_glyph(ord(t.c)))}
+        if not here or not expected or not any(gid in expected for _f, gid in here):
+            raise CantKeepLayout(f'Checking the edited page failed: the letter "{t.c}" was drawn with another glyph.')
 
 
 def _spaced(items: list[_Typeset]) -> list[_Typeset]:
@@ -1794,25 +1976,31 @@ def _save_small(doc: pymupdf.Document, out: Path) -> None:
     doc.save(str(out), garbage=4, deflate=True, use_objstms=1)
 
 
-def _write_checked(path: Path, out: Path, plans: dict[int, _Plan], expected: tuple[str, str] | None = None) -> None:
+def _write_checked(path: Path, out: Path, plans: dict[int, _Plan], expected: tuple[str, str] | None = None,
+                   own_fonts: bool = True) -> None:
     """Apply the plans to a fresh copy of the PDF, save it to `out` and check it: every edited page letter by letter
     and picture by picture, and (given `expected`) the whole document's text. CantKeepLayout, with `out` removed,
     when anything isn't what was intended."""
     with pymupdf.open(str(path)) as original, pymupdf.open(str(path)) as target:
         counts = {n: (len(original[n].get_drawings()), len(original[n].get_images(full=True)),
                       len(original[n].get_links())) for n in plans}
-        for n, plan in plans.items():
-            _apply_page(target[n], plan, original)
-        _save_small(target, out)
         try:
+            for n, plan in plans.items():
+                _apply_page(target[n], plan, original, own_fonts)
+            _save_small(target, out)
             with pymupdf.open(str(out)) as edited:
                 for n, plan in plans.items():
                     _check(original[n], edited[n], plan, counts[n])
+                    _check_own_glyphs(edited[n], plan.own if own_fonts else [])
                     _check_picture(original[n], edited[n], plan)
             if expected is not None:
                 _check_text(out, *expected)
-        except Exception:
+        except Exception as e:
             out.unlink(missing_ok=True)
+            if own_fonts:   # written with the document's own fonts and not as intended: the proven way once more
+                log.warning("Edit of %s in its own fonts failed (%s); embedding fonts instead", path.name, e)
+                _write_checked(path, out, plans, expected, own_fonts=False)
+                return
             raise
 
 
