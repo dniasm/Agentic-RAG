@@ -3,15 +3,16 @@ import "./pdfViewer.css";
     Ctrl +/- to zoom (anchored at the pointer), selectable / copyable text (press on text to select, elsewhere to pan), page box, fit-to-width, a narrow thumbnail rail and download.
     No knowledge of any one site: createPdfViewer({ url, downloadUrl, fileName, onError }) -> { element, destroy }. */
 
-const PDFJS = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build";
+// pdf.js is bundled (pdfjs-dist, pinned in package.json) and served by the site itself: nothing loads from a CDN, so
+// the page's script policy can stay 'self'. The worker is its own hashed file, loaded as a module worker.
+import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 const MIN_SCALE = 0.25, MAX_SCALE = 5, STEP = 1.2, PAD = 16, MAX_PIXELS = 16_777_216, THUMB_WIDTH = 72;
 
 let pdfjsPromise = null;
-/** pdf.js, loaded on first use; its worker runs from a same-origin blob that imports the CDN module. */
+/** pdf.js, loaded on first use (its own chunk); its worker is the bundled worker file. */
 function loadPdfjs() {
-  pdfjsPromise ??= import(/* @vite-ignore */ `${PDFJS}/pdf.min.mjs`).then((lib) => {
-    const blob = new Blob([`import "${PDFJS}/pdf.worker.min.mjs";`], { type: "text/javascript" });
-    lib.GlobalWorkerOptions.workerPort = new Worker(URL.createObjectURL(blob), { type: "module" });
+  pdfjsPromise ??= import("pdfjs-dist/build/pdf.min.mjs").then((lib) => {
+    lib.GlobalWorkerOptions.workerSrc = workerUrl;
     return lib;
   });
   return pdfjsPromise;

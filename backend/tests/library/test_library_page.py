@@ -54,6 +54,7 @@ def _app(tmp_path):
     (dist / "assets").mkdir(parents=True)
     (dist / "index.html").write_text("<!doctype html><title>app</title>", encoding="utf-8")
     (dist / "assets" / "index-abc123.js").write_text("console.log(1)", encoding="utf-8")
+    (dist / "assets" / "pdf.worker.min-abc123.mjs").write_text("self.onmessage = null", encoding="utf-8")
     (dist / "mark.svg").write_text("<svg/>", encoding="utf-8")
     (tmp_path / "secret.txt").write_text("not served", encoding="utf-8")
     app = FastAPI()
@@ -74,6 +75,9 @@ def test_the_built_front_end_is_served_with_the_right_caching(tmp_path):
     asset = client.get("/assets/index-abc123.js")
     assert asset.text == "console.log(1)" and asset.headers["cache-control"] == LONG_CACHE["Cache-Control"]
     assert client.get("/mark.svg").headers["cache-control"] == NO_CACHE["Cache-Control"]
+    # scripts and the PDF viewer's module worker as JavaScript, whatever the machine guesses for .mjs (nosniff)
+    assert asset.headers["content-type"].startswith("text/javascript")
+    assert client.get("/assets/pdf.worker.min-abc123.mjs").headers["content-type"].startswith("text/javascript")
     # the app's own routes get the page; the API keeps its routes and its JSON 404s
     route = client.get("/documents")
     assert "<title>app</title>" in route.text and route.headers["cache-control"] == NO_CACHE["Cache-Control"]

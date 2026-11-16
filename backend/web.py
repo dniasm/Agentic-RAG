@@ -5,10 +5,12 @@ change under their name, so the browser keeps them a year. Any other path that i
 app's own route (/documents, /chat/<id>) and gets index.html. Without a build nothing is mounted (in development
 Vite serves the pages and proxies /api here).
 
-The page is sent with a Content-Security-Policy: scripts only from this site, pdf.js's CDN and the page's own inline
-theme script (allowed by its hash, read from the build), the PDF worker from a blob, styles and fonts from this site
-and Google Fonts, requests only to this site, and no framing. An injected script or a stray external image has
-nowhere to load from or send to.
+The page is sent with a Content-Security-Policy: scripts and workers only from this site (pdf.js is bundled, see
+frontend/src/lib/pdfViewer.js) and the page's own inline theme script (allowed by its hash, read from the build),
+styles and fonts from this site and Google Fonts, requests only to this site, and no framing. An injected script or a
+stray external image has nowhere to load from or send to. Script files are sent with an explicit JavaScript type: a
+module worker (pdf.worker.min.mjs) is refused under nosniff if the type is guessed wrong, and Windows takes its guess
+from the registry.
 """
 import base64
 import hashlib
@@ -21,7 +23,7 @@ from fastapi.responses import FileResponse
 DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 NO_CACHE = {"Cache-Control": "no-cache"}
 LONG_CACHE = {"Cache-Control": "public, max-age=31536000, immutable"}
-PDFJS_CDN = "https://cdn.jsdelivr.net"   # frontend/src/lib/pdfViewer.js loads pdf.js and its worker from here
+SCRIPT_TYPES = {".js": "text/javascript", ".mjs": "text/javascript"}
 _INLINE_SCRIPT = re.compile(r"<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>", re.S | re.I)
 
 
@@ -31,9 +33,8 @@ def content_security_policy(html: str) -> str:
                       for body in _INLINE_SCRIPT.findall(html))
     return "; ".join([
         "default-src 'self'",
-        f"script-src 'self' {hashes} {PDFJS_CDN}".replace("  ", " "),
-        # the PDF worker: a blob that imports pdf.js's worker module, and a module worker's imports are worker loads
-        f"worker-src 'self' blob: {PDFJS_CDN}",
+        f"script-src 'self' {hashes}".strip(),
+        "worker-src 'self'",   # the PDF viewer's worker, a file of this site
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",   # React, KaTeX and pdf.js set inline styles
         "font-src 'self' data: https://fonts.gstatic.com",
         "img-src 'self' data: blob:",
@@ -69,6 +70,7 @@ def mount_frontend(app: FastAPI, dist: Path = DIST) -> bool:
         file = _inside(dist, path) if path else None
         if file is None or file == index.resolve():
             return FileResponse(index, headers=page_headers)
-        return FileResponse(file, headers=LONG_CACHE if path.startswith("assets/") else NO_CACHE)
+        return FileResponse(file, headers=LONG_CACHE if path.startswith("assets/") else NO_CACHE,
+                            media_type=SCRIPT_TYPES.get(file.suffix.lower()))
 
     return True

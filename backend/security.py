@@ -5,7 +5,8 @@
     so a hostile name pointed at this machine gets nothing.
   * Origin (cross-site request forgery). The login is a cookie the browser sends by itself, so a change (POST, PUT,
     PATCH, DELETE) is refused (403) when the browser says it comes from another site: its Origin, else its Referer,
-    must be this site, a local address, or one of CORS_ORIGINS. A request with neither (curl, tests) is let through:
+    must be this site or one of CORS_ORIGINS, or, for a request made to a local address (development, the Vite proxy),
+    a local page. A request with neither (curl, tests) is let through:
     browsers always send Origin on a cross-site change.
   * API docs (/docs, /redoc, /openapi.json) only with API_DOCS=true (development): the public site doesn't describe
     its own API. Not decided by the Host header, which a visitor can set to anything.
@@ -76,9 +77,11 @@ def same_site(source: str, host: str) -> bool:
         return False
     parts = urlsplit(source)
     origin = f"{parts.scheme}://{parts.netloc}".lower()
-    if origin in _split(settings.cors_origins):
+    if origin in _split(settings.cors_origins) or parts.netloc.lower() == host.lower():
         return True
-    return parts.netloc.lower() == host.lower() or is_local(parts.netloc)
+    # a page on this machine or the home network (the Vite dev server) only for a request that came in locally too:
+    # its proxy sends Host 127.0.0.1:8000. On the public name, a LAN page (a router's admin page) is another site.
+    return is_local(parts.netloc) and is_local(host)
 
 
 def secure_cookie(host: str) -> bool:

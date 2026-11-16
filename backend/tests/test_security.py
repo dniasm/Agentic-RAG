@@ -55,6 +55,10 @@ def test_a_change_from_another_site_is_refused(client):
     # development: the Vite page (another port, a LAN address) through its proxy
     dev = {"host": "127.0.0.1:8000", "origin": "http://192.168.1.87:5173"}
     assert client.post("/api/thing", headers=dev).status_code == 200
+    # but on the public name, a page on the visitor's own machine or network is another site (Origin or Referer)
+    for page in ("http://192.168.1.1", "http://localhost:3000"):
+        assert client.post("/api/thing", headers={**public, "origin": page}).status_code == 403, page
+        assert client.post("/api/thing", headers={**public, "referer": page + "/admin"}).status_code == 403, page
     # reading is never refused for its Origin
     assert client.get("/api/thing", headers={**public, "origin": "https://evil.example.com"}).status_code == 200
 
@@ -89,16 +93,22 @@ def test_the_login_cookie_is_secure_on_the_public_name(library_docs_free_signup)
 
 @pytest.fixture
 def library_docs_free_signup(monkeypatch):
-    """Sign up through the real app at a given address (the first account needs no invite code)."""
+    """Sign up through the real app at a given address; the accounts are removed afterwards (the library's tests expect
+    to make the first account themselves)."""
     from backend.app import app
-    from backend.library import config
+    from backend.library import catalog, config
     monkeypatch.setattr(config, "SIGNUP_CODE", "let-me-in")
+    made = []
 
     def sign_up(base_url):
         c = TestClient(app, base_url=base_url)
-        return c.post("/api/auth/signup", json={"username": f"user_{uuid.uuid4().hex[:8]}", "password": "correct horse",
-                                                "invite": "let-me-in"})
-    return sign_up
+        made.append(f"user_{uuid.uuid4().hex[:8]}")
+        return c.post("/api/auth/signup", json={"username": made[-1], "password": "correct horse", "invite": "let-me-in"})
+    yield sign_up
+    with catalog.tx() as c:
+        for name in made:
+            c.execute("DELETE FROM auth_tokens WHERE user_id IN (SELECT id FROM users WHERE username = ?)", (name,))
+            c.execute("DELETE FROM users WHERE username = ?", (name,))
 
 
 def test_the_page_policy_allows_only_its_own_inline_script():
@@ -108,8 +118,19 @@ def test_the_page_policy_allows_only_its_own_inline_script():
     policy = content_security_policy(html)
     digest = base64.b64encode(hashlib.sha256(theme.encode()).digest()).decode()
     script_src = next(p for p in policy.split("; ") if p.startswith("script-src"))
-    assert script_src == f"script-src 'self' 'sha256-{digest}' https://cdn.jsdelivr.net"
+    assert script_src == f"script-src 'self' 'sha256-{digest}'"
     assert "'unsafe-inline'" not in script_src and "frame-ancestors 'none'" in policy
     assert "connect-src 'self'" in policy and "object-src 'none'" in policy
-    # the PDF viewer's worker (a blob importing pdf.js's worker module from the CDN): blocked without the CDN here
-    assert "worker-src 'self' blob: https://cdn.jsdelivr.net" in policy
+    # pdf.js and its worker are bundled: no CDN, and no blob workers
+    assert "worker-src 'self';" in policy + ";" and "jsdelivr" not in policy and "blob:" not in policy.split("img-src")[0]
+
+
+def test_the_build_has_the_pdf_worker_and_no_cdn():
+    """The real build: pdf.js's worker is one of its own files, and nothing in it loads pdf.js from a CDN."""
+    from backend.web import DIST
+    assets = DIST / "assets"
+    if not assets.is_dir():
+        pytest.skip("no frontend build (npm run build)")
+    assert list(assets.glob("pdf.worker*.mjs")), "the pdf.js worker isn't in the build"
+    for js in assets.glob("pdfViewer-*.js"):
+        assert "cdn.jsdelivr" not in js.read_text(encoding="utf-8", errors="ignore")
