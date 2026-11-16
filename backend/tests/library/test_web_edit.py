@@ -1,6 +1,6 @@
 """Editing on the website: "Edit selection" in the preview (POST /edit, the same edit as the chat's) and the whole-text
 editor for TXT / MD files (GET / PUT /text), each one undoable edit."""
-from backend.library import catalog, config, editing, library
+from backend.library import catalog, config, editing, library, pdf_edit
 
 
 def _text(doc):
@@ -149,3 +149,31 @@ def test_a_refusal_for_missing_letters_says_which(library_docs, signed_in, monke
     monkeypatch.setattr(editing, "edit", lacking)
     r = signed_in.post(f"/api/library/documents/{library_docs['svm.txt']['id']}/edit", json={"find": "a", "text": "jj"})
     assert r.status_code == 409 and r.json()["detail"]["missing"] == "j"
+
+
+# ---------------------------------------------------------------- converting a PDF: the text the preview shows
+def _pdf(lines):
+    import pymupdf
+    d = pymupdf.open()
+    page = d.new_page()
+    for i, line in enumerate(lines):
+        page.insert_text((72, 72 + 20 * i), line, fontname="helv", fontsize=11)
+    data = d.tobytes()
+    d.close()
+    return data
+
+
+def test_a_converted_pdf_takes_the_pdf_editors_text(monkeypatch):
+    doc = catalog.get_document(_ingest("job.pdf", _pdf(["Radiant InfoTech Nepal", "Apr 2025 to Jun 2025"]))["id"])
+    assert "Radiant InfoTech Nepal" in editing._conversion_text(doc)          # words whole (pypdf: "InfoT ech")
+    # the PDF editor's reading (ToUnicode: real dashes), not indexing's
+    monkeypatch.setattr(pdf_edit, "document_text", lambda path: "Apr 2025 – Jun 2025")
+    assert editing._conversion_text(doc) == "Apr 2025 – Jun 2025"
+    monkeypatch.setattr(pdf_edit, "document_text", lambda path: (_ for _ in ()).throw(ValueError("unreadable")))
+    assert "Radiant" in editing._conversion_text(doc)                         # unreadable for it: indexing's text
+
+
+def test_conversion_is_offered_only_when_it_would_find_the_passage():
+    doc = catalog.get_document(_ingest("offer.pdf", _pdf(["First line here", "Second line there"]))["id"])
+    assert editing._convertible(doc, "Second line there", loose=True)
+    assert not editing._convertible(doc, "a passage that is nowhere", loose=True)

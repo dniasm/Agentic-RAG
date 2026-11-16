@@ -48,10 +48,11 @@ class NeedsConversion(EditError):
     so a shorter wording may still fit. missing: the new text's letters the PDF's font has no copy of, so a wording
     without them may still fit."""
 
-    def __init__(self, message: str, too_long: bool = False, missing: str = ""):
+    def __init__(self, message: str, too_long: bool = False, missing: str = "", convertible: bool = True):
         super().__init__(message)
         self.too_long = too_long
         self.missing = missing
+        self.convertible = convertible   # the passage is in the text the PDF would become: converting can help
 
 
 def _pattern(find: str, ignore_case: bool = False) -> re.Pattern:
@@ -64,6 +65,13 @@ def _pattern(find: str, ignore_case: bool = False) -> re.Pattern:
 
 _LINE_END_HYPHEN = re.compile(r"(\w)-\s+(\w)")
 _MARKS = r"([*_`]{0,3})"
+_QUOTE_CLASSES = {"'": "['\u2018\u2019]", "\u2018": "['\u2018\u2019]", "\u2019": "['\u2018\u2019]",
+                  '"': '["\u201c\u201d]', "\u201c": '["\u201c\u201d]', "\u201d": '["\u201c\u201d]'}
+
+
+def _loose_word(word: str) -> str:
+    """A word as a pattern in which any kind of quote matches any other (a phone types I'm; the PDF may have I’m)."""
+    return "".join(_QUOTE_CLASSES.get(c) or re.escape(c) for c in word)
 
 
 def _loose_patterns(find: str, ext: str) -> list[re.Pattern]:
@@ -74,13 +82,11 @@ def _loose_patterns(find: str, ext: str) -> list[re.Pattern]:
     looked for in a .md file, where they are marks; elsewhere *, _ and ` are the text's own letters."""
     rejoined = _LINE_END_HYPHEN.sub(r"\1\2", find)          # "exam- ple" -> "example"
     hyphened = _LINE_END_HYPHEN.sub(r"\1-\2", find)         # "self- contained" -> "self-contained"
-    variants = list(dict.fromkeys([find, rejoined, hyphened]))
-    out = [_pattern(t, ignore_case=True) for t in variants if t != find]
+    variants = [t for t in dict.fromkeys([find, rejoined, hyphened]) if t.split()]
+    out = [re.compile(r"\s+".join(_loose_word(w) for w in t.split()), re.IGNORECASE) for t in variants]
     if ext == ".md":
-        for text in variants:
-            words = text.split()
-            if words:   # each word's surrounding marks captured: _marks_balanced checks them
-                out.append(re.compile(r"\s+".join(_MARKS + re.escape(w) + _MARKS for w in words), re.IGNORECASE))
+        for text in variants:   # each word's surrounding marks captured: _marks_balanced checks them
+            out.append(re.compile(r"\s+".join(_MARKS + _loose_word(w) + _MARKS for w in text.split()), re.IGNORECASE))
     return out
 
 
@@ -266,6 +272,35 @@ _PLAIN_LETTERS = str.maketrans({"\u2010": "-", "\u2011": "-", "\u2012": "-", "\u
                                 "\u2009": " "})
 
 
+# The keyboard's quotes, for a font that has only the typographic ones (TeX's Computer Modern draws ' as ’): an opening
+# one at a word start (after the start, a space, an opening bracket or a dash), a closing one elsewhere.
+_CURLY = {"'": ("\u2018", "\u2019"), '"': ("\u201c", "\u201d")}
+_WORD_START = "\\s([{\u2013\u2014-"
+
+
+def curly_quotes(text: str, letters: str) -> str:
+    """`text` with each of `letters` (' and/or ") as the typographic quote its place calls for."""
+    for plain in letters:
+        opening, closing = _CURLY[plain]
+        text = re.sub(f"(^|(?<=[{_WORD_START}])){re.escape(plain)}", opening, text)
+        text = text.replace(plain, closing)
+    return text
+
+
+# Hard-to-see letters, named in messages ("the apostrophe (')") instead of quoted bare.
+_LETTER_NAMES = {"'": "the apostrophe (')", '"': 'the straight quote (")', "\u2019": "the curly apostrophe (\u2019)",
+                 "\u2018": "the opening quote (\u2018)", "\u201c": "the opening quote (\u201c)",
+                 "\u201d": "the closing quote (\u201d)", "-": "the hyphen (-)", "\u2013": "the dash (\u2013)",
+                 "\u2014": "the long dash (\u2014)", ".": "the full stop (.)", ",": "the comma (,)"}
+
+
+def letter_names(letters: str) -> str:
+    """ "j'" -> '"j" and the apostrophe (\')' for a message."""
+    plain = "".join(c for c in letters if c not in _LETTER_NAMES)
+    parts = ([f'"{plain}"'] if plain else []) + [_LETTER_NAMES[c] for c in letters if c in _LETTER_NAMES]
+    return " and ".join(parts)
+
+
 _MD_HEADING_MARK = re.compile(r"^[ \t]{0,3}#{1,6}[ \t]+", re.M)
 _MD_EMPHASIS = re.compile(r"(\*\*|__)(?=\S)(.+?)(?<=\S)\1|`([^`\n]+)`")
 
@@ -281,8 +316,12 @@ def without_markdown(text: str) -> tuple[str, bool]:
 
 def _pdf_replace(path: Path, tmp: Path, pattern: re.Pattern, text: str, replace_all: bool, info: dict | None):
     """pdf_edit.replace. Where the PDF's font has no copy of a typographic dash, quote or space in the text, only
-    those letters become their keyboard ones (listed in info["plain_letters"]); any other refusal stands."""
-    swapped: set[str] = set()
+    those letters become their keyboard ones (listed in info["plain_letters"]); where it has no keyboard quote (TeX's
+    fonts draw ' as ’), those become typographic ones (info["curly_letters"]). Each letter is swapped once: a font
+    lacking both kinds gets the refusal; any other refusal stands."""
+    swapped: set[str] = set()     # letters swapped for a plain one
+    curled: set[str] = set()      # keyboard quotes swapped for typographic ones
+    produced: set[str] = set()    # letters the swaps wrote: missing as well, nothing is left to try
     text, removed = without_markdown(text)
     if removed and info is not None:
         info["markdown_removed"] = True
@@ -291,14 +330,28 @@ def _pdf_replace(path: Path, tmp: Path, pattern: re.Pattern, text: str, replace_
             out = pdf_edit.replace(path, tmp, pattern, text, replace_all, info)
         except pdf_edit.MissingLetters as e:
             lacking = {c for c in e.missing if c in text}
-            if not lacking or any(ord(c) not in _PLAIN_LETTERS for c in lacking):
+            if not lacking or lacking & produced:
                 raise
-            swapped |= lacking
-            text = text.translate({ord(c): _PLAIN_LETTERS[ord(c)] for c in lacking})
-            log.info("Edit of %s: its font lacks %r; using plain letters for them", path.name, "".join(sorted(lacking)))
+            to_curl = {c for c in lacking if c in _CURLY and c not in curled}
+            to_plain = {c for c in lacking - to_curl if ord(c) in _PLAIN_LETTERS and c not in swapped}
+            if lacking - to_curl - to_plain:
+                raise
+            if to_plain:
+                swapped |= to_plain
+                produced |= {_PLAIN_LETTERS[ord(c)] for c in to_plain}
+                text = text.translate({ord(c): _PLAIN_LETTERS[ord(c)] for c in to_plain})
+            if to_curl:
+                curled |= to_curl
+                produced |= {q for c in to_curl for q in _CURLY[c]}
+                text = curly_quotes(text, "".join(sorted(to_curl)))
+            log.info("Edit of %s: its font lacks %r; swapped for the kind it has", path.name, "".join(sorted(lacking)))
             continue
         if info is not None and swapped:
             info["plain_letters"] = "".join(sorted(swapped))
+        if info is not None and curled:
+            info["curly_letters"] = "".join(sorted(curled))
+        if info is not None:
+            info["written_text"] = text   # as saved: the history line shows what is in the document
         return (*out, text)
     raise pdf_edit.CantKeepLayout("The PDF's fonts lack too many of the new text's letters.")
 
@@ -629,12 +682,40 @@ def _drop_redo_history(doc_id: str) -> None:
 
 def _pdf_to_markdown(doc: dict) -> dict:
     """Write the PDF's text as a Markdown file beside it. Returns the document record pointing at that file."""
-    pages, _ = ingestion.load_file(config.LIBRARY_DIR / doc["file_name"])
-    if not pages:
-        raise EditError("This PDF has no extractable text (it is probably scanned images), so it can't be converted.")
+    text = _conversion_text(doc)
     name = library.stored_name(doc["owner"], doc["title"], ".md", exclude_doc=doc)
-    (config.LIBRARY_DIR / name).write_text("\n\n".join(p.page_content for p in pages), encoding="utf-8")
+    (config.LIBRARY_DIR / name).write_text(text, encoding="utf-8")
     return {**doc, "ext": ".md", "file_name": name}
+
+
+def _conversion_text(doc: dict) -> str:
+    """The text a PDF becomes when converted: what the PDF editor reads (its ToUnicode map: real dashes, words whole,
+    the text the preview selects), else what indexing read (pypdf) for a PDF the editor can't read."""
+    path = config.LIBRARY_DIR / doc["file_name"]
+    try:
+        text = pdf_edit.document_text(path)
+    except Exception:
+        text = ""
+    if not text.strip():
+        try:
+            pages, _ = ingestion.load_file(path)
+        except Exception:
+            pages = []
+        text = "\n\n".join(p.page_content for p in pages)
+    if not text.strip():
+        raise EditError("This PDF has no extractable text (it is probably scanned images), so it can't be converted.")
+    return text
+
+
+def _convertible(doc: dict, find: str, loose: bool) -> bool:
+    """Would converting the PDF let this edit go through, i.e. is `find` in the text it becomes? Matched as the edit
+    would match it in a PDF (no Markdown marks: in a PDF's text * and _ are letters)."""
+    try:
+        text = _conversion_text(doc)
+    except EditError:
+        return False
+    patterns = [_pattern(find), _pattern(find, ignore_case=True)] + (_loose_patterns(find, ".pdf") if loose else [])
+    return any(p.search(text) for p in patterns)
 
 
 def edit(doc_id: str, op: str, *, find: str = "", text: str = "", replace_all: bool = False,
@@ -676,7 +757,9 @@ def _edit_locked(doc_id: str, op: str, *, find: str = "", text: str = "", replac
         missing = "".join(c for c in getattr(e, "missing", "") if c in text and not c.isspace())
         event("pdf_edit_refused", doc=doc_id, title=doc["title"], reason=reason)
     if not convert_pdf:
-        raise NeedsConversion(reason, too_long, missing)
+        # offered only if the passage is in the text the PDF would become: else converting ends in "not found"
+        convertible = op != "replace" or too_long or _convertible(doc, find, loose)
+        raise NeedsConversion(reason, too_long, missing, convertible)
     markdown = _pdf_to_markdown(doc)
     try:
         result = _edit(doc, markdown, op, find, text, replace_all, loose)
@@ -717,7 +800,7 @@ def _edit(source: dict, doc: dict, op: str, find: str, text: str, replace_all: b
             pattern = _pattern(find, ignore_case=True)
             found, contexts = _count_matches(doc, pattern)
         unbalanced = False
-        for candidate in (_loose_patterns(find, doc["ext"]) if loose and not found else []):
+        for candidate in (_loose_patterns(find, source["ext"]) if loose and not found else []):
             matches = _matches(doc, candidate)
             if matches and not all(_marks_balanced(m) for m in matches):
                 unbalanced = True   # it would take half of a bold / italic / code pair with it
@@ -768,7 +851,8 @@ def _edit(source: dict, doc: dict, op: str, find: str, text: str, replace_all: b
         (config.LIBRARY_DIR / source["file_name"]).unlink(missing_ok=True)
         reloaded = {**reloaded, "pages": source["pages"] or reloaded["pages"]}
     refreshed = _finish(doc, reloaded, before)
-    detail = (f'replaced "{find}" with "{text}"' if op == "replace" else
+    written = info.get("written_text", text)
+    detail = (f'replaced "{find}" with "{written}"' if op == "replace" else
               "edited the text in the editor" if op == "rewrite" else f'appended "{text[:80]}"')[:300]
     if converted:
         detail = ("converted the PDF to Markdown; " + detail)[:300]
@@ -781,6 +865,7 @@ def _edit(source: dict, doc: dict, op: str, find: str, text: str, replace_all: b
             "chunks_embedded": reloaded["embedded"], "title": doc["title"], "previews": previews, "converted": converted,
             "layout": info.get("layout"),
             **({"plain_letters": info["plain_letters"]} if info.get("plain_letters") else {}),
+            **({"curly_letters": info["curly_letters"]} if info.get("curly_letters") else {}),
             **({"stand_in": info["stand_in"]} if info.get("stand_in") else {}),
             **{k: info[k] for k in ("added_lines", "new_pages", "page_numbers_kept", "markdown_removed")
                if info.get(k)}}

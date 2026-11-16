@@ -146,7 +146,8 @@ def edit_document(doc_id: str, body: EditIn, user: dict = Depends(current_user))
                               convert_pdf=body.convert_pdf, loose=True)   # text as selected in the preview
     except editing.NeedsConversion as e:   # missing: the font's lacking letters (a wording without them may fit)
         raise HTTPException(409, {"message": str(e), "needs_conversion": True, "too_long": e.too_long,
-                                  "missing": e.missing}) from e
+                                  "missing": e.missing, "missing_names": editing.letter_names(e.missing),
+                                  "convertible": e.convertible}) from e
     except editing.EditError as e:
         raise HTTPException(400, str(e)) from e
     if result["status"] == "ambiguous":

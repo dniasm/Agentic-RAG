@@ -292,10 +292,14 @@ def _edit(args: dict, guard: Guard, actions: list) -> dict:
                     "next": f"The old passage is {old} characters, the new text {new}. If you wrote the new text, "
                             f"write it again in at most {old} characters and call edit_document again. If the user "
                             "wrote it, ask them for a shorter version."}
+        if not e.convertible:   # converting wouldn't find the passage either: no question, a smaller passage instead
+            return {"status": "error", "error": str(e),
+                    "next": "Converting the PDF wouldn't help here, so don't offer it. Change one paragraph or line "
+                            "at a time, quoting exactly that part."}
         guard.ask_confirmation(doc_id, PDF_CONVERSION, "pdf_conversion")
         if e.missing:   # not a fixed question: the agent gets another step to reword its own text
             return {"status": "letters_missing", "document": doc["title"], "why": str(e), "next": (
-                f"The PDF's font has no \"{e.missing}\". If you wrote the new text, write it again without those "
+                f"The PDF's font has no {editing.letter_names(e.missing)}. If you wrote the new text, write it again without those "
                 "letters (other words, same meaning) and call edit_document again; don't ask the user. If the user "
                 "wrote it, ask whether to convert the PDF to a Markdown copy (layout and images lost; undo restores "
                 "it); if they agree, call edit_document again with convert_pdf=true.")}
@@ -672,6 +676,9 @@ def compose_reply(results: list[dict]) -> str:
             if r.get("plain_letters"):   # the user's text was altered: say so
                 shown = " ".join(f"\u201c{c}\u201d" for c in r["plain_letters"])
                 lines.append(f"The document's font has no {shown}, so the keyboard version was used.")
+            if r.get("curly_letters"):   # the other way: the font has only typographic quotes (TeX's)
+                lines.append(f"The document's font has no {editing.letter_names(r['curly_letters'])}, so the "
+                             "typographic quote was used.")
             if r.get("new_pages"):            # the document got longer: say so
                 pages = ", ".join(str(p) for p in r["new_pages"])
                 lines.append(f'The text grew by {r.get("added_lines", 0)} line(s); what no longer fit on its page '

@@ -118,3 +118,54 @@ def test_the_agent_rewords_its_own_text_without_the_missing_letters(library_docs
     out = agent.run_tool("edit_document", {"doc_id": doc["id"], "operation": "replace", "find": "x",
                                            "text": "a glad task"}, guard, [])
     assert out["status"] == "edited" and guard.pending == []   # the rewording went through: nothing left to ask
+
+
+# ---------------------------------------------------------------- a font with only typographic quotes (TeX's CMR10)
+def test_quotes_become_typographic_where_they_open_or_close():
+    assert editing.curly_quotes("I'm 'here' (and 'there') —'odd'", "'") == \
+        "I’m ‘here’ (and ‘there’) —‘odd’"
+    assert editing.curly_quotes('He said "yes" and "no"', '"') == "He said “yes” and “no”"
+
+
+def test_a_font_without_the_keyboard_apostrophe_gets_the_curly_one(monkeypatch, tmp_path):
+    seen = []
+
+    def replace(path, tmp, pattern, text, replace_all, info):
+        seen.append(text)
+        if "'" in text:
+            raise _missing("'")
+        return 1, [(0, 3)], "old text"
+
+    monkeypatch.setattr(pdf_edit, "replace", replace)
+    info = {}
+    out = editing._pdf_replace(tmp_path / "a.pdf", tmp_path / "b.pdf", None, "I'm an ambitious student", False, info)
+    assert out[-1] == "I’m an ambitious student" and info["curly_letters"] == "'"
+    assert info["written_text"] == "I’m an ambitious student" and len(seen) == 2
+
+
+def test_a_font_lacking_both_kinds_is_refused_not_retried(monkeypatch, tmp_path):
+    calls = []
+
+    def replace(path, tmp, pattern, text, replace_all, info):
+        calls.append(text)
+        lacking = "".join(c for c in "'‘’" if c in text)
+        if lacking:
+            raise _missing(lacking)
+        return 1, [(0, 3)], "x"
+
+    monkeypatch.setattr(pdf_edit, "replace", replace)
+    with pytest.raises(pdf_edit.MissingLetters):
+        editing._pdf_replace(tmp_path / "a.pdf", tmp_path / "b.pdf", None, "I'm here", False, {})
+    assert len(calls) == 2   # once as typed, once with ’: then the refusal, no ping-pong back to '
+
+
+def test_hard_to_see_letters_are_named():
+    assert editing.letter_names("'") == "the apostrophe (')"
+    assert editing.letter_names("j'") == '"j" and the apostrophe (\')'
+
+
+def test_a_typed_apostrophe_finds_the_curly_one_on_the_website(tmp_path):
+    from backend.library import library
+    doc, _ = library.add_file("curly.txt", "I’m an ambitious student.\n".encode("utf-8"))
+    doc = library.process(doc["id"])
+    assert editing.edit(doc["id"], "replace", find="I'm an ambitious", text="I am a driven", loose=True)["status"] == "edited"
