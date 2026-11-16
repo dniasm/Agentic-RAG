@@ -143,6 +143,12 @@ class Settings(BaseSettings):
     # "laptop.tailnet.ts.net" or "*.ts.net"; any other Host header is refused.
     allowed_hosts: str = "*.ts.net"
     api_docs: bool = False   # /docs, /redoc and /openapi.json: development only
+    # Chat messages per account (backend/chat_limits.py; 0 turns a window off). The model quota is shared: Groq allows
+    # about 200k tokens a day per key for the 120B, about 800k with four keys, and a message costs about 4.3k tokens,
+    # so about 185 messages a day for everyone; a day's cap of 60 keeps one account to a third of that.
+    chat_limit_window_seconds: int = 300
+    chat_limit_per_window: int = 15
+    chat_limit_per_day: int = 60
 
     # --- Document library (backend/library) ---
     library_data_dir: str = str(BACKEND_DIR / "data")   # library/<user_id>/, versions/, logs/, catalog

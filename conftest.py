@@ -30,6 +30,13 @@ security.LOCAL_NAMES.add("testserver")
 
 
 @pytest.fixture(autouse=True)
+def _fresh_chat_allowance():
+    """Each test starts with every account's chat allowance unused (the counts live in memory, process-wide)."""
+    from backend import chat_limits
+    chat_limits.allowance._sent.clear()
+
+
+@pytest.fixture(autouse=True)
 def _no_font_downloads(monkeypatch):
     """Tests never download fonts: a test that wants one replaces font_fetch._download itself."""
     from backend.library import font_fetch

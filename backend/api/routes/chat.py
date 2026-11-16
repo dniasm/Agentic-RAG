@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
+from backend import chat_limits
 from backend.api.dependencies import get_current_user
 from backend.config.settings import settings
 from backend.config.usage import UsageTracker, record as record_usage
@@ -386,20 +387,37 @@ def _changes_in(answer: dict | None) -> list[str]:
     return out
 
 
-@contextmanager
-def _turn(conv_id: str | None):
-    lock = _conversation_lock(conv_id)
-    _take(lock)
+def _allow(user_id: str) -> float:
+    """One message from the account's allowance (backend/chat_limits.py), before anything starts: 429 when over it."""
     try:
-        yield
+        return chat_limits.allowance.reserve(user_id)
+    except chat_limits.ChatLimited as e:
+        raise HTTPException(status_code=429, detail=e.message(), headers={"Retry-After": str(e.retry_after)}) from None
+
+
+@contextmanager
+def _turn(conv_id: str | None, user_id: str):
+    token = _allow(user_id)
+    lock = _conversation_lock(conv_id)
+    try:
+        _take(lock)
+    except BaseException:
+        chat_limits.allowance.refund(user_id, token)   # another message is still running here: this one didn't start
+        raise
+    try:
+        yield token
     finally:
         lock.release()
 
 
 @router.post("/chat", response_model=ChatResponse)
 def chat(req: ChatRequest, user: dict = Depends(get_current_user)):
-    with _turn(req.conversation_id):
-        conv, history, memories, doc_names, context = _prepare(req, user)
+    with _turn(req.conversation_id, user["id"]) as token:
+        try:
+            conv, history, memories, doc_names, context = _prepare(req, user)
+        except BaseException:
+            chat_limits.allowance.refund(user["id"], token)   # refused before a run started
+            raise
         started = time.perf_counter()
         tracker = UsageTracker()
 
@@ -422,12 +440,18 @@ def chat(req: ChatRequest, user: dict = Depends(get_current_user)):
 @router.post("/chat/stream")
 def chat_stream(req: ChatRequest, user: dict = Depends(get_current_user)):
     """Stream metadata, status, trace steps, answer drafts, and final result."""
+    token = _allow(user["id"])   # before the stream opens and before the chat's lock
     lock = _conversation_lock(req.conversation_id)
-    _take(lock)   # released by the worker thread when the answer is saved
+    try:
+        _take(lock)   # released by the worker thread when the answer is saved
+    except BaseException:
+        chat_limits.allowance.refund(user["id"], token)
+        raise
     try:
         conv, history, memories, doc_names, context = _prepare(req, user)
     except BaseException:
         lock.release()
+        chat_limits.allowance.refund(user["id"], token)
         raise
     started = time.perf_counter()
     tracker = UsageTracker()
