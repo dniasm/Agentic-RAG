@@ -342,18 +342,50 @@ def test_what_no_longer_fits_on_a_full_page_moves_to_a_new_page(stacked_pdf, tmp
     assert baseline < 120                                                    # at the top of the body, not at 705
 
 
-def test_a_paragraph_that_would_run_past_its_page_is_refused(tmp_path):
+def _low_paragraph(tmp_path, footer=True):
+    """Two pages; on the first a justified paragraph near the bottom, a line below it, and a "Page n of 2" footer."""
     d = pymupdf.open()
-    page = d.new_page(width=612, height=792)
-    write(page, 72, 100, "A first line near the top of the page.")
-    words = (PARAGRAPH[0] + " " + PARAGRAPH[1]).split()
-    justified(page, 690, words[:15], 72, 540)
-    justified(page, 704, words[15:], 72, 540)
-    write(page, 72, 718, "and that is all.")
+    for n in range(2):
+        page = d.new_page(width=612, height=792)
+        if footer:
+            write(page, 72, 760, f"Page {n + 1} of 2", 9)
+        if n:
+            write(page, 72, 735, "The second page reaches lower down.")
+            continue
+        write(page, 72, 100, "A first line near the top of the page.")
+        words = (PARAGRAPH[0] + " " + PARAGRAPH[1]).split()
+        justified(page, 690, words[:15], 72, 540)
+        justified(page, 704, words[15:], 72, 540)
+        write(page, 72, 718, "and that is all.")
+        write(page, 72, 735, "A closing line under the paragraph.")
     src = tmp_path / "low.pdf"
     d.save(str(src))
-    with pytest.raises(pdf_edit.NoRoom, match="past the bottom of its page"):
-        edited(src, "and that is all.", "and that is all, " + "with many more words added to it " * 12)
+    return src
+
+
+def test_a_paragraph_that_runs_past_its_page_goes_on_at_the_top_of_a_new_page(tmp_path):
+    src, out, info = _low_paragraph(tmp_path), tmp_path / "split.pdf", {}
+    more = "with many more words added to it " * 12
+    pdf_edit.replace(src, out, re.compile(r"and that is all\."), "and that is all, " + more.strip() + ".", False,
+                     info)
+    assert info["layout"] == "new_page" and info["new_pages"] == [2]
+    with pymupdf.open(str(out)) as doc:
+        assert len(doc) == 3
+        first, second = (" ".join(doc[n].get_text().split()) for n in (0, 1))
+        assert "A closing line under the paragraph." not in first and "Page 1 of 3" in first
+        assert second.endswith("A closing line under the paragraph. Page 2 of 3")       # after the paragraph
+        assert "Page 3 of 3" in doc[2].get_text()
+    words = pdf_edit.document_text(out).split()
+    assert " ".join(words).count("with many more words added to it") == 12           # every word once, in order
+    on_first = lines_of(out, 0)
+    assert max(b for *_, b, _t in on_first if _t != "Page 1 of 3") <= 735 + 0.5         # the page's body stays in
+    assert lines_of(out, 1)[0][2] < 120                                                 # goes on at the top
+
+
+def test_more_than_a_new_page_of_text_is_still_refused(tmp_path):
+    src = _low_paragraph(tmp_path, footer=False)
+    with pytest.raises(pdf_edit.NoRoom, match="more than a page"):
+        edited(src, "and that is all.", "and that is all, " + "with many more words added to it " * 150)
 
 
 def test_a_failed_check_leaves_no_file(layout_pdf, monkeypatch):
@@ -432,8 +464,8 @@ def test_a_stray_mark_outside_the_edit_is_refused(stacked_pdf, monkeypatch):
 def test_what_moved_must_look_as_it_did(stacked_pdf, monkeypatch):
     real = pdf_edit._draw_region
 
-    def drawn_a_bit_off(page, shift, original, links):
-        real(page, pdf_edit._Shift(shift.region, shift.dy + 0.8), original, links)
+    def drawn_a_bit_off(page, shift, original, links, own_fonts=True):
+        real(page, pdf_edit._Shift(shift.region, shift.dy + 0.8), original, links, own_fonts)
     monkeypatch.setattr(pdf_edit, "_draw_region", drawn_a_bit_off)
     with pytest.raises(pdf_edit.CantKeepLayout, match="Checking the edited page failed"):
         edited(stacked_pdf, "and that is all.", LONGER)

@@ -684,7 +684,14 @@ class PdfText:
         return self._sentence_space
 
     def natural_space(self, style: Style) -> float:
-        """The usual gap between words in this font and size, from lines that aren't stretched to a width."""
+        """The usual gap between words in this font and size, from lines that aren't stretched to a width. Kept per
+        style: the line breaker asks for it at every gap it tries."""
+        cache = self.__dict__.setdefault("_natural_spaces", {})
+        if style not in cache:
+            cache[style] = self._natural_space(style)
+        return cache[style]
+
+    def _natural_space(self, style: Style) -> float:
         def gaps(only_unjustified: bool):
             for seg in self.segments:
                 if seg.locked or (only_unjustified and seg.align == "justify"):
@@ -920,6 +927,19 @@ class _Shift:
     chrome_bands: list = field(default_factory=list)
     chrome_skip: list = field(default_factory=list)
     chrome_write: list = field(default_factory=list)
+    # a paragraph that runs past the page goes on at the top of the new page: its lines there (`split`, letters
+    # placed on the new page), where the first of them sits, and (for the text check) its span and those lines' text
+    split: list = field(default_factory=list)
+    split_base: float = 0.0
+    body_top: float = 0.0
+    page: int = 0
+    para_span: tuple = (0, 0)
+    split_text: str = ""
+    split_own: list = field(default_factory=list)   # of `split`, the letters written in the document's own fonts
+
+    @property
+    def adds_page(self) -> bool:
+        return self.overflow is not None or bool(self.split)
 
 
 def _repeated(pdf: PdfText) -> set[int]:
@@ -943,10 +963,15 @@ def _body_bottom_limit(pdf: PdfText) -> float:
     return pdf.doc[0].rect.height - min(s.top for s in body)
 
 
-def _push(pdf: PdfText, para: list[Segment], left: float, right: float, dy: float) -> _Shift | None:
+def _push(pdf: PdfText, para: list[Segment], left: float, right: float, dy: float,
+          split: tuple[int, float, float] | None = None) -> _Shift | None:
     """Make room for a paragraph that grew (dy > 0) or close the gap of one that shrank (dy < 0) by moving
     everything below it on the page, as a word processor would. None when nothing is below it.
-    CantKeepLayout when that can't be done without changing the rest of the page."""
+    CantKeepLayout when that can't be done without changing the rest of the page.
+
+    split = (lines, ascent, step): the paragraph runs past the page and goes on with that many lines at the top of
+    a new page; everything below it goes there too, after those lines, as far below them as it was below the
+    paragraph's last line."""
     n = para[0].page
     page = pdf.doc[n]
     width = page.rect.width
@@ -972,14 +997,25 @@ def _push(pdf: PdfText, para: list[Segment], left: float, right: float, dy: floa
               and r.x1 > body_left and r.x0 < body_right]
     lowest = max([s.bottom for s in below] + [r.y1 for r in inside] + [bottom])
     limit = _body_bottom_limit(pdf)
-    if dy > 0 and bottom + dy > limit + 0.5:
+    body_top = min(s.top for s in pdf.segments if s.page == n and id(s) not in repeated)
+    cut = None
+    if split is not None:
+        lines_on, ascent, step = split
+        split_base = body_top + ascent
+        off = split_base + step * (lines_on - 1) - para[-1].baseline   # the paragraph's last line, there
+        if lowest + off > limit + 0.5:
+            raise NoRoom("The new text would push more than a page onto new pages; a shorter wording may fit.")
+        if lowest <= bottom:
+            return _Shift(pymupdf.Rect(0, bottom, width, bottom), 0.0, split_base=split_base, body_top=body_top,
+                          page=n)
+        cut = bottom + 0.05                # all of what is below goes
+    elif dy > 0 and bottom + dy > limit + 0.5:
         raise NoRoom("The paragraph would run past the bottom of its page, so it can't take that much more text "
                      "there; a shorter wording may fit.")
     if lowest <= bottom:
         return None
     # what is below doesn't fit any more: the part that doesn't goes to a new page after this one
-    cut = None
-    if dy > 0 and lowest + dy > limit + 0.5:
+    if split is None and dy > 0 and lowest + dy > limit + 0.5:
         units = [(s.top, s.bottom) for s in below] + [(r.y0, r.y1) for r in inside]
         cut = _overflow_cut(units, bottom, dy, limit)
         body_top = min(s.top for s in pdf.segments if s.page == n and id(s) not in repeated)
@@ -1015,7 +1051,11 @@ def _push(pdf: PdfText, para: list[Segment], left: float, right: float, dy: floa
             raise CantKeepLayout("The page has annotations or form fields below the paragraph, which can't be moved.")
     if overflow is None:
         return _Shift(region, dy)
-    return _Shift(region, dy, overflow, body_top, [s for s in below if s.top >= overflow.y0 - 0.01])
+    moved_out = [s for s in below if s.top >= overflow.y0 - 0.01]
+    if split is not None:                   # below the paragraph's last line on the new page, as it was here
+        return _Shift(region, 0.0, overflow, overflow.y0 + off, moved_out, split_base=split_base,
+                      body_top=body_top, page=n)
+    return _Shift(region, dy, overflow, body_top, moved_out, body_top=body_top, page=n)
 
 
 def _overflow_cut(units: list[tuple[float, float]], bottom: float, dy: float, limit: float) -> float:
@@ -1347,44 +1387,55 @@ def _plan_paragraph(pdf: PdfText, para: list[Segment], ranges: list[tuple[int, i
         inf = float("inf")
         # Every line past the paragraph's old ones is alike (same left edge, nothing to come back in step with), so
         # they share one state: the search stays as small as the paragraph, however many lines it grows by. How
-        # much more the page can take is _push's to decide.
-        def best(i: int, t: int) -> tuple[float, tuple]:
-            return _best(i, min(t, len(lines)))
+        # much more the page can take is _push's to decide. Filled from the paragraph's end backwards (no
+        # recursion: a paragraph that grows by a page has hundreds of lines).
+        top_t = len(lines)
+        best_cost: dict[tuple[int, int], float] = {}
+        best_next: dict[tuple[int, int], object] = {}     # the next break, or "in step" (the rest stays as it is)
+        for i in range(n, -1, -1):
+            for t in range(top_t, -1, -1):
+                if i == n:
+                    best_cost[i, t], best_next[i, t] = 0.0, None
+                    continue
+                if in_step(i, t):
+                    best_cost[i, t], best_next[i, t] = 0.0, "in step"
+                    continue
+                found, nxt = inf, None
+                lead = line_start(t, i)[0]
+                for j in range(i + lead, n + 1):
+                    if not fits(t, i, j, SHRINK if j < n or runs_on else 1.0):
+                        break
+                    last_line = j == n and not runs_on
+                    gaps = line_gaps(t, i, j)
+                    if last_line:
+                        cost = 0.0
+                    elif not gaps:
+                        cost = 5000.0            # a lone word stretched across: only when nothing else works
+                    else:
+                        f = (right - natural_end(t, i, j, 0.0)) / sum(gaps)
+                        if f < lo - 0.01 or f > 1.6 * hi:
+                            continue
+                        cost = 100 * ((f - target) / target) ** 2
+                        if f > hi:               # looser than the paragraph's loosest line: only when nothing
+                            cost += 500          # fits better
+                    if broken(j):
+                        cost += 40 + (60 if i and broken(i) else 0)    # a broken word; two lines running: worse
+                    if t >= len(lines):
+                        cost += 1000             # a line more than before
+                    total_cost = cost + best_cost[j, min(t + 1, top_t)]
+                    if total_cost < found:
+                        found, nxt = total_cost, j
+                best_cost[i, t], best_next[i, t] = found, nxt
 
-        @functools.lru_cache(maxsize=None)
-        def _best(i: int, t: int) -> tuple[float, tuple]:
-            if i == n:
-                return 0.0, ()
-            if in_step(i, t):
-                return 0.0, ("in step",)
-            found = (inf, ())
-            lead = line_start(t, i)[0]
-            for j in range(i + lead, n + 1):
-                if not fits(t, i, j, SHRINK if j < n or runs_on else 1.0):
-                    break
-                last_line = j == n and not runs_on
-                gaps = line_gaps(t, i, j)
-                if last_line:
-                    cost = 0.0
-                elif not gaps:
-                    cost = 5000.0                # a lone word stretched across: only when nothing else works
-                else:
-                    f = (right - natural_end(t, i, j, 0.0)) / sum(gaps)
-                    if f < lo - 0.01 or f > 1.6 * hi:
-                        continue
-                    cost = 100 * ((f - target) / target) ** 2
-                    if f > hi:                   # looser than the paragraph's loosest line: only when nothing
-                        cost += 500              # fits better
-                if broken(j):
-                    cost += 40 + (60 if i and broken(i) else 0)    # a broken word; two lines running: worse
-                if t >= len(lines):
-                    cost += 1000                 # a line more than before
-                rest, plan_ = best(j, t + 1)
-                if cost + rest < found[0]:
-                    found = (cost + rest, ((i, j),) + plan_)
-            return found
-
-        cost, chosen = best(0, 0)
+        cost, chosen = best_cost[0, 0], []
+        i, t = 0, 0
+        while cost < inf and i < n:
+            nxt = best_next[i, t]
+            if nxt == "in step":
+                chosen.append("in step")
+                break
+            chosen.append((i, nxt))
+            i, t = nxt, min(t + 1, top_t)
         if cost == inf:
             raise CantKeepLayout("Re-wrapped, the paragraph's lines can't all be set as tightly or loosely as the "
                                  "rest of it.")
@@ -1413,9 +1464,20 @@ def _plan_paragraph(pdf: PdfText, para: list[Segment], ranges: list[tuple[int, i
         raise CantKeepLayout("The paragraph carries on to the next page, so its lines can't be re-wrapped here.")
     shift = None
     left = min(line_left(t) for t in range(max(total, len(lines))))
+    keep = None                    # when the paragraph runs past its page: how many of its new lines stay there
     if total > len(lines):
-        if not _room_below(pdf, para, left, right, lines[-1].bottom + 0.1,
-                           line_base(total - 1) + 0.35 * para[-1].size + 0.5 * step):
+        descent = para[-1].bottom - para[-1].baseline
+        limit = _body_bottom_limit(pdf)
+        if converged is None and line_base(len(out_lines) - 1) + descent > limit + 0.5:
+            keep = sum(1 for t in range(len(out_lines)) if line_base(t) + descent <= limit + 0.5)
+            if keep < 1:
+                raise NoRoom("The paragraph's page has no room for its first changed line; a shorter wording may fit.")
+            if out_lines[keep - 1][-1][3]:
+                raise CantKeepLayout("Re-wrapped, the paragraph would break a word across the page break.")
+            ascent = lines[0].baseline - lines[0].top
+            shift = _push(pdf, para, left, right, 0.0, split=(len(out_lines) - keep, ascent, step))
+        elif not _room_below(pdf, para, left, right, lines[-1].bottom + 0.1,
+                             line_base(total - 1) + 0.35 * para[-1].size + 0.5 * step):
             shift = _push(pdf, para, left, right, step * (total - len(lines)))
     elif total < len(lines):
         try:                               # the gap a shorter paragraph leaves is closed when that can be done
@@ -1430,7 +1492,9 @@ def _plan_paragraph(pdf: PdfText, para: list[Segment], ranges: list[tuple[int, i
             plan.remove.extend(w.glyphs)
     last = len(out_lines) - 1
     for t, line in enumerate(out_lines):
-        base = line_base(t)
+        on_next = keep is not None and t >= keep          # this line goes on at the top of the new page
+        base = shift.split_base + step * (t - keep) if on_next else line_base(t)
+        target = shift.split if on_next else plan.write
         parts = [piece(*item) for item in line]
         gaps = [gap_before(item[0]) for item in line[1:]]
         lead = 2 if bullet and t == 0 else 1             # words placed before the line's spacing starts
@@ -1453,16 +1517,22 @@ def _plan_paragraph(pdf: PdfText, para: list[Segment], ranges: list[tuple[int, i
             wi, letters, _, _ = part
             if n:
                 prev = parts[n - 1]
-                plan.write.append(_Typeset(xs[n - 1] + prev[2], base, " ", prev[3], _space_font()))
+                target.append(_Typeset(xs[n - 1] + prev[2], base, " ", prev[3], _space_font()))
             if wi is not None:
                 w, li = old_words[wi]
                 for g in w.glyphs:
-                    plan.write.append(_Typeset(g.x - w.x + x, base + (g.y - lines[li].baseline), g.c, g.style,
-                                               pdf.font_for(g.style, g.c)))
+                    target.append(_Typeset(g.x - w.x + x, base + (g.y - lines[li].baseline), g.c, g.style,
+                                           pdf.font_for(g.style, g.c)))
             else:
-                plan.write.extend(_Typeset(x + dx, base + dy, c, st, font) for dx, dy, c, st, font in letters)
-    if any(t.c == "�" for t in plan.write):
+                target.extend(_Typeset(x + dx, base + dy, c, st, font) for dx, dy, c, st, font in letters)
+        if on_next and t < last:
+            target.append(_Typeset(xs[-1] + parts[-1][2], base, " ", parts[-1][3], _space_font()))   # reads as a
+            # space between the lines (split_text, the text check)
+    if any(t.c == "�" for t in plan.write + (shift.split if keep is not None else [])):
         raise CantKeepLayout("Some letters in that paragraph can't be read from the PDF, so it can't be re-set.")
+    if keep is not None:
+        shift.split_text = "".join(t.c for t in shift.split)
+        shift.para_span = (rewritten[0].start, rewritten[-1].start + len(rewritten[-1].text))
     plan.segments = rewritten
     return plan
 
@@ -1549,7 +1619,8 @@ def _draw_from(target: pymupdf.Page, original: pymupdf.Document, number: int, cl
     source.close()
 
 
-def _draw_region(page: pymupdf.Page, shift: _Shift, original: pymupdf.Document, links: list[dict]) -> None:
+def _draw_region(page: pymupdf.Page, shift: _Shift, original: pymupdf.Document, links: list[dict],
+                 own_fonts: bool = True) -> None:
     """Draw shift.region of the original page again, moved by shift.dy; its links move with it. Drawn last, so it
     reads after the paragraph above it. shift.overflow goes onto a new page after this one, with its links."""
     if shift.region.height > 0.1:
@@ -1565,15 +1636,25 @@ def _draw_region(page: pymupdf.Page, shift: _Shift, original: pymupdf.Document, 
         if shift.region.contains(link["from"]):
             link["from"] = link["from"] + (0, shift.dy, 0, shift.dy)
         page.insert_link(link)
-    if shift.overflow is None:
+    if not shift.adds_page:
         return
     doc, number, rect = page.parent, page.number, page.rect     # (the page object goes stale once a page is added)
+    fonts = _OwnFonts(page) if own_fonts and shift.split else None
     new = doc.new_page(pno=number + 1, width=rect.width, height=rect.height)
-    off = shift.to_top - shift.overflow.y0
-    _draw_from(new, original, number, shift.overflow, off)
-    for link in out_links:
-        link["from"] = link["from"] + (0, off, 0, off)
-        new.insert_link(link)
+    if shift.split:                          # the paragraph goes on here first, in the page's own fonts when it can
+        runs = (_own_font_runs(new, _Plan(write=shift.split), fonts) if fonts else None) or [(False, shift.split)]
+        shift.split_own = [t for own, letters in runs if own for t, *_ in letters]
+        for own, letters in runs:
+            if own:
+                _write_own_run(new, letters)
+            elif letters:
+                _write_with_writer(new, letters)
+    if shift.overflow is not None:
+        off = shift.to_top - shift.overflow.y0
+        _draw_from(new, original, number, shift.overflow, off)
+        for link in out_links:
+            link["from"] = link["from"] + (0, off, 0, off)
+            new.insert_link(link)
     for band in shift.chrome_bands:          # its running headers and footers, page numbers written again
         _draw_from(new, original, number, band, 0, shift.chrome_skip)
     if shift.chrome_write:
@@ -1586,7 +1667,7 @@ def _apply_page(page: pymupdf.Page, plan: _Plan, original: pymupdf.Document | No
         original_links = page.get_links()
         _clear_region(page, plan.shift)
         _write_plan(page, plan, own_fonts)
-        _draw_region(page, plan.shift, original, original_links)
+        _draw_region(page, plan.shift, original, original_links, own_fonts)
     else:
         _write_plan(page, plan, own_fonts)
 
@@ -1904,26 +1985,38 @@ def _check(before: pymupdf.Page, after: pymupdf.Page, plan: _Plan, counts: tuple
 
 
 def _check_new_page(before: pymupdf.Page, new: pymupdf.Page, shift: _Shift) -> None:
-    """The page inserted for what no longer fit holds exactly that, moved up to the top of the body: the same
-    letters, drawings, images and links, looking the same pixel for pixel, and nothing else."""
+    """The page inserted for what no longer fit holds exactly that: the paragraph's lines that went on there (each
+    letter where it was set, in its size and colour), what was below the paragraph moved up to follow them (the same
+    letters, drawings, images and links, looking the same pixel for pixel), the page's running headers and footers,
+    and nothing else."""
     import numpy as np
-    off = shift.to_top - shift.overflow.y0
+    off = shift.to_top - shift.overflow.y0 if shift.overflow is not None else 0.0
 
     def inside(r) -> bool:
-        return shift.overflow.contains(r)
+        return shift.overflow is not None and shift.overflow.contains(r)
+
     def mid(g: Glyph) -> pymupdf.Point:
         return pymupdf.Point((g.bbox[0] + g.bbox[2]) / 2, (g.bbox[1] + g.bbox[3]) / 2)
 
     def copied(g: Glyph) -> bool:        # a header or footer letter drawn as it was
         return any(b.contains(mid(g)) for b in shift.chrome_bands) and not any(r.contains(mid(g))
                                                                             for r in shift.chrome_skip)
+    written_letters = [t for t in shift.chrome_write + shift.split if not t.c.isspace()]
     want = sorted([(g.c, round(g.x, 1), round(g.y + off, 1)) for g in _glyph_list(before) if inside(mid(g))]
                   + [(g.c, round(g.x, 1), round(g.y, 1)) for g in _glyph_list(before) if copied(g)]
-                  + [(t.c, round(t.x, 1), round(t.y, 1)) for t in shift.chrome_write if not t.c.isspace()])
+                  + [(t.c, round(t.x, 1), round(t.y, 1)) for t in written_letters])
     got = sorted((g.c, round(g.x, 1), round(g.y, 1)) for g in _glyph_list(new))
     if len(want) != len(got) or any(a[0] != b[0] or abs(a[1] - b[1]) > 0.25 or abs(a[2] - b[2]) > 0.25
                                     for a, b in zip(want, got)):
-        raise CantKeepLayout("Checking the new page failed: the text moved onto it isn't as it was.")
+        raise CantKeepLayout("Checking the new page failed: the text on it isn't as it should be.")
+    drawn = _glyph_list(new)
+    for t in shift.split:                 # the paragraph's lines: in their own size and colour
+        if t.c.isspace():
+            continue
+        g = next((g for g in drawn if g.c == t.c and abs(g.x - t.x) < 0.25 and abs(g.y - t.y) < 0.25), None)
+        if g is None or abs(g.style.size - t.style.size) > 0.05 or g.style.color != t.style.color:
+            raise CantKeepLayout("Checking the new page failed: the paragraph's lines there came out in another "
+                                 "size or colour.")
     for kind in ("d", "i"):
         old = [pymupdf.Rect(d["rect"]) for d in before.get_drawings()] if kind == "d" else \
               [pymupdf.Rect(i["bbox"]) for i in before.get_image_info()]
@@ -1936,20 +2029,26 @@ def _check_new_page(before: pymupdf.Page, new: pymupdf.Page, shift: _Shift) -> N
             have.remove(hit)
     if len(new.get_links()) != sum(1 for link in before.get_links() if inside(link["from"])):
         raise CantKeepLayout("Checking the new page failed: a link didn't move onto it.")
-    a, b = _render(before), _render(new, off)
-    area = _mask(a.shape, [shift.overflow])
-    diff = (np.abs(a - b).max(axis=2) > INK) & area & (b[:, :, 0] >= 0)
-    if diff.any():
-        raise CantKeepLayout("Checking the new page failed: what moved onto it doesn't look as it did.")
+    a = _render(before)
+    if shift.overflow is not None:
+        b = _render(new, off)
+        # (from just inside its top edge: the mask spreads a pixel, which would reach the descenders of the
+        # paragraph's last line right above it, a different line before and after the edit)
+        area = _mask(a.shape, [shift.overflow + (0, 1.5, 0, 0)])
+        diff = (np.abs(a - b).max(axis=2) > INK) & area & (b[:, :, 0] >= 0)
+        if diff.any():
+            ys, xs = np.nonzero(diff)
+            raise CantKeepLayout(f"Checking the new page failed: what moved onto it doesn't look as it did (near "
+                                 f"{xs[0] / CHECK_ZOOM:.0f}, {ys[0] / CHECK_ZOOM:.0f} pt of the old page).")
     plain = _render(new)
-    written = _changed_boxes(_Plan(write=list(shift.chrome_write)))
+    written = _changed_boxes(_Plan(write=list(shift.chrome_write) + list(shift.split)))
     bands = _mask(a.shape, shift.chrome_bands) & ~_mask(a.shape, list(shift.chrome_skip) + written)
     if ((np.abs(a - plain).max(axis=2) > INK) & bands).any():
         raise CantKeepLayout("Checking the new page failed: a running header or footer didn't come out as it was.")
-    allowed = _mask(plain.shape, [shift.overflow + (0, off, 0, off)] + list(shift.chrome_bands) + written)
+    moved = [shift.overflow + (0, off, 0, off)] if shift.overflow is not None else []
+    allowed = _mask(plain.shape, moved + list(shift.chrome_bands) + written)
     if ((plain.min(axis=2) < 255 - INK) & ~allowed).any():
         raise CantKeepLayout("Checking the new page failed: it has something on it besides what moved.")
-
 
 def _check_own_glyphs(after: pymupdf.Page, letters: list[_Typeset]) -> None:
     """Every letter written by code in the page's own fonts draws the glyph that font has for the letter. _check
@@ -2158,7 +2257,7 @@ def _write_checked(path: Path, out: Path, plans: dict[int, _Plan], expected: tup
     with pymupdf.open(str(path)) as original, pymupdf.open(str(path)) as target:
         counts = {n: (len(original[n].get_drawings()), len(original[n].get_images(full=True)),
                       len(original[n].get_links())) for n in plans}
-        inserts = sorted(n for n, plan in plans.items() if plan.shift is not None and plan.shift.overflow is not None)
+        inserts = sorted(n for n, plan in plans.items() if plan.shift is not None and plan.shift.adds_page)
 
         def now(n: int) -> int:       # the page's number in the edited document: a new page before it moves it on
             return n + sum(1 for m in inserts if m < n)
@@ -2173,6 +2272,7 @@ def _write_checked(path: Path, out: Path, plans: dict[int, _Plan], expected: tup
                     _check_picture(original[n], edited[now(n)], plan)
                     if n in inserts:
                         _check_new_page(original[n], edited[now(n) + 1], plan.shift)
+                        _check_own_glyphs(edited[now(n) + 1], plan.shift.split_own if own_fonts else [])
             if expected is not None:
                 _check_text(out, *expected)
         except Exception as e:
@@ -2282,7 +2382,7 @@ def replace(path: Path, out: Path, pattern: re.Pattern, new: str, replace_all: b
         plans = [p for page_edits in edits.values() for _, p in page_edits if not p.chrome]
         if info is not None:
             overflows = sorted(n for n, page_edits in edits.items()
-                               if any(p.shift is not None and p.shift.overflow is not None for _, p in page_edits))
+                               if any(p.shift is not None and p.shift.adds_page for _, p in page_edits))
             info["layout"] = ("new_page" if overflows else "moved" if any(p.shift is not None for p in plans)
                               else "rewrapped" if any(p.ordered for p in plans) else "line")
             grew = sum(p.added_lines for p in plans)
@@ -2296,7 +2396,7 @@ def replace(path: Path, out: Path, pattern: re.Pattern, new: str, replace_all: b
             at = m_end
         expected = "".join(expected) + pdf.text[at:]
         for plan in plans:
-            if plan.shift is not None and plan.shift.overflow is not None:
+            if plan.shift is not None and plan.shift.adds_page:
                 expected = _moved_to_new_page(pdf, expected, changes, plan.shift, head, foot)
         written = ordered
         try:
@@ -2364,20 +2464,29 @@ def _renumbered(fields: list, page: int, total: int) -> list[tuple[int, int, str
 
 def _moved_to_new_page(pdf: PdfText, expected: str, changes: list, shift: _Shift, head: str = "",
                        foot: str = "") -> str:
-    """The expected text once shift.moved_out is on a page of its own: it now reads after the rest of its old page
-    (a footer there, say), not before it, between the new page's own header (head) and footer (foot)."""
-    lines = sorted(shift.moved_out, key=lambda s: s.start)
-    if not lines:
-        return expected
-    n = lines[0].page
-    start, end = lines[0].start, lines[-1].start + len(lines[-1].text)
+    """The expected text once a page was added after shift.page: what went there (the paragraph's lines that went
+    on there, then shift.moved_out) now reads after the rest of the old page (a footer there, say), between the new
+    page's own header (head) and footer (foot)."""
+    n = shift.page
     page_end = min([s.start for s in pdf.segments if s.page > n] + [len(pdf.text)])
 
     def at(offset: int) -> int:        # an offset in the original text, in the expected one
         return offset + sum(len(t) - (b - a) for a, b, t in changes if a < offset)
-    s, e, p = at(start), at(end), at(page_end)
+    p = at(page_end)
+    lines = sorted(shift.moved_out, key=lambda s: s.start)
+    if shift.split:
+        ps, pe = at(shift.para_span[0]), at(shift.para_span[1])
+        words, going = _words(expected[ps:pe], pdf.text), _words(shift.split_text, pdf.text)
+        if not going or words[-len(going):] != going:
+            raise CantKeepLayout("The paragraph's lines on the new page couldn't be matched to its text.")
+        staying, going = " ".join(words[:-len(going)]), " ".join(going)
+        s, e = (at(lines[0].start), at(lines[-1].start + len(lines[-1].text))) if lines else (pe, pe)
+        return (expected[:ps] + " " + staying + " " + expected[e:p] + " " + head + " " + going + " "
+                + expected[s:e] + " " + foot + " " + expected[p:])
+    if not lines:
+        return expected
+    s, e = at(lines[0].start), at(lines[-1].start + len(lines[-1].text))
     return expected[:s] + " " + expected[e:p] + " " + head + " " + expected[s:e] + " " + foot + " " + expected[p:]
-
 
 def _plan_new_page(pdf: PdfText, edits: dict, info: dict | None) -> tuple[list, str, str]:
     """When an edit sends part of a page to a new page: that page gets the old page's running headers and footers,
@@ -2385,7 +2494,7 @@ def _plan_new_page(pdf: PdfText, edits: dict, info: dict | None) -> tuple[list, 
     Returns ([(page, segment, plan, ranges)] for the renumbering, the new page's header text, its footer text).
     Page numbers that can't be re-set are left as they were (info["page_numbers_kept"]), never guessed at."""
     overflows = [(n, p.shift) for n, page_edits in edits.items() for _, p in page_edits
-                 if p.shift is not None and p.shift.overflow is not None]
+                 if p.shift is not None and p.shift.adds_page]
     if not overflows:
         return [], "", ""
     if len(overflows) > 1:
@@ -2423,8 +2532,8 @@ def _plan_new_page(pdf: PdfText, edits: dict, info: dict | None) -> tuple[list, 
     texts = {id(s): s.text for s in own}
     for s, plan in written:
         texts[id(s)] = "".join(t.c for t in plan.write) if plan.write else s.text
-    head = " ".join(texts[id(s)] for s in own if s.top < shift.to_top)
-    foot = " ".join(texts[id(s)] for s in own if s.top >= shift.to_top)
+    head = " ".join(texts[id(s)] for s in own if s.top < shift.body_top)
+    foot = " ".join(texts[id(s)] for s in own if s.top >= shift.body_top)
     return renumbering, head, foot
 
 
@@ -2433,8 +2542,9 @@ def _stand_ins(plans) -> dict[str, str]:
     (Liberation Sans for Arial: same widths, a slightly different design)."""
     found: dict[str, str] = {}
     for plan in plans:
-        own = {id(t) for t in plan.own}
-        for t in plan.write:
+        split = plan.shift.split if plan.shift is not None else []
+        own = {id(t) for t in plan.own + (plan.shift.split_own if plan.shift is not None else [])}
+        for t in plan.write + split:
             if id(t) not in own and not t.c.isspace() and font_fetch.stand_in(_FILE_OF.get(id(t.font))):
                 found.setdefault(base_name(t.style.font), t.font.name)
     return found
