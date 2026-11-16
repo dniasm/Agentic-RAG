@@ -530,6 +530,7 @@ class _Plan:
     segments: list = field(default_factory=list)   # the lines it re-sets, when more than one
     shift: object = None        # a _Shift: what is below a re-wrapped paragraph moves to make room
     own: list = field(default_factory=list)   # letters written by code in the page's own fonts (checked by glyph)
+    added_lines: int = 0        # lines a re-wrapped paragraph gained (fewer when negative)
 
 
 class PdfText:
@@ -905,9 +906,14 @@ def _plan_segment(pdf: PdfText, seg: Segment, ranges: list[tuple[int, int, str]]
 # ---------------------------------------------------------------- moving what is below a paragraph
 @dataclass
 class _Shift:
-    """Everything on the page in `region` (text, drawings, images, links) moves down by dy (up when negative)."""
+    """Everything on the page in `region` (text, drawings, images, links) moves down by dy (up when negative).
+    When the page can't hold it all, what is in `overflow` (the part of the page below `region`) goes to a new page
+    inserted after it, its top at `to_top` (where the page's body starts), and `moved_out` are its lines."""
     region: pymupdf.Rect
     dy: float
+    overflow: pymupdf.Rect | None = None
+    to_top: float = 0.0
+    moved_out: list = field(default_factory=list)
 
 
 def _repeated(pdf: PdfText) -> set[int]:
@@ -959,33 +965,65 @@ def _push(pdf: PdfText, para: list[Segment], left: float, right: float, dy: floa
     inside = [r for r in drawings + images if r.y0 >= bottom and r.y1 <= footer_top
               and r.x1 > body_left and r.x0 < body_right]
     lowest = max([s.bottom for s in below] + [r.y1 for r in inside] + [bottom])
-    if dy > 0 and lowest + dy > _body_bottom_limit(pdf) + 0.5:
-        raise NoRoom("The new text needs one more line, and the page has no room left at the bottom to move "
-                     "the rest of it down.")
+    limit = _body_bottom_limit(pdf)
+    if dy > 0 and bottom + dy > limit + 0.5:
+        raise NoRoom("The paragraph would run past the bottom of its page, so it can't take that much more text "
+                     "there; a shorter wording may fit.")
     if lowest <= bottom:
         return None
+    # what is below doesn't fit any more: the part that doesn't goes to a new page after this one
+    cut = None
+    if dy > 0 and lowest + dy > limit + 0.5:
+        units = [(s.top, s.bottom) for s in below] + [(r.y0, r.y1) for r in inside]
+        cut = _overflow_cut(units, bottom, dy, limit)
+        body_top = min(s.top for s in pdf.segments if s.page == n and id(s) not in repeated)
+        if lowest - cut > limit - body_top:
+            raise NoRoom("The new text would push more than a page of what follows it onto new pages; a shorter "
+                         "wording may fit.")
     # 2pt to spare at the sides: a rule's stroke reaches past its path, and a drawing only counts as inside (and so is
     # taken away before it is drawn again, moved) when all of it is
-    region = pymupdf.Rect(max(0, min([body_left] + [r.x0 for r in inside]) - 2), bottom + 0.05,
-                          min(width, max([body_right] + [r.x1 for r in inside]) + 2), lowest + 0.5)
+    x0 = max(0, min([body_left] + [r.x0 for r in inside]) - 2)
+    x1 = min(width, max([body_right] + [r.x1 for r in inside]) + 2)
+    region = pymupdf.Rect(x0, bottom + 0.05, x1, lowest + 0.5 if cut is None else cut)
+    overflow = None if cut is None else pymupdf.Rect(x0, cut, x1, lowest + 0.5)
+    whole = region if overflow is None else pymupdf.Rect(x0, region.y0, x1, overflow.y1)
     for r in drawings + images:
-        if not r.intersects(region) and r.width > 0 and r.height > 0:
+        if not r.intersects(whole) and r.width > 0 and r.height > 0:
             continue
-        crosses = (r.y0 < region.y0 < r.y1 - 0.01) or (r.y0 + 0.01 < region.y1 < r.y1)
-        if crosses and not (r.y0 <= region.y0 and r.y1 >= region.y1):   # a background or frame around it stays
+        crosses = (r.y0 < whole.y0 < r.y1 - 0.01) or (r.y0 + 0.01 < whole.y1 < r.y1)
+        if crosses and not (r.y0 <= whole.y0 and r.y1 >= whole.y1):   # a background or frame around it stays
             raise CantKeepLayout("A drawing or image on the page runs across the text below the paragraph, so it "
                                  "can't be moved to make room.")
+        if overflow is not None and r.y0 <= whole.y0 and r.y1 >= whole.y1:
+            raise CantKeepLayout("A background or frame runs behind the text below the paragraph, so that text can't "
+                                 "be moved onto a new page.")
     for s in others:
         box = pymupdf.Rect(s.x0, s.top, s.x1, s.bottom)
-        if s.locked and box.intersects(region):
+        if s.locked and box.intersects(whole):
             raise CantKeepLayout("Rotated text runs into what is below the paragraph, so it can't be moved.")
-        if id(s) not in repeated and s.top < region.y0 < s.bottom and box.intersects(region):
+        if id(s) not in repeated and s.top < whole.y0 < s.bottom and box.intersects(whole):
             raise CantKeepLayout("Text on the page overlaps the paragraph's last line, so what is below it can't be "
                                  "moved.")
     for annot in page.annots() or []:
-        if annot.rect.intersects(region):
+        if annot.rect.intersects(whole):
             raise CantKeepLayout("The page has annotations or form fields below the paragraph, which can't be moved.")
-    return _Shift(region, dy)
+    if overflow is None:
+        return _Shift(region, dy)
+    return _Shift(region, dy, overflow, body_top, [s for s in below if s.top >= overflow.y0 - 0.01])
+
+
+def _overflow_cut(units: list[tuple[float, float]], bottom: float, dy: float, limit: float) -> float:
+    """Where to cut what is below a grown paragraph: the lowest place between lines (never through a line, drawing
+    or image) above which everything still fits on the page once moved down by dy. Below it goes to a new page."""
+    best = bottom + 0.05                   # nothing fits: all of it goes
+    for top, _ in sorted(units):
+        c = top - 0.1
+        if c <= bottom + 0.05 or any(t < c < b for t, b in units):
+            continue
+        above = max([b for t, b in units if b <= c] + [bottom])
+        if above + dy <= limit + 0.5:
+            best = max(best, c)
+    return best
 
 
 # ---------------------------------------------------------------- re-wrapping a paragraph
@@ -1301,15 +1339,18 @@ def _plan_paragraph(pdf: PdfText, para: list[Segment], ranges: list[tuple[int, i
         target = statistics.median(factors) if factors else 1.0
         lo, hi = min(SHRINK, 0.95 * low), max(STRETCH, 1.1 * high)
         inf = float("inf")
+        # Every line past the paragraph's old ones is alike (same left edge, nothing to come back in step with), so
+        # they share one state: the search stays as small as the paragraph, however many lines it grows by. How
+        # much more the page can take is _push's to decide.
+        def best(i: int, t: int) -> tuple[float, tuple]:
+            return _best(i, min(t, len(lines)))
 
         @functools.lru_cache(maxsize=None)
-        def best(i: int, t: int) -> tuple[float, tuple]:
+        def _best(i: int, t: int) -> tuple[float, tuple]:
             if i == n:
                 return 0.0, ()
             if in_step(i, t):
                 return 0.0, ("in step",)
-            if t > len(lines) + 3:
-                return inf, ()
             found = (inf, ())
             lead = line_start(t, i)[0]
             for j in range(i + lead, n + 1):
@@ -1376,7 +1417,7 @@ def _plan_paragraph(pdf: PdfText, para: list[Segment], ranges: list[tuple[int, i
         except CantKeepLayout as e:
             log.info("A re-wrapped paragraph ends a line shorter; the space stays: %s", e)
 
-    plan = _Plan(ordered=True, shift=shift)
+    plan = _Plan(ordered=True, shift=shift, added_lines=total - len(lines))
     rewritten = lines[:converged] if converged is not None else lines
     for seg in rewritten:
         for w in seg.words:
@@ -1476,35 +1517,56 @@ def _redact_rects(page: pymupdf.Page, remove: list[Glyph]) -> list[pymupdf.Rect]
 
 
 def _clear_region(page: pymupdf.Page, shift: _Shift) -> None:
-    """Remove everything in shift.region (it is drawn again, moved, by _draw_region)."""
-    page.add_redact_annot(shift.region, fill=False, cross_out=False)
+    """Remove everything in shift.region and shift.overflow (drawn again, moved, by _draw_region)."""
+    for rect in (shift.region, shift.overflow):
+        if rect is not None and rect.height > 0.1:
+            page.add_redact_annot(rect, fill=False, cross_out=False)
     page.apply_redactions(images=pymupdf.PDF_REDACT_IMAGE_REMOVE,
                           graphics=pymupdf.PDF_REDACT_LINE_ART_REMOVE_IF_COVERED, text=pymupdf.PDF_REDACT_TEXT_REMOVE)
 
 
-def _draw_region(page: pymupdf.Page, shift: _Shift, original: pymupdf.Document, links: list[dict]) -> None:
-    """Draw shift.region of the original page again, moved by shift.dy, so text, drawings and images keep exactly
-    their look; its links move with it. Text outside the region is taken out of the copy that is drawn, so text
-    readers don't meet it twice. Drawn last, so it reads after the paragraph above it."""
-    region, dy = shift.region, shift.dy
+def _draw_from(target: pymupdf.Page, original: pymupdf.Document, number: int, clip: pymupdf.Rect, dy: float) -> None:
+    """Draw `clip` of the original page `number` on `target`, moved by dy, so its text, drawings and images keep
+    exactly their look. Text outside the clip is taken out of the copy that is drawn, so text readers don't meet it
+    twice."""
     source = pymupdf.open()
-    source.insert_pdf(original, from_page=page.number, to_page=page.number)
+    source.insert_pdf(original, from_page=number, to_page=number)
     sp = source[0]
-    for rect in (pymupdf.Rect(sp.rect.x0, sp.rect.y0, sp.rect.x1, region.y0),
-                 pymupdf.Rect(sp.rect.x0, region.y1, sp.rect.x1, sp.rect.y1)):
+    for rect in (pymupdf.Rect(sp.rect.x0, sp.rect.y0, sp.rect.x1, clip.y0),
+                 pymupdf.Rect(sp.rect.x0, clip.y1, sp.rect.x1, sp.rect.y1)):
         if rect.height > 0:
             sp.add_redact_annot(rect, fill=False, cross_out=False)
     sp.apply_redactions(images=pymupdf.PDF_REDACT_IMAGE_NONE, graphics=pymupdf.PDF_REDACT_LINE_ART_NONE,
                         text=pymupdf.PDF_REDACT_TEXT_REMOVE)
-    page.show_pdf_page(region + (0, dy, 0, dy), source, 0, clip=region, keep_proportion=False)
+    target.show_pdf_page(clip + (0, dy, 0, dy), source, 0, clip=clip, keep_proportion=False)
     source.close()
+
+
+def _draw_region(page: pymupdf.Page, shift: _Shift, original: pymupdf.Document, links: list[dict]) -> None:
+    """Draw shift.region of the original page again, moved by shift.dy; its links move with it. Drawn last, so it
+    reads after the paragraph above it. shift.overflow goes onto a new page after this one, with its links."""
+    if shift.region.height > 0.1:
+        _draw_from(page, original, page.number, shift.region, shift.dy)
     for link in page.get_links():
         page.delete_link(link)
+    out_links = []
     for link in links:
         link = {k: v for k, v in link.items() if k not in ("xref", "id")}
-        if region.contains(link["from"]):
-            link["from"] = link["from"] + (0, dy, 0, dy)
+        if shift.overflow is not None and shift.overflow.contains(link["from"]):
+            out_links.append(link)
+            continue
+        if shift.region.contains(link["from"]):
+            link["from"] = link["from"] + (0, shift.dy, 0, shift.dy)
         page.insert_link(link)
+    if shift.overflow is None:
+        return
+    doc, number, rect = page.parent, page.number, page.rect     # (the page object goes stale once a page is added)
+    new = doc.new_page(pno=number + 1, width=rect.width, height=rect.height)
+    off = shift.to_top - shift.overflow.y0
+    _draw_from(new, original, number, shift.overflow, off)
+    for link in out_links:
+        link["from"] = link["from"] + (0, off, 0, off)
+        new.insert_link(link)
 
 
 def _apply_page(page: pymupdf.Page, plan: _Plan, original: pymupdf.Document | None = None,
@@ -1773,11 +1835,16 @@ def _check(before: pymupdf.Page, after: pymupdf.Page, plan: _Plan, counts: tuple
     removed = {(g.c, round(g.x, 2), round(g.y, 2)) for g in plan.remove}
     shift = plan.shift
 
+    def middle(g: Glyph) -> pymupdf.Point:
+        return pymupdf.Point((g.bbox[0] + g.bbox[2]) / 2, (g.bbox[1] + g.bbox[3]) / 2)
+
     def moved(g: Glyph) -> float:
-        middle = pymupdf.Point((g.bbox[0] + g.bbox[2]) / 2, (g.bbox[1] + g.bbox[3]) / 2)
-        return g.y + shift.dy if shift is not None and shift.region.contains(middle) else g.y
+        return g.y + shift.dy if shift is not None and shift.region.contains(middle(g)) else g.y
+
+    def gone(r) -> bool:          # sent to the new page
+        return shift is not None and shift.overflow is not None and shift.overflow.contains(r)
     expected = [(g.c, g.x, moved(g), None) for g in _glyph_list(before)
-                if (g.c, round(g.x, 2), round(g.y, 2)) not in removed]
+                if (g.c, round(g.x, 2), round(g.y, 2)) not in removed and not gone(middle(g))]
     expected += [(t.c, t.x, t.y, t) for t in plan.write if not t.c.isspace()]
     actual = _glyph_list(after)
     buckets = defaultdict(list)
@@ -1813,14 +1880,53 @@ def _check(before: pymupdf.Page, after: pymupdf.Page, plan: _Plan, counts: tuple
     for kind in ("d", "i"):            # every drawing and image is where it was, or moved with the region
         have = boxes(after, kind)
         for r in boxes(before, kind):
+            if gone(r):
+                continue
             want = r + (0, shift.dy, 0, shift.dy) if shift.region.contains(r) else r
             hit = next((h for h in have if all(abs(a - b) < 0.3 for a, b in zip(h, want))), None)
             if hit is None:
                 raise CantKeepLayout("Checking the edited page failed: a drawing or image didn't move with the text "
                                      "below the paragraph.")
             have.remove(hit)
-    if len(after.get_links()) != counts[2]:
+    if len(after.get_links()) != counts[2] - sum(1 for link in before.get_links() if gone(link["from"])):
         raise CantKeepLayout("Checking the edited page failed: a link on the page changed.")
+
+
+def _check_new_page(before: pymupdf.Page, new: pymupdf.Page, shift: _Shift) -> None:
+    """The page inserted for what no longer fit holds exactly that, moved up to the top of the body: the same
+    letters, drawings, images and links, looking the same pixel for pixel, and nothing else."""
+    import numpy as np
+    off = shift.to_top - shift.overflow.y0
+
+    def inside(r) -> bool:
+        return shift.overflow.contains(r)
+    want = sorted((g.c, round(g.x, 1), round(g.y + off, 1)) for g in _glyph_list(before)
+                  if inside(pymupdf.Point((g.bbox[0] + g.bbox[2]) / 2, (g.bbox[1] + g.bbox[3]) / 2)))
+    got = sorted((g.c, round(g.x, 1), round(g.y, 1)) for g in _glyph_list(new))
+    if len(want) != len(got) or any(a[0] != b[0] or abs(a[1] - b[1]) > 0.25 or abs(a[2] - b[2]) > 0.25
+                                    for a, b in zip(want, got)):
+        raise CantKeepLayout("Checking the new page failed: the text moved onto it isn't as it was.")
+    for kind in ("d", "i"):
+        old = [pymupdf.Rect(d["rect"]) for d in before.get_drawings()] if kind == "d" else \
+              [pymupdf.Rect(i["bbox"]) for i in before.get_image_info()]
+        have = [pymupdf.Rect(d["rect"]) for d in new.get_drawings()] if kind == "d" else \
+               [pymupdf.Rect(i["bbox"]) for i in new.get_image_info()]
+        for r in [r + (0, off, 0, off) for r in old if inside(r)]:
+            hit = next((h for h in have if all(abs(a - b) < 0.3 for a, b in zip(h, r))), None)
+            if hit is None:
+                raise CantKeepLayout("Checking the new page failed: a drawing or image didn't move onto it.")
+            have.remove(hit)
+    if len(new.get_links()) != sum(1 for link in before.get_links() if inside(link["from"])):
+        raise CantKeepLayout("Checking the new page failed: a link didn't move onto it.")
+    a, b = _render(before), _render(new, off)
+    area = _mask(a.shape, [shift.overflow])
+    diff = (np.abs(a - b).max(axis=2) > INK) & area & (b[:, :, 0] >= 0)
+    if diff.any():
+        raise CantKeepLayout("Checking the new page failed: what moved onto it doesn't look as it did.")
+    blank = _render(new)
+    moved_area = _mask(blank.shape, [shift.overflow + (0, off, 0, off)])
+    if ((blank.min(axis=2) < 255 - INK) & ~moved_area).any():
+        raise CantKeepLayout("Checking the new page failed: it has something on it besides what moved.")
 
 
 def _check_own_glyphs(after: pymupdf.Page, letters: list[_Typeset]) -> None:
@@ -1992,7 +2098,8 @@ def _check_picture(before: pymupdf.Page, after: pymupdf.Page, plan: _Plan) -> No
     if shift is not None:
         band = pymupdf.Rect(shift.region.x0, min(shift.region.y0, shift.region.y0 + shift.dy),
                             shift.region.x1, max(shift.region.y1, shift.region.y1 + shift.dy))
-        skip |= _mask(a.shape, [band])                       # compared below, moved
+        skip |= _mask(a.shape, [band] + ([shift.overflow] if shift.overflow is not None else []))   # compared
+        # below, moved (and what went to the new page is checked there)
     diff = (np.abs(a - b).max(axis=2) > INK) & ~skip
     if diff.any():
         ys, xs = np.nonzero(diff)
@@ -2029,15 +2136,21 @@ def _write_checked(path: Path, out: Path, plans: dict[int, _Plan], expected: tup
     with pymupdf.open(str(path)) as original, pymupdf.open(str(path)) as target:
         counts = {n: (len(original[n].get_drawings()), len(original[n].get_images(full=True)),
                       len(original[n].get_links())) for n in plans}
+        inserts = sorted(n for n, plan in plans.items() if plan.shift is not None and plan.shift.overflow is not None)
+
+        def now(n: int) -> int:       # the page's number in the edited document: a new page before it moves it on
+            return n + sum(1 for m in inserts if m < n)
         try:
-            for n, plan in plans.items():
-                _apply_page(target[n], plan, original, own_fonts)
+            for n in sorted(plans, reverse=True):      # from the end: a page inserted doesn't renumber those to come
+                _apply_page(target[n], plans[n], original, own_fonts)
             _save_small(target, out)
             with pymupdf.open(str(out)) as edited:
                 for n, plan in plans.items():
-                    _check(original[n], edited[n], plan, counts[n])
-                    _check_own_glyphs(edited[n], plan.own if own_fonts else [])
-                    _check_picture(original[n], edited[n], plan)
+                    _check(original[n], edited[now(n)], plan, counts[n])
+                    _check_own_glyphs(edited[now(n)], plan.own if own_fonts else [])
+                    _check_picture(original[n], edited[now(n)], plan)
+                    if n in inserts:
+                        _check_new_page(original[n], edited[now(n) + 1], plan.shift)
             if expected is not None:
                 _check_text(out, *expected)
         except Exception as e:
@@ -2139,15 +2252,25 @@ def replace(path: Path, out: Path, pattern: re.Pattern, new: str, replace_all: b
         # where the lower part of a page moves, the re-set paragraph is drawn before it, so it reads in order anyway
         ordered = {n: simple[n] if simple[n].shift is not None else _in_reading_order(pdf, n, page_edits)
                    for n, page_edits in edits.items()}
+        plans = [p for page_edits in edits.values() for _, p in page_edits]
         if info is not None:
-            plans = [p for page_edits in edits.values() for _, p in page_edits]
-            info["layout"] = ("moved" if any(p.shift is not None for p in plans)
+            overflows = sorted(n for n, page_edits in edits.items()
+                               if any(p.shift is not None and p.shift.overflow is not None for _, p in page_edits))
+            info["layout"] = ("new_page" if overflows else "moved" if any(p.shift is not None for p in plans)
                               else "rewrapped" if any(p.ordered for p in plans) else "line")
+            grew = sum(p.added_lines for p in plans)
+            if grew > 0:
+                info["added_lines"] = grew
+            if overflows:      # 1-based numbers of the pages inserted (each after its page, earlier ones counted)
+                info["new_pages"] = [n + 2 + i for i, n in enumerate(overflows)]
         expected, at = [], 0                 # the document's text as it should read afterwards
         for m_start, m_end, text in changes:
             expected += [pdf.text[at:m_start], text]
             at = m_end
         expected = "".join(expected) + pdf.text[at:]
+        for plan in plans:
+            if plan.shift is not None and plan.shift.overflow is not None:
+                expected = _moved_to_new_page(pdf, expected, changes, plan.shift)
         written = ordered
         try:
             if any(p is None for p in ordered.values()):
@@ -2164,6 +2287,22 @@ def replace(path: Path, out: Path, pattern: re.Pattern, new: str, replace_all: b
         return len(matches), [(m.start(), m.end()) for m in matches], pdf.text
     finally:
         pdf.close()
+
+
+def _moved_to_new_page(pdf: PdfText, expected: str, changes: list, shift: _Shift) -> str:
+    """The expected text once shift.moved_out is on a page of its own: it now reads after the rest of its old page
+    (a footer there, say), not before it."""
+    lines = sorted(shift.moved_out, key=lambda s: s.start)
+    if not lines:
+        return expected
+    n = lines[0].page
+    start, end = lines[0].start, lines[-1].start + len(lines[-1].text)
+    page_end = min([s.start for s in pdf.segments if s.page > n] + [len(pdf.text)])
+
+    def at(offset: int) -> int:        # an offset in the original text, in the expected one
+        return offset + sum(len(t) - (b - a) for a, b, t in changes if a < offset)
+    s, e, p = at(start), at(end), at(page_end)
+    return expected[:s] + " " + expected[e:p] + " " + expected[s:e] + " " + expected[p:]
 
 
 def _stand_ins(plans) -> dict[str, str]:

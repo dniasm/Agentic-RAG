@@ -319,14 +319,37 @@ def test_a_paragraph_that_needs_a_line_less_closes_the_gap(stacked_pdf):
     assert abs(heading(before) - heading(after) - 14) < 0.05                        # one line higher
 
 
-def test_no_room_at_the_bottom_is_refused(stacked_pdf, tmp_path):
+def test_what_no_longer_fits_on_a_full_page_moves_to_a_new_page(stacked_pdf, tmp_path):
     with pymupdf.open(str(stacked_pdf)) as d:
         write(d[0], 72, 705, "Body text already as low as the other page goes.")
         full = tmp_path / "full.pdf"
         d.save(str(full))
-    with pytest.raises(pdf_edit.CantKeepLayout, match="no room left at the bottom"):
-        edited(full, "and that is all.", "and that is all, with every word set again in its own font and "
-                                         "spacing so the paragraph needs another line.")
+    out, info = tmp_path / "grown.pdf", {}
+    pdf_edit.replace(full, out, re.compile(r"and that is all\."), "and that is all, with every word set again in its "
+                     "own font and spacing so the paragraph needs another line.", False, info)
+    assert info["layout"] == "new_page" and info["new_pages"] == [2] and info["added_lines"] == 1
+    with pymupdf.open(str(out)) as doc:
+        assert len(doc) == 3
+        assert "Body text already as low" not in doc[0].get_text()           # moved off its page...
+        assert "Page 1 of 2" in doc[0].get_text()                            # ...the footer stays there
+        assert doc[1].get_text().split() == "Body text already as low as the other page goes.".split()
+        assert "The second page reaches lower down." in doc[2].get_text()   # the old page 2, now 3
+    baseline = lines_of(out, 1)[0][2]
+    assert baseline < 120                                                    # at the top of the body, not at 705
+
+
+def test_a_paragraph_that_would_run_past_its_page_is_refused(tmp_path):
+    d = pymupdf.open()
+    page = d.new_page(width=612, height=792)
+    write(page, 72, 100, "A first line near the top of the page.")
+    words = (PARAGRAPH[0] + " " + PARAGRAPH[1]).split()
+    justified(page, 690, words[:15], 72, 540)
+    justified(page, 704, words[15:], 72, 540)
+    write(page, 72, 718, "and that is all.")
+    src = tmp_path / "low.pdf"
+    d.save(str(src))
+    with pytest.raises(pdf_edit.NoRoom, match="past the bottom of its page"):
+        edited(src, "and that is all.", "and that is all, " + "with many more words added to it " * 12)
 
 
 def test_a_failed_check_leaves_no_file(layout_pdf, monkeypatch):

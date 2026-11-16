@@ -660,6 +660,13 @@ def compose_reply(results: list[dict]) -> str:
             if r.get("plain_letters"):   # the user's text was altered: say so
                 shown = " ".join(f"\u201c{c}\u201d" for c in r["plain_letters"])
                 lines.append(f"The document's font has no {shown}, so the keyboard version was used.")
+            if r.get("new_pages"):            # the document got longer: say so
+                pages = ", ".join(str(p) for p in r["new_pages"])
+                lines.append(f'The text grew by {r.get("added_lines", 0)} line(s); what no longer fit on its page '
+                             f'moved to a new page {pages}. Check it, or undo.')
+            elif r.get("added_lines"):
+                lines.append(f'The text grew by {r["added_lines"]} line(s); what is below it moved down. Check it, '
+                             f'or undo.')
             for pdf_font, drawn in (r.get("stand_in") or {}).items():    # a look-alike font: say so
                 lines.append(f"{pdf_font} isn't available here, so the new text uses {drawn}, which has the same "
                              f"letter widths but looks slightly different.")

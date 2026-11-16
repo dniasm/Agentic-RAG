@@ -25,4 +25,5 @@ export function describeAction(a) {
 export const LAYOUT_NOTE = {
   rewrapped: 'The paragraph was re-wrapped to fit: check it.',
   moved: 'The paragraph was re-wrapped and the page below it moved: check it.',
+  new_page: 'The paragraph grew, and what no longer fit moved to a new page: check it.',
 };

@@ -646,4 +646,5 @@ def _edit(source: dict, doc: dict, op: str, find: str, text: str, replace_all: b
             "chunks_embedded": reloaded["embedded"], "title": doc["title"], "previews": previews, "converted": converted,
             "layout": info.get("layout"),
             **({"plain_letters": info["plain_letters"]} if info.get("plain_letters") else {}),
-            **({"stand_in": info["stand_in"]} if info.get("stand_in") else {})}
+            **({"stand_in": info["stand_in"]} if info.get("stand_in") else {}),
+            **{k: info[k] for k in ("added_lines", "new_pages") if info.get(k)}}
