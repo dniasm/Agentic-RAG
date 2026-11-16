@@ -28,12 +28,12 @@ def test_a_selected_passage_is_replaced_and_can_be_undone(library_docs, signed_i
 def test_text_selected_in_the_preview_matches_the_file(tmp_path):
     md = _ingest("notes.md", "# Notes\n\nThe **key** point is that cases rose.\n\nA self-contained example.\n")
     # the preview shows Markdown without its marks
-    assert editing.edit(md["id"], "replace", find="key point is", text="main point was")["status"] == "edited"
+    assert editing.edit(md["id"], "replace", find="key point is", text="main point was", loose=True)["status"] == "edited"
     assert "The main point was that" in _text(md)
     # a word the page broke at a line end, with its hyphen kept or not
     txt = _ingest("words.txt", "Here is an example of a self-contained sentence.\n")
-    assert editing.edit(txt["id"], "replace", find="an exam- ple of", text="one case of")["status"] == "edited"
-    assert editing.edit(txt["id"], "replace", find="a self- contained", text="a standalone")["status"] == "edited"
+    assert editing.edit(txt["id"], "replace", find="an exam- ple of", text="one case of", loose=True)["status"] == "edited"
+    assert editing.edit(txt["id"], "replace", find="a self- contained", text="a standalone", loose=True)["status"] == "edited"
     assert _text(txt) == "Here is one case of a standalone sentence.\n"
 
 
@@ -87,3 +87,60 @@ def test_only_text_files_open_in_the_whole_text_editor(library_docs, signed_in, 
     monkeypatch.setattr(catalog, "get_document",
                         lambda doc_id, _real=catalog.get_document: {**_real(doc_id), "ext": ".docx"})
     assert signed_in.get(f"/api/library/documents/{doc['id']}/text").status_code == 400
+
+
+# ---------------------------------------------------------------- Fable's audit: loose matching is the website's only
+def test_the_chat_agent_never_gets_loose_matching():
+    md = _ingest("bold.md", "This is **bold text** and more.\n")
+    try:
+        editing.edit(md["id"], "replace", find="text and", text="X")   # the agent's call: as written, or not found
+        raise AssertionError("a loose match was made for the agent")
+    except editing.EditError as e:
+        assert "isn't in the document" in str(e)
+    assert _text(md) == "This is **bold text** and more.\n"
+
+
+def test_a_selection_that_would_split_formatting_is_refused():
+    md = _ingest("split.md", "This is **bold text** and more.\n")
+    try:
+        editing.edit(md["id"], "replace", find="text and", text="X", loose=True)
+        raise AssertionError("half of a ** pair was taken")
+    except editing.EditError as e:
+        assert "formatting" in str(e)
+    assert _text(md) == "This is **bold text** and more.\n"
+    # a word's own underscore isn't a mark: the whole bold part may go
+    var = _ingest("var.md", "Set **my_var** to one.\n")
+    assert editing.edit(var["id"], "replace", find="my_var to", text="it to", loose=True)["status"] == "edited"
+    assert _text(var) == "Set it to one.\n"
+
+
+def test_marks_are_only_marks_in_markdown():
+    txt = _ingest("stars.txt", "A *starred* word here.\n")   # in a text file * is a letter like any other
+    try:
+        editing.edit(txt["id"], "replace", find="starred word", text="x", loose=True)
+        raise AssertionError("a .txt file's * was treated as a mark")
+    except editing.EditError as e:
+        assert "isn't in the document" in str(e)
+
+
+def test_a_file_that_isnt_utf8_isnt_opened_in_the_editor(signed_in):
+    doc = _ingest("latin.txt", "Café au lait.\n".encode("latin-1"), signed_in.user["id"])
+    r = signed_in.get(f"/api/library/documents/{doc['id']}/text")
+    assert r.status_code == 400 and "UTF-8" in r.json()["detail"]
+
+
+def test_the_editor_keeps_a_byte_order_mark(signed_in):
+    doc = _ingest("bom.txt", b"\xef\xbb\xbfFirst line.\n", signed_in.user["id"])
+    url = f"/api/library/documents/{doc['id']}/text"
+    opened = signed_in.get(url).json()
+    assert opened["text"] == "First line.\n"
+    assert signed_in.put(url, json={"text": "Second line.\n", "sha256": opened["sha256"]}).status_code == 200
+    assert (config.LIBRARY_DIR / catalog.get_document(doc["id"])["file_name"]).read_bytes() == b"\xef\xbb\xbfSecond line.\n"
+
+
+def test_a_refusal_for_missing_letters_says_which(library_docs, signed_in, monkeypatch):
+    def lacking(*a, **k):
+        raise editing.NeedsConversion('no copy of the font for the letters "j"', missing="j")
+    monkeypatch.setattr(editing, "edit", lacking)
+    r = signed_in.post(f"/api/library/documents/{library_docs['svm.txt']['id']}/edit", json={"find": "a", "text": "jj"})
+    assert r.status_code == 409 and r.json()["detail"]["missing"] == "j"

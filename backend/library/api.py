@@ -143,9 +143,10 @@ def edit_document(doc_id: str, body: EditIn, user: dict = Depends(current_user))
     from backend.library import editing
     try:
         result = editing.edit(doc["id"], "replace", find=body.find, text=body.text, replace_all=body.replace_all,
-                              convert_pdf=body.convert_pdf)
-    except editing.NeedsConversion as e:
-        raise HTTPException(409, {"message": str(e), "needs_conversion": True, "too_long": e.too_long}) from e
+                              convert_pdf=body.convert_pdf, loose=True)   # text as selected in the preview
+    except editing.NeedsConversion as e:   # missing: the font's lacking letters (a wording without them may fit)
+        raise HTTPException(409, {"message": str(e), "needs_conversion": True, "too_long": e.too_long,
+                                  "missing": e.missing}) from e
     except editing.EditError as e:
         raise HTTPException(400, str(e)) from e
     if result["status"] == "ambiguous":

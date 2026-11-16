@@ -62,21 +62,34 @@ def _pattern(find: str, ignore_case: bool = False) -> re.Pattern:
 
 
 _LINE_END_HYPHEN = re.compile(r"(\w)-\s+(\w)")
-_MARKS = r"[*_`]{0,3}"
+_MARKS = r"([*_`]{0,3})"
 
 
-def _loose_patterns(find: str) -> list[re.Pattern]:
-    """Tried, in order, when `find` isn't in the document as written. Text selected in the preview can differ from
-    the file: a word the page broke at a line end comes as "exam- ple" (the file has "example"), and the preview
-    shows a Markdown file without its bold / italic / code marks ("**key** point" is selected as "key point")."""
+def _loose_patterns(find: str, ext: str) -> list[re.Pattern]:
+    """Tried, in order, when `find` isn't in the document as written, for an edit made from the website (the chat
+    agent quotes the file, so it never gets these). Text selected in the preview can differ from the file: a word the
+    page broke at a line end comes as "exam- ple" (the file has "example", or "self-contained"), and a Markdown file is
+    shown without its bold / italic / code marks ("**key** point" is selected as "key point"). The marks are only
+    looked for in a .md file, where they are marks; elsewhere *, _ and ` are the text's own letters."""
     rejoined = _LINE_END_HYPHEN.sub(r"\1\2", find)          # "exam- ple" -> "example"
     hyphened = _LINE_END_HYPHEN.sub(r"\1-\2", find)         # "self- contained" -> "self-contained"
-    out = [_pattern(t, ignore_case=True) for t in dict.fromkeys([rejoined, hyphened]) if t != find]
-    for text in dict.fromkeys([find, rejoined, hyphened]):   # each once, in order
-        words = text.split()
-        if words:
-            out.append(re.compile(r"\s+".join(_MARKS + re.escape(w) + _MARKS for w in words), re.IGNORECASE))
+    variants = list(dict.fromkeys([find, rejoined, hyphened]))
+    out = [_pattern(t, ignore_case=True) for t in variants if t != find]
+    if ext == ".md":
+        for text in variants:
+            words = text.split()
+            if words:   # each word's surrounding marks captured: _marks_balanced checks them
+                out.append(re.compile(r"\s+".join(_MARKS + re.escape(w) + _MARKS for w in words), re.IGNORECASE))
     return out
+
+
+def _marks_balanced(m: re.Match) -> bool:
+    """A Markdown-tolerant match takes the marks around its words with it. Only a match that takes whole pairs keeps
+    the formatting around it intact: "**key** point" may go, but "text** and" out of "**bold text** and" would leave
+    "**bold" unclosed. Only the captured marks count, not a word's own letters (my_var)."""
+    taken = "".join(g for g in m.groups() if g)
+    return all(taken.count(mark) % 2 == 0 for mark in ("**", "__", "`")) and \
+        taken.replace("**", "").count("*") % 2 == 0 and taken.replace("__", "").count("_") % 2 == 0
 
 
 def _versions_dir(doc_id: str) -> Path:
@@ -207,15 +220,23 @@ def _replace_in_paragraph(p, pattern: re.Pattern, new: str, remaining: int | Non
     return count
 
 
-def _count_matches(doc: dict, pattern: re.Pattern) -> tuple[int, list[str]]:
+def _match_texts(doc: dict) -> list[str]:
+    """The texts an edit's pattern is matched in: a Word file's paragraphs, a PDF's text, a text file whole."""
     path = config.LIBRARY_DIR / doc["file_name"]
     if doc["ext"] == ".docx":
         import docx
-        texts = [p.text for p in _docx_paragraphs(docx.Document(str(path)))]
-    elif doc["ext"] == ".pdf":
-        texts = [_pdf_text(path)]
-    else:
-        texts = [path.read_text(encoding="utf-8", errors="ignore")]
+        return [p.text for p in _docx_paragraphs(docx.Document(str(path)))]
+    if doc["ext"] == ".pdf":
+        return [_pdf_text(path)]
+    return [path.read_text(encoding="utf-8", errors="ignore")]
+
+
+def _matches(doc: dict, pattern: re.Pattern) -> list[re.Match]:
+    return [m for t in _match_texts(doc) for m in pattern.finditer(t)]
+
+
+def _count_matches(doc: dict, pattern: re.Pattern) -> tuple[int, list[str]]:
+    texts = _match_texts(doc)
     count, contexts = 0, []
     for t in texts:
         for m in pattern.finditer(t):
@@ -313,7 +334,7 @@ def _apply(doc: dict, op: str, pattern: re.Pattern | None, text: str, replace_al
         if b"\r\n" in before:
             content = content.replace("\n", "\r\n")
         previews.append(_preview(content, 0, min(len(content), 200), content[:200]))
-        tmp.write_bytes(content.encode("utf-8"))
+        tmp.write_bytes((b"\xef\xbb\xbf" if before.startswith(b"\xef\xbb\xbf") else b"") + content.encode("utf-8"))
     else:
         content = path.read_text(encoding="utf-8", errors="ignore")
         if op == "append":
@@ -401,7 +422,17 @@ def file_text(doc_id: str) -> dict:
     if doc["ext"] not in (".txt", ".md"):
         raise EditError("Only a text or Markdown file can be edited as a whole.")
     data = (config.LIBRARY_DIR / doc["file_name"]).read_bytes()
-    return {"text": _without_line_ends(data.decode("utf-8", errors="replace")), "sha256": ingestion.file_sha256(data)}
+    return {"text": _without_line_ends(_strict_text(data)), "sha256": ingestion.file_sha256(data)}
+
+
+def _strict_text(data: bytes) -> str:
+    """A text file's bytes as UTF-8, or a refusal: opening a Latin-1 file in the editor would show replacement
+    characters, and saving would write them into the file."""
+    try:
+        return data.decode("utf-8-sig" if data.startswith(b"\xef\xbb\xbf") else "utf-8")
+    except UnicodeDecodeError:
+        raise EditError("This file isn't UTF-8 text, so it can't be edited here without damaging it. Download it to "
+                        "edit it, or change it from the chat.") from None
 
 
 def rewrite(doc_id: str, text: str, sha256: str) -> dict:
@@ -606,18 +637,19 @@ def _pdf_to_markdown(doc: dict) -> dict:
 
 
 def edit(doc_id: str, op: str, *, find: str = "", text: str = "", replace_all: bool = False,
-         convert_pdf: bool = False) -> dict:
+         convert_pdf: bool = False, loose: bool = False) -> dict:
     """Fonts a PDF may need are downloaded first, outside the library lock (a slow server holds up nothing else);
     then the edit itself (_edit_locked)."""
     doc = catalog.get_document(doc_id)
     if doc and doc.get("ext") == ".pdf":
         pdf_edit.prefetch_fonts(config.LIBRARY_DIR / doc["file_name"])
-    return _edit_locked(doc_id, op, find=find, text=text, replace_all=replace_all, convert_pdf=convert_pdf)
+    return _edit_locked(doc_id, op, find=find, text=text, replace_all=replace_all, convert_pdf=convert_pdf,
+                        loose=loose)
 
 
 @library._exclusive
 def _edit_locked(doc_id: str, op: str, *, find: str = "", text: str = "", replace_all: bool = False,
-                 convert_pdf: bool = False) -> dict:
+                 convert_pdf: bool = False, loose: bool = False) -> dict:
     """op = "replace" (find -> text) or "append" (text added at the end). Returns what happened.
 
     Raises EditError when nothing was changed. A replace that matches several places and replace_all is False
@@ -635,9 +667,9 @@ def _edit_locked(doc_id: str, op: str, *, find: str = "", text: str = "", replac
     if op not in ("replace", "append", "rewrite"):
         raise EditError("Unknown edit. Use replace or append.")
     if doc["ext"] != ".pdf":
-        return _edit(doc, doc, op, find, text, replace_all)
+        return _edit(doc, doc, op, find, text, replace_all, loose)
     try:
-        return _edit(doc, doc, op, find, text, replace_all)
+        return _edit(doc, doc, op, find, text, replace_all, loose)
     except pdf_edit.CantKeepLayout as e:
         reason, too_long = str(e), isinstance(e, pdf_edit.NoRoom)
         missing = "".join(c for c in getattr(e, "missing", "") if c in text and not c.isspace())
@@ -646,7 +678,7 @@ def _edit_locked(doc_id: str, op: str, *, find: str = "", text: str = "", replac
         raise NeedsConversion(reason, too_long, missing)
     markdown = _pdf_to_markdown(doc)
     try:
-        result = _edit(doc, markdown, op, find, text, replace_all)
+        result = _edit(doc, markdown, op, find, text, replace_all, loose)
     except Exception:
         (config.LIBRARY_DIR / markdown["file_name"]).unlink(missing_ok=True)
         raise
@@ -657,7 +689,7 @@ def _edit_locked(doc_id: str, op: str, *, find: str = "", text: str = "", replac
     return result
 
 
-def _edit(source: dict, doc: dict, op: str, find: str, text: str, replace_all: bool) -> dict:
+def _edit(source: dict, doc: dict, op: str, find: str, text: str, replace_all: bool, loose: bool = False) -> dict:
     """The edit itself. `source` is the document as stored; `doc` is the file to edit (the same, or a Markdown
     copy of a PDF)."""
     doc_id, converted = doc["id"], doc is not source
@@ -667,8 +699,8 @@ def _edit(source: dict, doc: dict, op: str, find: str, text: str, replace_all: b
             raise EditError("Only a text or Markdown file can be edited as a whole.")
         if len(text) > MAX_REWRITE_CHARS:
             raise EditError(f"That text is too long to save here (limit {MAX_REWRITE_CHARS:,} characters).")
-        if _without_line_ends(text) == _without_line_ends(
-                (config.LIBRARY_DIR / doc["file_name"]).read_text(encoding="utf-8", errors="ignore")):
+        # decoded as strictly as file_text opened it: a file can't pass one check and fail the other
+        if _without_line_ends(text) == _without_line_ends(_strict_text((config.LIBRARY_DIR / doc["file_name"]).read_bytes())):
             raise EditError("Nothing was changed.")
     elif op == "append":
         if not text.strip():
@@ -683,11 +715,18 @@ def _edit(source: dict, doc: dict, op: str, find: str, text: str, replace_all: b
         if not found:  # the user may not have the capitalisation right
             pattern = _pattern(find, ignore_case=True)
             found, contexts = _count_matches(doc, pattern)
-        for loose in ([] if found else _loose_patterns(find)):   # selected in the preview: see _loose_patterns
-            found, contexts = _count_matches(doc, loose)
-            if found:
-                pattern = loose
+        unbalanced = False
+        for candidate in (_loose_patterns(find, doc["ext"]) if loose and not found else []):
+            matches = _matches(doc, candidate)
+            if matches and not all(_marks_balanced(m) for m in matches):
+                unbalanced = True   # it would take half of a bold / italic / code pair with it
+                continue
+            if matches:
+                pattern, found, contexts = candidate, *_count_matches(doc, candidate)
                 break
+        if not found and unbalanced:
+            raise EditError("That selection starts or ends inside bold, italic or code formatting. Select the whole "
+                            "formatted part, or less of it.")
         if not found:
             if doc["ext"] == ".docx" and _pattern(find, ignore_case=True).search(document_text(doc).replace("\n", " ")):
                 raise EditError("That text runs across more than one paragraph of this Word document, and a change "
