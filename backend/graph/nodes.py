@@ -201,7 +201,7 @@ STANDALONE QUERY
 Rewrite the latest message only as much as needed to be self-contained, resolving references from the
 conversation. Keep its intent, language, names, dates and numbers; never add facts or context you don't have.
 
-Uploaded documents ({doc_count}): {doc_names}
+{recent_change}Uploaded documents ({doc_count}): {doc_names}
 
 Persistent user memories:
 {memories}
@@ -305,6 +305,47 @@ _QUEUE_STATUS = re.compile(r"^\s*(?:what'?s\s+(?:in\s+)?the\s+queue|queue\s+stat
                            r"(?:queue|batch)(?:\s+going)?|is\s+the\s+(?:batch|queue)\s+(?:done|finished))[\s?.!]*$", re.I)
 
 
+# Right after the document agent changed a document, a message that carries on with that change goes back to it:
+# "regenerate it again", "on second thought make it shorter", "a new version", "revert". Without this the router
+# sent such follow-ups to model knowledge, which answered that it can't see or edit the file.
+_FOLLOW_UP = re.compile(   # clear follow-up wording only: anything looser is left to the router (see _recent_change)
+    r"\b(?:re-?generate|re-?do|re-?write|re-?word|re-?phrase|(?:it|that|this|one)\s+again|try\s+again|"
+    r"second\s+thoughts?|revert|go\s+back|put\s+(?:it|that)\s+back|undo\s+(?:it|that)|"
+    r"(?:make|change|shorten|lengthen|condense|expand)\s+(?:it|that|this)|"
+    r"another\s+(?:version|draft|try|go)|new\s+(?:version|wording|draft)|different\s+(?:wording|version)|"
+    r"generate\s+(?:it|that|this|another))\b", re.I)
+FOLLOW_UP_MAX_WORDS = 30
+_UNDO_WORDS = ("undo", "revert")
+
+
+def _near(word: str, target: str) -> bool:
+    """One letter wrong, missing, extra, or two neighbours swapped ("udno", "undoo", "revrt")."""
+    if word == target:
+        return True
+    if abs(len(word) - len(target)) > 1:
+        return False
+    if len(word) == len(target):
+        diff = [i for i, (a, b) in enumerate(zip(word, target)) if a != b]
+        return len(diff) == 1 or (len(diff) == 2 and diff[1] == diff[0] + 1
+                                   and word[diff[0]] == target[diff[1]] and word[diff[1]] == target[diff[0]])
+    short, long_ = sorted((word, target), key=len)
+    return any(long_[:i] + long_[i + 1:] == short for i in range(len(long_)))
+
+
+def _undo_typo(query: str) -> bool:
+    """A bare undo, spelled wrong: one word near "undo" or "revert", with "please", "it" or "that" around it."""
+    words = [w for w in re.findall(r"[a-z]+", query.lower()) if w not in ("please", "it", "that", "this", "pls")]
+    return len(words) == 1 and any(_near(words[0], t) for t in _UNDO_WORDS)
+
+
+def _recent_change(state: AgentState) -> str:
+    changed = state.get("agent_changed") or []
+    if not changed:
+        return ""
+    return (f"The previous answer {'; '.join(changed)}. A message that continues that work (rewriting, regenerating, "
+            "expanding, shortening or undoing it, or a new version of the same passage) is a document_action.\n\n")
+
+
 # The library's own state (rename and edit history, the list of documents): only the agent knows it.
 _LIBRARY_STATE = re.compile(r"^\s*(?:(?:which|what)\s+(?:of\s+)?(?:my\s+)?(?:documents|docs|files)\s+"
                             r"(?:have\s+been|were|got|did\s+you)\s+(?:renamed|retitled|edited|changed)|"
@@ -319,6 +360,11 @@ def manage_in_code(state: AgentState) -> str | None:
         return "The document agent asked a question last turn; this is the answer (decided in code)."
     if _BARE_UNDO.match(query):
         return "A bare undo (decided in code)."
+    if state.get("agent_changed"):
+        if _undo_typo(query):
+            return "An undo, misspelled, right after a change (decided in code)."
+        if len(query.split()) <= FOLLOW_UP_MAX_WORDS and _FOLLOW_UP.search(query):
+            return "Continues the change the document agent just made (decided in code)."
     if _QUEUE_STATUS.match(query):
         return "Asks about the queued document tasks (decided in code)."
     if _LIBRARY_STATE.match(query):
@@ -341,6 +387,7 @@ def router_node(state: AgentState) -> dict:
         memories=memory_text,
         history=history_to_text(state.get("history", [])[-6:]),
         query=state["query"],
+        recent_change=_recent_change(state),
     )
 
     review_context = (

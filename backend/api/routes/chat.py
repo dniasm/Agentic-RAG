@@ -124,6 +124,8 @@ def _prepare(
         # "rename that one": the documents the previous answer was based on
         "cited_doc_ids": [src["doc_id"] for src in (last_answer or {}).get("meta", {}).get("sources", [])
                           if src.get("doc_id")],
+        # what the document agent's previous answer changed: "regenerate it", "udno" continue that work
+        "agent_changed": _changes_in(last_answer),
         # a draft another part of the chat wrote, which the document agent never saw ("yup use that")
         "other_answer": last_answer["content"] if last_answer and last_answer.get("tool") != "manage_documents"
                         else None,
@@ -369,6 +371,19 @@ BUSY_WAIT_SECONDS = 2.0   # a second message waits this long for the first, then
 def _take(lock: threading.Lock) -> None:
     if not lock.acquire(timeout=BUSY_WAIT_SECONDS):
         raise HTTPException(status_code=409, detail="Still working on your previous message in this chat.")
+
+
+def _changes_in(answer: dict | None) -> list[str]:
+    """What a document agent's answer changed, in words ('edited "CV"'); empty for any other answer."""
+    if not answer or answer.get("tool") != "manage_documents":
+        return []
+    words = {"edit": "edited", "rename": "renamed", "undo": "undid an edit to"}
+    out = []
+    for a in (answer.get("meta") or {}).get("actions") or []:
+        title = a.get("new_title") or a.get("title")
+        if a.get("type") in words and title:
+            out.append(f'{words[a["type"]]} "{title}"')
+    return out
 
 
 @contextmanager

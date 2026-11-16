@@ -29,15 +29,16 @@ SYSTEM = """You manage the user's document library: find, rename, edit and undo,
   about; one call per document). Use the doc_id it returns; never invent one. Follow any `next` a tool returns.
 - Rename: with no new name, ask (or suggest one from document_details); asked for one fitting the content,
   choose it. "Add" to a name means to the current title.
-- Edit: copy the user's wording exactly; asked to reword, write it yourself. To rewrite a passage, read it with
-  document_details(passage=its heading or a few words) and pass the WHOLE passage, copied exactly, as find.
-- Changes to three or more documents: call queue_tasks at once, with the titles as they are now (it finds the
-  documents itself; don't look them up first). For queue progress call queue_status; never guess.
+- Edit: copy the user's wording exactly; asked to reword, update or expand without wording, write it yourself
+  (plain text, no Markdown). To rewrite a passage, read it with document_details(passage=its heading or a few
+  words) and pass the WHOLE passage, copied exactly, as find.
+- Changes to three or more documents: call queue_tasks at once, with the titles as they are now (it finds them
+  itself; don't look them up first). For queue progress call queue_status; never guess.
 - Undo an edit with undo_edit (one step per call), a rename by renaming back (document_details lists earlier names).
-- PDF copy: the document's "PDF" link. You can't make files or do what no tool does; never offer it.
-- Never name the AI model or company behind you: you are the library's assistant.
-- Never say something was renamed, edited or undone unless a tool returned that. Reply briefly, in plain language,
-  naming documents by title, never by doc_id."""
+- PDF copy: the document's "PDF" link. Never offer what no tool does.
+- Never name the AI model or company behind you.
+- Never say something was renamed, edited or undone unless a tool returned that. Reply briefly and plainly,
+  naming documents by title, never doc_id."""
 
 
 FIND_NEXT = {
@@ -98,6 +99,7 @@ class Guard:
         self.listed: dict = state.get("listed", {})           # doc_id -> turn it was first listed
         self.pending: list = state.get("pending", [])         # renames waiting for confirmation
         self.weak: dict = state.get("weak", {})               # doc_id -> turn it was offered as a near miss
+        self.asked: int | None = state.get("asked")            # turn whose reply asked the user something
         self.turn = turn
         self.session_id = ""     # set by chat(); not saved
         self.owner = config.OWNER   # whose library the tools work in: set by chat(), never by the model
@@ -105,7 +107,7 @@ class Guard:
 
     def state(self) -> dict:
         return {"resolved": self.resolved, "needs_user": self.needs_user, "listed": self.listed,
-                "pending": self.pending, "weak": self.weak}
+                "pending": self.pending, "weak": self.weak, "asked": self.asked}
 
     def saw_find(self, result: dict) -> None:
         ids = [c["doc_id"] for c in result.get("candidates", [])]
@@ -719,7 +721,16 @@ def has_open_question(session_id: str) -> bool:
     guard, turn = session["guard"] or {}, session["turn"]
     # only a question from its last turn: a "no", or moving on, must not keep the conversation here
     asked_now = any(p.get("turn") == turn for p in guard.get("pending") or [])
-    return asked_now or turn in (guard.get("needs_user") or {}).values()
+    return asked_now or turn in (guard.get("needs_user") or {}).values() or guard.get("asked") == turn
+
+
+_ENDS_WITH_QUESTION = re.compile(r"\?[\s\"'”)*_]*$")
+
+
+def asks_user(reply: str) -> bool:
+    """The reply ends by asking the user something ("What wording would you like?"): their answer is for this
+    agent, however it is worded ("anything you'd like" would otherwise read as small talk)."""
+    return bool(_ENDS_WITH_QUESTION.search(reply.strip()))
 
 
 def chat(session_id: str, message: str, model=None, batch: bool = False, owner: str = config.OWNER,
@@ -816,6 +827,7 @@ def chat(session_id: str, message: str, model=None, batch: bool = False, owner: 
     elif not isinstance(new[-1], AIMessage) or new[-1].tool_calls:
         new.append(AIMessage(reply))  # error replies, so the next turn sees a complete exchange
 
+    guard.asked = session["turn"] if not failed and asks_user(reply) else None
     session["llm_messages"] = messages_to_dict(history + new)
     session["guard"] = guard.state()
     session["display"] += [{"role": "user", "text": message},
