@@ -520,6 +520,7 @@ class _Typeset:
     c: str
     style: Style
     font: pymupdf.Font
+    resource: str | None = None   # written in the page's own font: the page's resource name for that font object
 
 
 @dataclass
@@ -1805,6 +1806,7 @@ def _write_own_run(page: pymupdf.Page, placed: list[tuple[_Typeset, int, bytes]]
             names[xref] = _font_resource(page, xref)
             if not re.fullmatch(r"[A-Za-z0-9_.+-]+", names[xref]):
                 raise CantKeepLayout(f"The font resource name {names[xref]!r} can't be written as it is.")
+        t.resource = names[xref]   # which font object drew it: the check compares with that one only
         if current[0] != t.style.color:
             ops.append(b"%.4f %.4f %.4f rg" % _rgb(t.style.color))
         if current[1:] != (xref, t.style.size):
@@ -2053,15 +2055,25 @@ def _check_new_page(before: pymupdf.Page, new: pymupdf.Page, shift: _Shift) -> N
 def _check_own_glyphs(after: pymupdf.Page, letters: list[_Typeset]) -> None:
     """Every letter written by code in the page's own fonts draws the glyph that font has for the letter. _check
     reads the letters back through the same copy-text map that chose their codes, so a map that is wrong, or gives
-    one letter several codes, would pass it; the glyph actually drawn can't."""
+    one letter several codes, would pass it; the glyph actually drawn can't.
+
+    The glyph is compared with the one font object the letter was written in (its resource name on the saved page:
+    object numbers can change on save). Two subsets of a font with the same name number their glyphs differently, so
+    a wrong glyph could match the other subset's number for the letter."""
     if not letters:
         return
     fonts = _OwnFonts(after)
+    by_resource = {name: xref for xref, _e, _t, _b, name, _enc, *ref in after.get_fonts(full=True) if not ref or not ref[0]}
     drawn = [(span["font"], gid, origin) for span in after.get_texttrace() for _u, gid, origin, _b in span["chars"]]
     for t in letters:
         here = [(font, gid) for font, gid, (x, y) in drawn if abs(x - t.x) < 0.25 and abs(y - t.y) < 0.25]
-        expected = {gid for xref in fonts.by_name.get(font_key(t.style.font), [])
-                    if (program := fonts._load(xref)) is not None and (gid := program.has_glyph(ord(t.c)))}
+        if t.resource is not None:
+            xref = by_resource.get(t.resource)
+            program = fonts._load(xref) if xref is not None else None
+            expected = {gid} if program is not None and (gid := program.has_glyph(ord(t.c))) else set()
+        else:   # (not written by _write_own_run: any same-named font object)
+            expected = {gid for xref in fonts.by_name.get(font_key(t.style.font), [])
+                        if (program := fonts._load(xref)) is not None and (gid := program.has_glyph(ord(t.c)))}
         if not here or not expected or not any(gid in expected for _f, gid in here):
             raise CantKeepLayout(f'Checking the edited page failed: the letter "{t.c}" was drawn with another glyph.')
 
