@@ -308,6 +308,12 @@ def last_edit(doc_id: str) -> dict | None:
     return dict(row) if row else None
 
 
+def edit_exists(edit_id: int) -> bool:
+    """False once the edit was undone (undo deletes its record)."""
+    with _lock:
+        return _db().execute("SELECT 1 FROM edits WHERE id = ?", (edit_id,)).fetchone() is not None
+
+
 def delete_edit(edit_id: int) -> None:
     with tx() as c:
         c.execute("DELETE FROM edits WHERE id = ?", (edit_id,))
@@ -371,6 +377,24 @@ def add_batch(session_id: str, items: list, owner: str = config.OWNER) -> dict:
                       "VALUES (?, ?, ?, ?, 'queued')",
                       (batch_id, i, text, json.dumps(change, ensure_ascii=False) if change else None))
     return get_batch(batch_id)
+
+
+def tasks_run_for(session_id: str) -> list[dict]:
+    """The tasks a chat queued that have finished, with what each did ({"actions", "finished_at"})."""
+    with _lock:
+        rows = _db().execute(
+            "SELECT t.actions, t.finished_at FROM batch_tasks t JOIN batches b ON b.id = t.batch_id "
+            "WHERE b.session_id = ? AND t.finished_at IS NOT NULL ORDER BY t.finished_at, t.id",
+            (session_id,)).fetchall()
+    return [{"actions": json.loads(r["actions"] or "[]"), "finished_at": r["finished_at"]} for r in rows]
+
+
+def pending_tasks_for(session_id: str) -> int:
+    """How many of the tasks a chat queued are still to run (queued or running)."""
+    with _lock:
+        return _db().execute(
+            "SELECT COUNT(*) FROM batch_tasks t JOIN batches b ON b.id = t.batch_id "
+            "WHERE b.session_id = ? AND t.status IN ('queued', 'running')", (session_id,)).fetchone()[0]
 
 
 def get_batch(batch_id: str) -> dict | None:

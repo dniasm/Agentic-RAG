@@ -536,7 +536,16 @@ def conversation_documents(conv_id: str, user: dict = Depends(get_current_user))
     """The documents this conversation renamed, edited or undid, newest first (the chat's side panel)."""
     if not db.get_conversation(user["id"], conv_id):
         raise HTTPException(status_code=404, detail="Conversation not found")
-    return activity.documents_changed_in(db.list_tool_messages(conv_id, "manage_documents"), user["id"])
+    return activity.documents_changed_in(db.list_tool_messages(conv_id, "manage_documents"), user["id"],
+                                         catalog.tasks_run_for(conv_id))
+
+
+@router.get("/conversations/{conv_id}/pending")
+def conversation_pending(conv_id: str, user: dict = Depends(get_current_user)):
+    """How many tasks this conversation queued are still to run: the side panel looks again while any are."""
+    if not db.get_conversation(user["id"], conv_id):
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return {"tasks": catalog.pending_tasks_for(conv_id)}
 
 
 @router.patch("/conversations/{conv_id}", response_model=ConversationOut)

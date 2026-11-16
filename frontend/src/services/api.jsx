@@ -153,6 +153,10 @@ export const apiService = {
   async getConversationDocuments(conversationId) {
     return request(`/conversations/${conversationId}/documents`);
   },
+  /** How many tasks the conversation queued are still to run: { tasks }. */
+  async getConversationPending(conversationId) {
+    return request(`/conversations/${conversationId}/pending`);
+  },
 
   // ---------- stats
   async getStats() {
