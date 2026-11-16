@@ -1793,6 +1793,23 @@ def _write_checked(path: Path, out: Path, plans: dict[int, _Plan], expected: tup
             raise
 
 
+def _changed_words(old: str, new: str) -> tuple[int, int, str]:
+    """The part of `old` that `new` really changes, by whole words: (start, end, its replacement). "1.1 Introduction"
+    to "1.1 Hello World" changes only "Introduction", so a contents line that breaks after "1.1" is still one line's
+    change. Both sides keep at least one word."""
+    ow, nw = list(re.finditer(r"\S+", old)), list(re.finditer(r"\S+", new))
+    i = 0
+    while i < min(len(ow), len(nw)) - 1 and ow[i].group() == nw[i].group():
+        i += 1
+    j = 0
+    while (j < min(len(ow), len(nw)) - 1 - i and ow[len(ow) - 1 - j].group() == nw[len(nw) - 1 - j].group()):
+        j += 1
+    if not ow or not nw or (i == 0 and j == 0):
+        return 0, len(old), new
+    o_end, n_end = ow[len(ow) - 1 - j].end(), nw[len(nw) - 1 - j].end()
+    return (ow[i].start(), o_end if j else len(old), new[nw[i].start():n_end if j else len(new)])
+
+
 def replace(path: Path, out: Path, pattern: re.Pattern, new: str, replace_all: bool,
             info: dict | None = None) -> tuple[int, list[tuple[int, int]], str]:
     """Write `path` with the pattern's matches (the first, or all) replaced by `new` to `out`, checked.
@@ -1808,6 +1825,10 @@ def replace(path: Path, out: Path, pattern: re.Pattern, new: str, replace_all: b
             raise CantKeepLayout("The text couldn't be found in the PDF's layout.")
         # each match goes to its line, or (when it runs over lines, or its line can't take the new text) to its
         # paragraph, which is re-wrapped; every other change in that paragraph then goes with it
+        changes = []                          # (start, end, new text) of what each match really changes
+        for m in matches:
+            a, b, text = _changed_words(m.group(0), new)
+            changes.append((m.start() + a, m.start() + b, text))
         by_segment: dict[int, tuple[Segment, list]] = {}
         by_paragraph: dict[int, tuple[list[Segment], list]] = {}
         para_of: dict[int, int] = {}            # id(segment) -> id(its paragraph's first line), once re-wrapped
@@ -1824,17 +1845,17 @@ def replace(path: Path, out: Path, pattern: re.Pattern, new: str, replace_all: b
                     entry[1].extend((a + line.start - para[0].start, b + line.start - para[0].start, t)
                                     for a, b, t in moved[1])
 
-        for m in matches:
-            seg = pdf.segment_at(m.start())
+        for m_start, m_end, text in changes:
+            seg = pdf.segment_at(m_start)
             if seg is None:
                 raise CantKeepLayout("The text couldn't be found in the PDF's layout.")
-            local = [(m.start() - seg.start, min(m.end(), seg.start + len(seg.text)) - seg.start, new)]
-            if m.end() > seg.start + len(seg.text):
+            local = [(m_start - seg.start, min(m_end, seg.start + len(seg.text)) - seg.start, text)]
+            if m_end > seg.start + len(seg.text):
                 para = _paragraph(pdf, seg)
-                if m.end() > para[-1].start + len(para[-1].text):
+                if m_end > para[-1].start + len(para[-1].text):
                     raise CantKeepLayout("The text runs over more than one paragraph of the PDF, which an edit can't "
                                          "re-set.")
-                to_paragraph(seg, [(m.start() - seg.start, m.end() - seg.start, new)])
+                to_paragraph(seg, [(m_start - seg.start, m_end - seg.start, text)])
             elif id(seg) in para_of:
                 to_paragraph(seg, local)
             else:
@@ -1867,9 +1888,9 @@ def replace(path: Path, out: Path, pattern: re.Pattern, new: str, replace_all: b
             info["layout"] = ("moved" if any(p.shift is not None for p in plans)
                               else "rewrapped" if any(p.ordered for p in plans) else "line")
         expected, at = [], 0                 # the document's text as it should read afterwards
-        for m in matches:
-            expected += [pdf.text[at:m.start()], new]
-            at = m.end()
+        for m_start, m_end, text in changes:
+            expected += [pdf.text[at:m_start], text]
+            at = m_end
         expected = "".join(expected) + pdf.text[at:]
         try:
             if any(p is None for p in ordered.values()):
