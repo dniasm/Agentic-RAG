@@ -30,10 +30,15 @@ log = logging.getLogger(__name__)
 
 EDITABLE = {".txt", ".md", ".docx"}
 MAX_APPEND_CHARS = 20_000
+MAX_REWRITE_CHARS = 2_000_000   # the whole text of a TXT / MD file saved from the website's editor
 
 
 class EditError(Exception):
     pass
+
+
+class EditConflict(EditError):
+    """The document changed since the caller read it: nothing was saved."""
 
 
 class NeedsConversion(EditError):
@@ -54,6 +59,24 @@ def _pattern(find: str, ignore_case: bool = False) -> re.Pattern:
     if not words:
         raise EditError("Say which text to change.")
     return re.compile(r"\s+".join(re.escape(w) for w in words), re.IGNORECASE if ignore_case else 0)
+
+
+_LINE_END_HYPHEN = re.compile(r"(\w)-\s+(\w)")
+_MARKS = r"[*_`]{0,3}"
+
+
+def _loose_patterns(find: str) -> list[re.Pattern]:
+    """Tried, in order, when `find` isn't in the document as written. Text selected in the preview can differ from
+    the file: a word the page broke at a line end comes as "exam- ple" (the file has "example"), and the preview
+    shows a Markdown file without its bold / italic / code marks ("**key** point" is selected as "key point")."""
+    rejoined = _LINE_END_HYPHEN.sub(r"\1\2", find)          # "exam- ple" -> "example"
+    hyphened = _LINE_END_HYPHEN.sub(r"\1-\2", find)         # "self- contained" -> "self-contained"
+    out = [_pattern(t, ignore_case=True) for t in dict.fromkeys([rejoined, hyphened]) if t != find]
+    for text in dict.fromkeys([find, rejoined, hyphened]):   # each once, in order
+        words = text.split()
+        if words:
+            out.append(re.compile(r"\s+".join(_MARKS + re.escape(w) + _MARKS for w in words), re.IGNORECASE))
+    return out
 
 
 def _versions_dir(doc_id: str) -> Path:
@@ -284,6 +307,13 @@ def _apply(doc: dict, op: str, pattern: re.Pattern | None, text: str, replace_al
                 if remaining is not None and changed >= remaining:
                     break
         d.save(str(tmp))
+    elif op == "rewrite":   # the whole text, from the website's editor, with the file's own line endings
+        before = path.read_bytes()   # not read_text: it turns \r\n into \n, hiding which line endings the file has
+        content = text.replace("\r\n", "\n")
+        if b"\r\n" in before:
+            content = content.replace("\n", "\r\n")
+        previews.append(_preview(content, 0, min(len(content), 200), content[:200]))
+        tmp.write_bytes(content.encode("utf-8"))
     else:
         content = path.read_text(encoding="utf-8", errors="ignore")
         if op == "append":
@@ -356,6 +386,38 @@ def _plain_text(path: Path) -> str:
     """The text day7 reads from a file (what the summary is written from)."""
     pages, _ = ingestion.load_file(path)
     return "\n\n".join(p.page_content for p in pages)
+
+
+def _without_line_ends(text: str) -> str:
+    return text.replace("\r\n", "\n")
+
+
+def file_text(doc_id: str) -> dict:
+    """A TXT / MD document's whole text for the website's editor, with the SHA-256 of the file it came from (sent
+    back with the save, so a save over a change made meanwhile is refused)."""
+    doc = catalog.get_document(doc_id)
+    if not doc:
+        raise EditError("Document not found.")
+    if doc["ext"] not in (".txt", ".md"):
+        raise EditError("Only a text or Markdown file can be edited as a whole.")
+    data = (config.LIBRARY_DIR / doc["file_name"]).read_bytes()
+    return {"text": _without_line_ends(data.decode("utf-8", errors="replace")), "sha256": ingestion.file_sha256(data)}
+
+
+def rewrite(doc_id: str, text: str, sha256: str) -> dict:
+    """Save the whole text of a TXT / MD document from the website's editor: one edit (Undo puts the old text back),
+    refused when the file changed since `sha256` was read (another edit, a chat, a queued task)."""
+    return _rewrite_locked(doc_id, text, sha256)
+
+
+@library._exclusive
+def _rewrite_locked(doc_id: str, text: str, sha256: str) -> dict:
+    doc = catalog.get_document(doc_id)
+    if doc and doc["ext"] in (".txt", ".md"):
+        now = ingestion.file_sha256((config.LIBRARY_DIR / doc["file_name"]).read_bytes())
+        if now != sha256:
+            raise EditConflict("The document was changed since it was opened. Reopen it to see the change, then edit again.")
+    return _edit_locked(doc_id, "rewrite", text=text)   # the same lock (re-entrant): the check and the save are one step
 
 
 def changed_share(old: str, new: str) -> float:
@@ -570,7 +632,7 @@ def _edit_locked(doc_id: str, op: str, *, find: str = "", text: str = "", replac
         raise EditError(f"The document is {doc['status']}, not ready to edit.")
     if doc["ext"] not in EDITABLE | {".pdf"}:
         raise EditError(f"{doc['ext'].upper().lstrip('.')} files can't be edited here.")
-    if op not in ("replace", "append"):
+    if op not in ("replace", "append", "rewrite"):
         raise EditError("Unknown edit. Use replace or append.")
     if doc["ext"] != ".pdf":
         return _edit(doc, doc, op, find, text, replace_all)
@@ -600,7 +662,15 @@ def _edit(source: dict, doc: dict, op: str, find: str, text: str, replace_all: b
     copy of a PDF)."""
     doc_id, converted = doc["id"], doc is not source
     pattern = None
-    if op == "append":
+    if op == "rewrite":
+        if doc["ext"] not in (".txt", ".md"):
+            raise EditError("Only a text or Markdown file can be edited as a whole.")
+        if len(text) > MAX_REWRITE_CHARS:
+            raise EditError(f"That text is too long to save here (limit {MAX_REWRITE_CHARS:,} characters).")
+        if _without_line_ends(text) == _without_line_ends(
+                (config.LIBRARY_DIR / doc["file_name"]).read_text(encoding="utf-8", errors="ignore")):
+            raise EditError("Nothing was changed.")
+    elif op == "append":
         if not text.strip():
             raise EditError("Give the text to add.")
         if len(text) > MAX_APPEND_CHARS:
@@ -613,6 +683,11 @@ def _edit(source: dict, doc: dict, op: str, find: str, text: str, replace_all: b
         if not found:  # the user may not have the capitalisation right
             pattern = _pattern(find, ignore_case=True)
             found, contexts = _count_matches(doc, pattern)
+        for loose in ([] if found else _loose_patterns(find)):   # selected in the preview: see _loose_patterns
+            found, contexts = _count_matches(doc, loose)
+            if found:
+                pattern = loose
+                break
         if not found:
             if doc["ext"] == ".docx" and _pattern(find, ignore_case=True).search(document_text(doc).replace("\n", " ")):
                 raise EditError("That text runs across more than one paragraph of this Word document, and a change "
@@ -653,7 +728,8 @@ def _edit(source: dict, doc: dict, op: str, find: str, text: str, replace_all: b
         (config.LIBRARY_DIR / source["file_name"]).unlink(missing_ok=True)
         reloaded = {**reloaded, "pages": source["pages"] or reloaded["pages"]}
     refreshed = _finish(doc, reloaded, before)
-    detail = (f'replaced "{find}" with "{text}"' if op == "replace" else f'appended "{text[:80]}"')[:300]
+    detail = (f'replaced "{find}" with "{text}"' if op == "replace" else
+              "edited the text in the editor" if op == "rewrite" else f'appended "{text[:80]}"')[:300]
     if converted:
         detail = ("converted the PDF to Markdown; " + detail)[:300]
     catalog.record_edit(doc_id, op, detail, backup.name)

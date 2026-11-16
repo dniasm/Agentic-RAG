@@ -1,11 +1,29 @@
 /** The one document preview: a PDF in the pdf.js viewer (lib/pdfViewer.js), any other document as the PDF it is
-    downloaded as, so its pages are the real ones. Mounted once in App; opened with openPreview(doc). */
-import React, { useEffect, useRef } from 'react';
-import { X } from 'lucide-react';
-import { API_BASE_URL } from '../services/api';
+    downloaded as, so its pages are the real ones. Mounted once in App; opened with openPreview(doc).
+
+    Editing here: select a passage on the page and "Edit selection" replaces it (SelectionEditor, the same edit as the
+    chat's); a TXT or Markdown file also opens whole in "Edit text" (TextEditor). After a save the page is drawn
+    again, a note says what changed (with Undo), and the document lists are told (state/documentEvents). */
+import React, { useEffect, useRef, useState } from 'react';
+import { Pencil, X } from 'lucide-react';
+import { API_BASE_URL, apiService } from '../services/api';
 import { documentFiles } from '../lib/documentFiles';
+import { LAYOUT_NOTE } from '../lib/chatActions';
 import { closePreview, usePreview } from '../state/previewStore';
+import { documentsChanged } from '../state/documentEvents';
+import ConfirmAction from './ConfirmAction';
 import DocumentLinks from './DocumentLinks';
+import SelectionEditor from './SelectionEditor';
+import TextEditor from './TextEditor';
+
+const WHOLE_TEXT = ['.txt', '.md'];
+
+/** The text selected inside `root`, or '' (a selection elsewhere on the page doesn't count). */
+function selectionIn(root) {
+  const sel = window.getSelection();
+  if (!root || !sel || sel.isCollapsed || !root.contains(sel.anchorNode) || !root.contains(sel.focusNode)) return '';
+  return sel.toString().trim();
+}
 
 /** documents: the library as last listed, so a preview opened from an old chat shows the current title and type. */
 export default function DocumentPreview({ documents = [] }) {
@@ -13,9 +31,17 @@ export default function DocumentPreview({ documents = [] }) {
   const known = asked && documents.find((d) => d.id === asked.id);
   const doc = asked && { ...asked, ...(known ? { title: known.title, ext: known.ext } : {}) };
   const host = useRef(null);
+  const [version, setVersion] = useState(0);        // drawn again after each save
+  const [mode, setMode] = useState('view');         // view | selection | text
+  const [selected, setSelected] = useState('');     // the passage selected on the page now
+  const [editing, setEditing] = useState('');       // the passage being replaced
+  const [note, setNote] = useState(null);           // after a save: { lines, editId }
+
+  // a new document: start over
+  useEffect(() => { setMode('view'); setSelected(''); setNote(null); }, [asked?.id]);
 
   useEffect(() => {
-    if (!doc) return undefined;
+    if (!doc || mode === 'text') return undefined;
     let viewer = null;
     let cancelled = false;
     const files = documentFiles(API_BASE_URL, doc);
@@ -24,32 +50,101 @@ export default function DocumentPreview({ documents = [] }) {
       viewer = createPdfViewer({ url: files.previewUrl, downloadUrl: files.pdfUrl, fileName: `${doc.title}.pdf` });
       host.current.replaceChildren(viewer.element);
     });
-    const onKey = (e) => { if (e.key === 'Escape') closePreview(); };
+    return () => { cancelled = true; viewer?.destroy(); };
+  }, [asked?.id, doc?.ext, version, mode === 'text']); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!doc) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape' && mode === 'view') closePreview(); };
+    const onSelect = () => setSelected(selectionIn(host.current));
     window.addEventListener('keydown', onKey);
-    return () => { cancelled = true; viewer?.destroy(); window.removeEventListener('keydown', onKey); };
-  }, [asked?.id, doc?.ext]); // eslint-disable-line react-hooks/exhaustive-deps
+    document.addEventListener('selectionchange', onSelect);
+    return () => { window.removeEventListener('keydown', onKey); document.removeEventListener('selectionchange', onSelect); };
+  }, [asked?.id, mode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!doc) return null;
+
+  const saved = (result, what) => {
+    const lines = [what];
+    if (result.converted) lines.push('The PDF was converted to a Markdown copy to make this change.');
+    if (LAYOUT_NOTE[result.layout]) lines.push(LAYOUT_NOTE[result.layout]);
+    for (const [font, drawn] of Object.entries(result.stand_in || {})) {   // { PDF's font: look-alike drawn instead }
+      lines.push(`${font} isn't available here, so the new text uses ${drawn}, which has the same letter widths.`);
+    }
+    if (result.added_lines) lines.push(`The text grew by ${result.added_lines} line${result.added_lines === 1 ? '' : 's'}: check the page.`);
+    setNote({ lines, editId: result.edit_id });
+    setMode('view');
+    setEditing('');
+    setSelected('');
+    window.getSelection()?.removeAllRanges();
+    setVersion((v) => v + 1);
+    documentsChanged(doc.id);
+  };
+
+  const undo = async () => {
+    try {
+      await apiService.undoEdit(doc.id, note.editId);
+      setNote({ lines: ['The edit was undone. Redo is on the Documents page and in the chat.'], editId: null });
+      setVersion((v) => v + 1);
+      documentsChanged(doc.id);
+    } catch (err) {
+      setNote({ lines: [`Couldn't undo: ${err.message}`], editId: null });
+      throw err;
+    }
+  };
+
+  const canEditSelection = mode === 'view' && selected.length > 0;
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-stretch justify-center p-0 sm:p-6" onMouseDown={(e) => {
-      if (e.target === e.currentTarget) closePreview();
+      if (e.target === e.currentTarget && mode === 'view') closePreview();
     }}>
       <div role="dialog" aria-modal="true" aria-label={`Preview of ${doc.title}`}
            className="bg-surface w-full max-w-[1000px] sm:rounded-card border border-line flex flex-col min-h-0 overflow-hidden">
-        <div className="flex-none flex items-center gap-3 h-12 px-4 border-b border-line">
-          <h2 className="flex-1 truncate text-section font-medium" title={doc.title}>{doc.title}</h2>
-          <DocumentLinks doc={doc} />
+        <div className="flex-none flex items-center gap-3 min-h-12 px-4 py-2 border-b border-line flex-wrap">
+          <h2 className="flex-1 min-w-0 truncate text-section font-medium" title={doc.title}>{doc.title}</h2>
+          {canEditSelection && (
+            // mousedown would clear the selection before the click: keep it
+            <button type="button" className="btn-secondary h-8" onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => { setEditing(selected); setMode('selection'); setNote(null); }}>
+              <Pencil className="w-4 h-4" aria-hidden="true" />Edit selection
+            </button>
+          )}
+          {mode === 'view' && WHOLE_TEXT.includes(doc.ext) && (
+            <button type="button" className="link-action" onClick={() => { setMode('text'); setNote(null); }}>Edit text</button>
+          )}
+          {mode === 'view' && <DocumentLinks doc={doc} />}
           <button type="button" className="btn-ghost h-8 w-8 p-0 -mr-2" onClick={closePreview} aria-label="Close preview">
             <X className="w-4 h-4" aria-hidden="true" />
           </button>
         </div>
-        {doc.ext && doc.ext !== '.pdf' && (
-          // the original's fonts, images and page breaks aren't recreated, so its page count can differ
+        {mode === 'view' && !note && (
           <p className="flex-none px-4 py-1.5 border-b border-line text-small text-muted">
-            The text in a simple layout. Download the file to see it as it was made.
+            {doc.ext && doc.ext !== '.pdf'
+              ? 'The text in a simple layout. Select a passage to change it, or download the file to see it as it was made.'
+              : 'Select a passage to change it.'}
           </p>
         )}
-        <div ref={host} className="flex-1 min-h-0"><p className="p-6 text-body text-muted">Loading…</p></div>
+        {note && (
+          <div className="flex-none flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-2 border-b border-line bg-raised text-body" role="status">
+            <span className="flex-1 min-w-0">{note.lines.map((l, i) => <span key={i} className="block">{l}</span>)}</span>
+            {note.editId != null && (
+              <ConfirmAction label="Undo" question="Undo this edit?" busyLabel="Undoing…" onConfirm={undo} />
+            )}
+            <button type="button" className="text-muted hover:text-ink" onClick={() => setNote(null)} aria-label="Dismiss">
+              <X className="w-4 h-4" aria-hidden="true" />
+            </button>
+          </div>
+        )}
+        {mode === 'text' ? (
+          <TextEditor doc={doc} onCancel={() => setMode('view')}
+                      onSaved={(r) => saved(r, 'Saved. The document was indexed again.')} />
+        ) : (
+          <div ref={host} className="flex-1 min-h-0"><p className="p-6 text-body text-muted">Loading…</p></div>
+        )}
+        {mode === 'selection' && (
+          <SelectionEditor doc={doc} selected={editing} onCancel={() => setMode('view')}
+                           onSaved={(r) => saved(r, r.changes > 1 ? `Changed ${r.changes} places.` : 'Changed.')} />
+        )}
       </div>
     </div>
   );

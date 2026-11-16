@@ -9,6 +9,7 @@ import Overview from './pages/Overview';
 import { apiService, setUnauthorizedHandler } from './services/api';
 import { hrefFor, navigate, useRoute } from './lib/route';
 import { forgetConversation } from './state/chatStore';
+import { onDocumentsChanged } from './state/documentEvents';
 
 const PAGE_TITLES = { chat: 'Chat', documents: 'Documents', overview: 'Overview' };
 
@@ -71,6 +72,9 @@ export default function App() {
       refreshDocuments();
     }
   }, [user, refreshConversations, refreshDocuments]);
+
+  // an edit saved in the preview: the titles and types the app shows may have changed
+  useEffect(() => onDocumentsChanged(() => refreshDocuments()), [refreshDocuments]);
 
   // The phone menu closes whenever the route changes.
   useEffect(() => { setMenuOpen(false); }, [route.page, route.conversationId]);

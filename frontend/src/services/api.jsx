@@ -155,6 +155,21 @@ export const apiService = {
   async renameDocument(docId, title, confirmed = false) {
     return request(`/library/documents/${docId}/rename`, { method: 'POST', body: { title, confirmed } });
   },
+  /** Replace a passage selected in the preview. 409: err.data.ambiguous (select more, or replaceAll) or
+      err.data.needs_conversion (the PDF's look can't be kept: convertPdf after the user agrees). */
+  async editDocument(docId, { find, text, replaceAll = false, convertPdf = false }) {
+    return request(`/library/documents/${docId}/edit`, {
+      method: 'POST', body: { find, text, replace_all: replaceAll, convert_pdf: convertPdf },
+    });
+  },
+  /** A TXT / MD document's whole text for the editor: { text, sha256 }. */
+  async getDocumentText(docId) {
+    return request(`/library/documents/${docId}/text`);
+  },
+  /** Save the editor's text; 409 when the document changed since it was opened (sha256). */
+  async saveDocumentText(docId, text, sha256) {
+    return request(`/library/documents/${docId}/text`, { method: 'PUT', body: { text, sha256 } });
+  },
   /** Batches of queued tasks still running or queued in the last hour: { batches: [{ id, created_at, tasks }] }. */
   async getQueue() {
     return request('/library/queue');

@@ -7,6 +7,7 @@ import DocumentLinks from '../components/DocumentLinks';
 import QueuePanel from '../components/QueuePanel';
 import RenameAction from '../components/RenameAction';
 import { openPreview } from '../state/previewStore';
+import { onDocumentsChanged } from '../state/documentEvents';
 
 const ACCEPTED = ['.pdf', '.docx', '.txt', '.md'];
 const MAX_MB = 20;
@@ -81,6 +82,8 @@ export default function Documents({ onChanged }) {
   };
 
   useEffect(() => { load(); }, []);
+  // an edit saved in the preview: which edit Undo and Redo apply to has changed
+  useEffect(() => onDocumentsChanged(() => load()), []);
 
   // Indexing runs on the server after the upload returns: check back while any file is still being indexed.
   const indexing = documents.filter((d) => d.status === 'processing').map((d) => d.id).join(',');

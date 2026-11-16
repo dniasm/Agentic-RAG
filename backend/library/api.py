@@ -122,6 +122,71 @@ def rename_document(doc_id: str, body: RenameIn, user: dict = Depends(current_us
     return {**result, "file_name": Path(result["file_name"]).name}
 
 
+class EditIn(BaseModel):
+    find: str = Field(min_length=1, max_length=20_000)    # the passage selected in the preview
+    text: str = Field(max_length=20_000)                  # what it becomes ("" deletes it)
+    replace_all: bool = False                             # every place it appears, after being told how many
+    convert_pdf: bool = False                             # agreed to a Markdown copy when the PDF's look can't be kept
+
+
+def _edit_result(result: dict, doc_id: str, user: dict) -> dict:
+    return {**result, "edit_id": (catalog.last_edit(doc_id) or {}).get("id"), "documents": list_documents(user)}
+
+
+@router.post("/documents/{doc_id}/edit")
+def edit_document(doc_id: str, body: EditIn, user: dict = Depends(current_user)):
+    """The preview's "Edit selection": replace the selected passage, through the same edit as the chat's (a PDF in
+    place, checked; undo and redo). 409 with `ambiguous` (it appears in several places: select more, or
+    replace_all) or `needs_conversion` (the PDF's look can't be kept: agree with convert_pdf); 400 for anything
+    else that stops it (the message says why)."""
+    doc = _own_doc(doc_id, user)
+    from backend.library import editing
+    try:
+        result = editing.edit(doc["id"], "replace", find=body.find, text=body.text, replace_all=body.replace_all,
+                              convert_pdf=body.convert_pdf)
+    except editing.NeedsConversion as e:
+        raise HTTPException(409, {"message": str(e), "needs_conversion": True, "too_long": e.too_long}) from e
+    except editing.EditError as e:
+        raise HTTPException(400, str(e)) from e
+    if result["status"] == "ambiguous":
+        raise HTTPException(409, {"message": f"That passage appears {result['matches']} times.",
+                                  "ambiguous": True, "matches": result["matches"], "contexts": result["contexts"]})
+    event("edit_button", doc=doc_id, title=doc["title"], converted=result.get("converted", False))
+    return _edit_result(result, doc_id, user)
+
+
+class TextIn(BaseModel):
+    text: str = Field(max_length=2_000_000)
+    sha256: str = Field(min_length=64, max_length=64)   # of the text as it was opened (GET /text)
+
+
+@router.get("/documents/{doc_id}/text")
+def document_text(doc_id: str, user: dict = Depends(current_user)):
+    """A TXT / MD document's whole text for the website's editor, and the SHA-256 to send back with the save."""
+    doc = _own_doc(doc_id, user)
+    from backend.library import editing
+    try:
+        return editing.file_text(doc["id"])
+    except editing.EditError as e:
+        raise HTTPException(400, str(e)) from e
+
+
+@router.put("/documents/{doc_id}/text")
+def save_document_text(doc_id: str, body: TextIn, user: dict = Depends(current_user)):
+    """Save the editor's text as one edit (Undo puts the old text back). 409 when the document changed since it
+    was opened: nothing is overwritten."""
+    doc = _own_doc(doc_id, user)
+    from backend.library import editing
+    try:
+        result = editing.rewrite(doc["id"], body.text, body.sha256)
+    except editing.EditConflict as e:
+        raise HTTPException(409, str(e)) from e
+    except editing.EditError as e:
+        raise HTTPException(400, str(e)) from e
+    event("text_saved", doc=doc_id, title=doc["title"])
+    return _edit_result(result, doc_id, user)
+
+
 class UndoIn(BaseModel):
     edit_id: int | None = None   # the edit the button is under: refused unless it is still the latest
 
