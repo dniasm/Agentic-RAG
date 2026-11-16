@@ -112,6 +112,11 @@ def test_a_selection_that_would_split_formatting_is_refused():
     var = _ingest("var.md", "Set **my_var** to one.\n")
     assert editing.edit(var["id"], "replace", find="my_var to", text="it to", loose=True)["status"] == "edited"
     assert _text(var) == "Set it to one.\n"
+    # whole italic pairs, single marks included, may go too (* + * is a pair, not one **)
+    italic = _ingest("italic.md", "The *key* point and the _main_ idea.\n")
+    assert editing.edit(italic["id"], "replace", find="key point", text="first point", loose=True)["status"] == "edited"
+    assert editing.edit(italic["id"], "replace", find="main idea", text="whole idea", loose=True)["status"] == "edited"
+    assert _text(italic) == "The first point and the whole idea.\n"
 
 
 def test_marks_are_only_marks_in_markdown():

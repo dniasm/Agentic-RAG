@@ -12,6 +12,7 @@
     written over the old ones, so a failed embedding (rate limit, network) leaves the index as it was and the file
     is put back.
 """
+from collections import Counter
 import logging
 import os
 import re
@@ -87,9 +88,9 @@ def _marks_balanced(m: re.Match) -> bool:
     """A Markdown-tolerant match takes the marks around its words with it. Only a match that takes whole pairs keeps
     the formatting around it intact: "**key** point" may go, but "text** and" out of "**bold text** and" would leave
     "**bold" unclosed. Only the captured marks count, not a word's own letters (my_var)."""
-    taken = "".join(g for g in m.groups() if g)
-    return all(taken.count(mark) % 2 == 0 for mark in ("**", "__", "`")) and \
-        taken.replace("**", "").count("*") % 2 == 0 and taken.replace("__", "").count("_") % 2 == 0
+    # counted per mark as taken (not joined: "*" + "*" around an italic word is a pair, not one "**")
+    taken = Counter(g for g in m.groups() if g)
+    return all(n % 2 == 0 for n in taken.values())
 
 
 def _versions_dir(doc_id: str) -> Path:

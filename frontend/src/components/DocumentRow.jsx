@@ -52,8 +52,8 @@ function Confirm({ kind, onYes, onNo }) {
 export default function DocumentRow({ doc, onPreview, onRenamed, onUndo, onRedo, onRemove, onError }) {
   const [renaming, setRenaming] = useState(false);
   const [asking, setAsking] = useState(null);   // undo | redo | remove
-  const [backToMenu, setBackToMenu] = useState(false);   // a question or the rename field just closed: focus the menu
-  const done = (setter) => () => { setter(); setBackToMenu(true); };
+  const [backToMenu, setBackToMenu] = useState(0);   // counts the questions / renames closed: each one refocuses the menu
+  const done = (setter) => () => { setter(); setBackToMenu((n) => n + 1); };
   const ready = doc.status === 'indexed';
   const files = documentFiles(API_BASE_URL, doc);
   const run = { undo: onUndo, redo: onRedo, remove: onRemove };
@@ -111,7 +111,7 @@ export default function DocumentRow({ doc, onPreview, onRenamed, onUndo, onRedo,
         {asking ? (
           <Confirm kind={asking} onYes={() => run[asking](doc)} onNo={done(() => setAsking(null))} />
         ) : (
-          <ActionMenu key={String(backToMenu)} label={`Actions for ${doc.title}`} items={menu} autoFocus={backToMenu} />
+          <ActionMenu key={backToMenu} label={`Actions for ${doc.title}`} items={menu} autoFocus={backToMenu > 0} />
         )}
       </td>
     </tr>

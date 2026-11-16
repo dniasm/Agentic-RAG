@@ -57,9 +57,11 @@ export default function SelectionEditor({ doc, selected, onSaved, onCancel, onDi
   return (
     <section className="flex-none border-t border-line bg-surface px-4 py-3 flex flex-col gap-2 max-h-[55%] overflow-y-auto"
              aria-label="Edit a passage">
-      <label className="text-small text-muted" htmlFor="selection-find">Replace</label>
+      {selected
+        ? <span id="selection-find-label" className="text-small text-muted">Replace</span>
+        : <label className="text-small text-muted" htmlFor="selection-find">Replace</label>}
       {selected ? (
-        <blockquote id="selection-find" className="text-body border-l-2 border-control pl-3 max-h-24 overflow-y-auto whitespace-pre-wrap">
+        <blockquote aria-labelledby="selection-find-label" className="text-body border-l-2 border-control pl-3 max-h-24 overflow-y-auto whitespace-pre-wrap">
           {selected}
         </blockquote>
       ) : (
