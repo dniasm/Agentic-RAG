@@ -112,7 +112,9 @@ CREATE TABLE IF NOT EXISTS undone_edits (
     redo TEXT NOT NULL,               -- the file with the edit (what a redo puts back), same folder
     ext TEXT NOT NULL,                -- the edited file's type (a PDF edit may have made it Markdown)
     at TEXT NOT NULL,                 -- when the edit was made
-    undone_at TEXT NOT NULL
+    undone_at TEXT NOT NULL,
+    undo_order INTEGER NOT NULL DEFAULT 0   -- counts up with each undo: undone_at has whole seconds, and id is the
+                                            -- edit's own (an older edit undone after a newer one has the lower id)
 );
 CREATE INDEX IF NOT EXISTS renames_doc ON renames (doc_id);
 CREATE INDEX IF NOT EXISTS edits_doc ON edits (doc_id);
@@ -170,6 +172,11 @@ def _db() -> sqlite3.Connection:
                 _conn.commit()
             except sqlite3.OperationalError:
                 pass
+        try:  # databases made before undos were ordered by more than the second they happened in
+            _conn.execute("ALTER TABLE undone_edits ADD COLUMN undo_order INTEGER NOT NULL DEFAULT 0")
+            _conn.commit()
+        except sqlite3.OperationalError:
+            pass
         _conn.execute("CREATE INDEX IF NOT EXISTS documents_owner ON documents (owner)")
         _conn.commit()
     return _conn
@@ -330,7 +337,8 @@ def move_edit_to_undone(edit: dict, redo: str, ext: str) -> None:
     with tx() as c:
         c.execute("DELETE FROM edits WHERE id = ?", (edit["id"],))
         c.execute("INSERT OR REPLACE INTO undone_edits (id, doc_id, operation, detail, backup, redo, ext, at, "
-                  "undone_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                  "undone_at, undo_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, "
+                  "(SELECT COALESCE(MAX(undo_order), 0) + 1 FROM undone_edits))",
                   (edit["id"], edit["doc_id"], edit["operation"], edit["detail"], edit["backup"], redo, ext,
                    edit["at"], now()))
 
@@ -338,7 +346,7 @@ def move_edit_to_undone(edit: dict, redo: str, ext: str) -> None:
 def last_undone(doc_id: str) -> dict | None:
     """The edit a redo would bring back: the one undone most recently."""
     with _lock:
-        row = _db().execute("SELECT * FROM undone_edits WHERE doc_id = ? ORDER BY undone_at DESC, rowid DESC "
+        row = _db().execute("SELECT * FROM undone_edits WHERE doc_id = ? ORDER BY undo_order DESC, undone_at DESC "
                             "LIMIT 1", (doc_id,)).fetchone()
     return dict(row) if row else None
 
