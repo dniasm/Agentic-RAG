@@ -43,7 +43,7 @@ def test_an_edit_with_letters_the_file_has_writes_them_in_its_own_font(tmp_path,
     used = []
     for name in ("_write_own_run", "_write_with_writer"):
         real = getattr(pdf_edit, name)
-        monkeypatch.setattr(pdf_edit, name, lambda page, letters, _n=name, _r=real: (used.append(_n), _r(page, letters)))
+        monkeypatch.setattr(pdf_edit, name, lambda page, letters, *more, _n=name, _r=real: (used.append(_n), _r(page, letters, *more)))
     _page_with_link(src, ["Website and contact details", "Profile text that will change"])
     before = [f[3] for f in pymupdf.open(src)[0].get_fonts(full=True)]
     pdf_edit.replace(src, out, re.compile(r"Profile text"), "Profile notes", False)   # n, o, s: all in the file
@@ -79,7 +79,7 @@ def test_a_font_whose_map_lies_is_caught_by_the_glyph_drawn(tmp_path, monkeypatc
     used = []
     for name in ("_write_own_run", "_write_with_writer"):
         real = getattr(pdf_edit, name)
-        monkeypatch.setattr(pdf_edit, name, lambda page, letters, _n=name, _r=real: (used.append(_n), _r(page, letters)))
+        monkeypatch.setattr(pdf_edit, name, lambda page, letters, *more, _n=name, _r=real: (used.append(_n), _r(page, letters, *more)))
     pdf_edit.replace(tmp_path / "lying.pdf", out, re.compile(r"Profile text"), "Profile notes", False)
     assert used[0] == "_write_own_run" and "_write_with_writer" in used     # tried, caught, done the old way
     assert "drawn with another glyph" in caplog.text

@@ -50,6 +50,7 @@ from pathlib import Path
 import pymupdf
 
 from backend.library import config
+from backend.library.tiny_font import tiny_font
 
 log = logging.getLogger(__name__)
 
@@ -190,9 +191,30 @@ def find_font_file(name: str) -> Path | None:
     return None
 
 
+_FILE_OF: dict[int, Path] = {}     # fonts loaded from a file (kept for good by _file_font) -> the file
+
+
 @functools.cache
 def _file_font(path: Path) -> pymupdf.Font:
-    return pymupdf.Font(fontfile=str(path))
+    font = pymupdf.Font(fontfile=str(path))
+    _FILE_OF[id(font)] = path
+    return font
+
+
+def _small_copy(font: pymupdf.Font, letters: set[str]) -> pymupdf.Font:
+    """A complete font from a file, cut down to these letters (see tiny_font), when the cut copy names, measures and
+    has every letter as the complete one does; the complete font otherwise."""
+    path = _FILE_OF.get(id(font))
+    data = tiny_font(path, "".join(letters)) if path else None
+    if not data:
+        return font
+    try:
+        small = pymupdf.Font(fontbuffer=data)
+    except Exception:
+        return font
+    same = font_key(small.name) == font_key(font.name) and all(
+        small.has_glyph(ord(c)) and abs(small.text_length(c, 1000) - font.text_length(c, 1000)) < 0.01 for c in letters)
+    return small if same else font
 
 
 def _has(font: pymupdf.Font, text: str) -> bool:
@@ -1635,13 +1657,23 @@ def _write_own_run(page: pymupdf.Page, placed: list[tuple[_Typeset, int, bytes]]
     doc.xref_set_key(page.xref, "Contents", "[" + " ".join(f"{x} 0 R" for x in [*contents, stream]) + "]")
 
 
-def _write_with_writer(page: pymupdf.Page, letters: list[_Typeset]) -> None:
+def _small_copies(letters: list[_Typeset]) -> dict[int, pymupdf.Font]:
+    """Each font the letters use (by id), cut down to the letters written in it on this page."""
+    needed: dict[int, tuple[pymupdf.Font, set[str]]] = {}
+    for t in letters:
+        needed.setdefault(id(t.font), (t.font, set()))[1].add(t.c)
+    return {key: _small_copy(font, chars) for key, (font, chars) in needed.items()}
+
+
+def _write_with_writer(page: pymupdf.Page, letters: list[_Typeset], small: dict[int, pymupdf.Font] | None = None
+                       ) -> None:
     """Letters through MuPDF's text writer, which embeds each font it is given."""
+    small = small or _small_copies(letters)       # only the letters written, not the whole font file
     runs: list[tuple[int, pymupdf.TextWriter]] = []     # in order: text readers read the letters as written
     for t in letters:
         if not runs or runs[-1][0] != t.style.color:
             runs.append((t.style.color, pymupdf.TextWriter(page.rect)))
-        runs[-1][1].append((t.x, t.y), t.c, font=t.font, fontsize=t.style.size)
+        runs[-1][1].append((t.x, t.y), t.c, font=small[id(t.font)], fontsize=t.style.size)
     for color, tw in runs:
         tw.write_text(page, color=_rgb(color))
 
@@ -1662,11 +1694,12 @@ def _write_plan(page: pymupdf.Page, plan: _Plan, own_fonts: bool = True) -> None
     fonts_before = {f[0] for f in page.get_fonts(full=True)}
     runs = (_own_font_runs(page, plan, fonts) if fonts else None) or [(False, plan.write)]
     plan.own = [t for own, letters in runs if own for t, *_ in letters]
+    small = _small_copies([t for own, letters in runs if not own for t in letters])   # one per font for the page
     for own, letters in runs:
         if own:
             _write_own_run(page, letters)
         elif letters:
-            _write_with_writer(page, letters)
+            _write_with_writer(page, letters, small)
     doc = page.parent
     for xref, *_ in page.get_fonts(full=True):      # the fonts just added: their copy-text maps are corrected
         if xref in fonts_before:
