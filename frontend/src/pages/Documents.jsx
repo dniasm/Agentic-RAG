@@ -143,8 +143,9 @@ export default function Documents({ onChanged }) {
       onDrop={(e) => { e.preventDefault(); dragDepth.current = 0; setDragging(false); handleFiles(e.dataTransfer.files); }}
     >
       <div className="max-w-[1400px] px-4 sm:px-6 lg:px-8 py-8">
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
+        {/* Phone: title, then a full-width button. Tablet: the button on its own row, at the left. Wide: side by side. */}
+        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div className="min-w-0">
             <h1 className="text-title font-medium tracking-[-0.01em]">Documents</h1>
             <p className="mt-1 text-body text-muted">
               {loading
@@ -154,7 +155,7 @@ export default function Documents({ onChanged }) {
                   : 'Nothing to answer from yet.'}
             </p>
           </div>
-          <div className="flex flex-col items-stretch sm:items-end gap-1.5 w-full sm:w-auto">
+          <div className="flex flex-col items-stretch sm:items-start md:items-end gap-1.5 w-full md:w-auto flex-none">
             <button className="btn-primary" onClick={() => fileInput.current?.click()} disabled={busy} aria-describedby="upload-rules">
               {busy ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : <Upload className="w-4 h-4" aria-hidden="true" />}
               {busy ? 'Adding…' : 'Upload documents'}
