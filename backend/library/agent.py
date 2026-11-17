@@ -684,6 +684,18 @@ def compose_reply(results: list[dict]) -> str:
                              f'or undo.')
             if r.get("page_numbers_kept"):
                 lines.append("The page numbers couldn't be updated for the new page, so they stay as they were.")
+            if r.get("contents_renumbered"):
+                n = len(r["contents_renumbered"])
+                lines.append(f"{n} table-of-contents line{'s' if n > 1 else ''} now give{'' if n > 1 else 's'} the "
+                             "new page number.")
+            if r.get("contents_kept"):
+                kept = "; ".join(f'"{c["line"]}" (page {c["page"]}) should say {c["should_be"]}'
+                                 for c in r["contents_kept"][:5])
+                lines.append(f"These table-of-contents lines couldn't be changed in place: {kept}.")
+            if r.get("page_references"):
+                where = ", ".join(sorted({str(x["page"]) for x in r["page_references"]}))
+                lines.append(f"Text on page(s) {where} mentions page numbers that may now be off by one; they were "
+                             "left as they are.")
             if r.get("markdown_removed"):
                 lines.append("Formatting marks (** and #) were left out: a PDF's text can't carry them.")
             for pdf_font, drawn in (r.get("stand_in") or {}).items():    # a look-alike font: say so

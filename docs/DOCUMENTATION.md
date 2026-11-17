@@ -362,6 +362,7 @@ Most backend folders contain an empty `__init__.py`; it only lets Python import 
 | `pdf_edit.py` | In-place PDF editing: finds lines and paragraphs, re-wraps in the document's own fonts, moves content below (onto a new page if needed), and checks the result before saving. |
 | `tiny_font.py` | A font cut down to the few letters an edit needs (fontTools), so a PDF grows by kilobytes, not a whole font. |
 | `../rag/ocr.py` | OCR for PDF pages without a text layer: tesseract per page with a time limit, the render capped in dpi and pixels, results cached by the rendered image (`ocr_cache.db`) so an edit's re-read doesn't run it again. |
+| `pdf_contents.py` | After an edit adds a page: printed table-of-contents lines whose target (an internal link over the line, or a bookmark with its title) moved get the page's new label, each changed in place and checked, in the same edit and undo; lines that can't be are listed, and body-text page references are reported. |
 | `pdf_encoding.py` | What a simple font's codes stand for when it has no copy-text map (ToUnicode): from its `/Encoding` (WinAnsi, MacRoman or Standard, its `/Differences` glyph names, or the embedded program's own encoding), so new letters are written in the document's own font. Glyph names the Adobe Glyph List can't resolve stay unmapped. A wrong code is refused by the checks on the saved page. |
 | `font_fetch.py` | Fonts a PDF needs and the machine lacks: one pinned HTTPS URL each, verified against `fonts/manifest.json` (SHA-256), cached in `data/fonts/fetched/`. |
 | `batch.py` | The queue: many changes run one at a time by a background worker, within Groq's tokens-per-minute limit; restart-safe. |
@@ -1219,8 +1220,10 @@ every schema in 7.8. Changing `VOYAGE_RERANK_MODEL` requires recalibrating `VOYA
   ungrounded answers.
 - **PDF edits** keep the layout or refuse. Refused with "a shorter wording may fit": text needing more than one new
   page. Offered as a Markdown copy instead (only when the passage would be found in it): a passage spanning several
-  paragraphs or columns, letters no available font has, composite (CID) fonts without a text map. (Simple fonts without one, as Word, PowerPoint and many exporters write them, are read from their encoding.) Page
-  references in the body text and table-of-contents numbers are not renumbered when a page is added.
+  paragraphs or columns, letters no available font has, composite (CID) fonts without a text map. (Simple fonts without one, as Word, PowerPoint and many exporters write them, are read from their encoding.) When a
+  page is added, bookmarks, links and page labels follow by themselves, and printed contents lines that point
+  past it (by an internal link or a bookmark title) get the new number; page references in the body text ("see
+  page 12") are only reported, never changed.
 - **The public site** (Tailscale Funnel) is up only while this laptop is awake and the backend runs; backups are taken
   by hand (`backend/scripts/backup.py`).
 

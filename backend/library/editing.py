@@ -911,5 +911,6 @@ def _edit(source: dict, doc: dict, op: str, find: str, text: str, replace_all: b
             **({"plain_letters": info["plain_letters"]} if info.get("plain_letters") else {}),
             **({"curly_letters": info["curly_letters"]} if info.get("curly_letters") else {}),
             **({"stand_in": info["stand_in"]} if info.get("stand_in") else {}),
-            **{k: info[k] for k in ("added_lines", "new_pages", "page_numbers_kept", "markdown_removed")
+            **{k: info[k] for k in ("added_lines", "new_pages", "page_numbers_kept", "markdown_removed",
+                                    "contents_renumbered", "contents_kept", "page_references")
                if info.get(k)}}

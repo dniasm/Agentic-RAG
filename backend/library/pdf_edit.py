@@ -2452,6 +2452,9 @@ def replace(path: Path, out: Path, pattern: re.Pattern, new: str, replace_all: b
             stand_ins = _stand_ins(written.values())
             if stand_ins:
                 info["stand_in"] = stand_ins
+            if info.get("new_pages"):   # printed contents lines pointing past the new page (pdf_contents)
+                from backend.library import pdf_contents
+                info.update(pdf_contents.renumber(path, out, [p - 1 for p in info["new_pages"]], replace))
         return len(matches), [(m.start(), m.end()) for m in matches], pdf.text
     finally:
         pdf.close()
