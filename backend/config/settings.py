@@ -23,6 +23,11 @@ class Settings(BaseSettings):
     groq_api_key_3: str = ""
     groq_api_key_4: str = ""
     gemini_api_key: str = ""
+    # Optional embedding keys (backend/config/gemini.py): a request refused on one key goes to the next. Gemini's free
+    # quota is per Google Cloud project, so each key must come from a different project to add anything.
+    gemini_api_key_2: str = ""
+    gemini_api_key_3: str = ""
+    gemini_api_key_4: str = ""
     tavily_api_key: str = ""  # optional but recommended; DuckDuckGo/Wikipedia are used otherwise
     voyage_api_key: str = ""
     # Wikimedia requires automated clients to identify themselves with a contact URL or email.
@@ -150,10 +155,13 @@ class Settings(BaseSettings):
     chat_limit_per_window: int = 15
     chat_limit_per_day: int = 60
     # Embedding (backend/library/embed_budget.py; 0 turns a limit off): Gemini's free tier allows about 1,000 embedding
-    # requests a day for everyone, one per new or changed passage. Each account may index this many passages a day,
-    # and indexing stops at this share of the site's day, leaving the rest for the questions chats search with.
+    # requests a day per key (per Google project), one per new or changed passage. The site's day is what the keys
+    # have left (EMBED_PER_KEY_DAY each, none for a key Google refused for the day), unless EMBED_SITE_PER_DAY is set:
+    # then it is that fixed total. Each account may index this many passages a day, and indexing stops at this share
+    # of the site's day, leaving the rest for the questions chats search with.
     embed_per_user_day: int = 400
-    embed_site_per_day: int = 1000
+    embed_per_key_day: int = 1000
+    embed_site_per_day: int | None = None
     embed_index_share: float = 0.8
 
     # --- Document library (backend/library) ---

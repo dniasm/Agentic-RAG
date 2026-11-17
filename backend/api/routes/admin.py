@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse
 
 from backend import chat_limits
 from backend.api.dependencies import require_admin
-from backend.config import api_meter, llm
+from backend.config import api_meter, gemini, llm
 from backend.config.settings import settings
 from backend.library import catalog, embed_budget
 
@@ -73,14 +73,22 @@ def _groq(rows: list[dict], now: datetime) -> dict:
 
 def _gemini(rows: list[dict], now: datetime) -> dict:
     day = embed_budget.provider_day(now)
-    used = {"documents": 0, "questions": 0}
+    per_key = defaultdict(lambda: {"documents": 0, "questions": 0, "limited": 0})
     for r in rows:
-        if r["provider"] == "gemini" and r["model"] in used and embed_budget.provider_day(_hour_start(r["hour"])) == day:
-            used[r["model"]] += r["calls"]
-    return {"day": day, **used, "total": used["documents"] + used["questions"],
-            "site_limit": settings.embed_site_per_day,
-            "index_limit": int(settings.embed_site_per_day * settings.embed_index_share),
-            "indexed_charged": embed_budget.used(day=day)}
+        if r["provider"] == "gemini" and r["model"] in ("documents", "questions")                 and embed_budget.provider_day(_hour_start(r["hour"])) == day:
+            per_key[r["key"]][r["model"]] += r["calls"]
+            per_key[r["key"]]["limited"] += r["limited"]
+    cooldowns, shared = gemini.pool.cooldowns(), gemini.pool.shared()
+    keys = [{"key": s["index"] + 1, **per_key[s["index"]], "left": s["left"], "out_for_day": s["out_for_day"],
+             "cooldown_seconds": cooldowns.get(s["index"]), "shares_quota": s["index"] in shared}
+            for s in embed_budget.key_states(now)]
+    site = embed_budget.site_day(now)
+    documents = sum(k["documents"] for k in keys)
+    questions = sum(k["questions"] for k in keys)
+    return {"day": day, "documents": documents, "questions": questions, "total": documents + questions,
+            "site_limit": site["total"], "site_left": site["left"], "fixed_total": settings.embed_site_per_day is not None,
+            "per_key": settings.embed_per_key_day, "index_limit": embed_budget.index_limit(site),
+            "indexed_charged": embed_budget.used(day=day), "keys": keys}
 
 
 def _voyage(rows: list[dict], now: datetime) -> dict:

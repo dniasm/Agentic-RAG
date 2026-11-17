@@ -36,7 +36,7 @@ def _key(text: str) -> str:
 
 
 def embed_query(text: str) -> list[float]:
-    from backend.rag.vectorstore import get_embeddings
+    from backend.config import gemini
 
     key = _key(text)
     with _lock:
@@ -45,9 +45,8 @@ def embed_query(text: str) -> list[float]:
         stats["hits"] += 1
         return json.loads(row[0])
     stats["misses"] += 1
-    vector = get_embeddings().embed_query(text, task_type="RETRIEVAL_QUERY")
-    from backend.config import api_meter
-    api_meter.count("gemini", 0, "questions", calls=1)
+    # (no waiting here: when every key is limited, the error goes to the caller as before)
+    vector = gemini.with_keys(lambda emb: emb.embed_query(text, task_type="RETRIEVAL_QUERY"), "questions")
     with _lock:
         _db().execute("INSERT OR REPLACE INTO query_embeddings (key, vector) VALUES (?, ?)", (key, json.dumps(vector)))
         _db().commit()

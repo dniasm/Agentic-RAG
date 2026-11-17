@@ -54,6 +54,8 @@ def setup() -> None:
     has_console = any(type(h) is logging.StreamHandler for h in root.handlers)
     for handler in (everything, major) if has_console else (everything, major, console):
         root.addHandler(handler)
+    from backend.config import redact
+    redact.guard_handlers(root, *(logging.getLogger(n) for n in ("uvicorn", "uvicorn.error", "uvicorn.access")))
     logging.getLogger("backend.library").setLevel(logging.DEBUG)    # our own debug lines reach all.log
     for noisy in ("httpcore", "google_genai.models", "google_genai._api_client", "urllib3"):
         logging.getLogger(noisy).setLevel(logging.WARNING)

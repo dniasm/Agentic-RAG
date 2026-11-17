@@ -149,6 +149,7 @@ GEMINI_API_KEY=your-gemini-key
 # Optional
 TAVILY_API_KEY=your-tavily-key
 VOYAGE_API_KEY=your-voyage-key        # reranking + conversation memory
+GEMINI_API_KEY_2=another-project-key  # ..._4: embedding fallback keys, each from a different Google project
 SIGNUP_CODE=an-invite-code            # needed for every sign-up after the first; empty: sign-ups closed
 QDRANT_URL=http://localhost:6333
 ```
@@ -227,6 +228,7 @@ overridden by an environment variable / `.env` entry with the same name (case-in
 | Setting | Default | Purpose |
 |---|---|---|
 | `GROQ_API_KEY` / `GEMINI_API_KEY` | — | **Required.** |
+| `GEMINI_API_KEY_2` … `GEMINI_API_KEY_4` | — | Optional embedding keys from **other** Google Cloud projects (Gemini's free quota is per project; keys from the same project share it and add nothing). A request refused on one key goes whole to the next (`config/gemini.with_keys`), one key at a time, never in parallel. A refusal naming a per-day quota keeps the key out until midnight Pacific, a per-minute one for Google's "retry in" time, and three unexplained refusals in a row for an hour. All keys use the same model and settings, so nothing is re-indexed. |
 | `GROQ_API_KEY_2` … `GROQ_API_KEY_4` | — | Optional keys from **other** Groq organisations. Groq limits are per organisation and model, so when a model's per-minute or daily limit is used up on one key, that model is called with the next key (`config/llm.call_with_keys`); the exhausted key is skipped until the reset time in Groq's error. The 120B → 20B and Qwen → 20B backups start only when every key is out for that model. Keys from the same account share its limits and add nothing. |
 | `TAVILY_API_KEY` | `""` | Optional. Enables Tavily as the first web provider. |
 | `VOYAGE_API_KEY` | `""` | Reranking and conversation memory. Without it, episodes are skipped (facts still work). |
@@ -268,7 +270,7 @@ overridden by an environment variable / `.env` entry with the same name (case-in
 | `CORS_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | Other origins allowed to call the API (also trusted by the cross-site check). Empty in production: the app is served from the API's own origin. |
 | `ALLOWED_HOSTS` | `*.ts.net` | Host names the site answers to besides local addresses; any other `Host` is refused (400). In production, the exact public name. |
 | `API_DOCS` | `False` | `/docs`, `/redoc` and `/openapi.json`; development only. |
-| `EMBED_PER_USER_DAY` / `EMBED_SITE_PER_DAY` / `EMBED_INDEX_SHARE` | `400` / `1000` / `0.8` | Passages each account may have indexed a day, the site's daily embedding quota, and the share of it indexing may use (the rest is kept for questions). Days are Gemini's: midnight Pacific, as Google documents it (not yet confirmed against the live quota page); counts kept in `app.db`. Undo and redo are held only to the site's whole day. |
+| `EMBED_PER_USER_DAY` / `EMBED_PER_KEY_DAY` / `EMBED_SITE_PER_DAY` / `EMBED_INDEX_SHARE` | `400` / `1000` / unset / `0.8` | Passages each account may have indexed a day; requests per Gemini key a day; and the share of the site's day indexing may use (the rest is kept for questions). The site's day is what the keys have left: per key, `EMBED_PER_KEY_DAY` minus our count of its requests today, and nothing once Google has refused it for the day. So four independent keys give 4,000 and keys that share a project shrink it by themselves. `EMBED_SITE_PER_DAY`, if set, is a fixed total instead (`0`: no limit). Days are Gemini's: midnight Pacific, as Google documents it (not yet confirmed against the live quota page); counts kept in `app.db`. Undo and redo are held only to the site's whole day. |
 | `CHAT_LIMIT_WINDOW_SECONDS` / `CHAT_LIMIT_PER_WINDOW` / `CHAT_LIMIT_PER_DAY` | `300` / `15` / `60` | Chat messages per account (0 turns a window off); over one, the chat answers 429 with how long to wait. |
 | `BOT_CONTACT` | `https://github.com/` | Contact in the User-Agent (required by Wikipedia's API). |
 
@@ -822,7 +824,9 @@ the answer). It sums input, output and hidden-reasoning tokens per model and per
   clients are the Groq SDK's defaults with one response hook, which counts the call (and 429s) for its key and
   keeps the `x-ratelimit-*` headers: Groq's own word on what is left and when it resets. The hook reads headers only,
   so streaming is untouched, and never raises. Tokens come from a callback on each client, which knows its key.
-- **Gemini:** embedding requests, where they are sent (documents in `embed_paced`, questions on a cache miss).
+- **Gemini:** embedding requests per key, counted in `gemini.with_keys` (documents in `embed_paced`, questions on a
+  cache miss), refusals as limited. The page shows each key's count against `EMBED_PER_KEY_DAY`, its cooldown, and a
+  warning when Google refused a key for the day well under its count (it probably shares a project with another).
 - **Voyage:** requests in `voyage.call`, by use (rerank, find, recall, save).
 
 Counts are kept in memory and added to `app.db` (`api_usage`, one row per UTC hour, provider, key and model) every
@@ -839,6 +843,12 @@ counts against their allowances, never message content or document titles.
 Adds the project root to `sys.path`; `lifespan` checks the required keys, runs `init_db()` (and migrations), opens the
 Qdrant collection, starts the library (`library/api.startup`: logs, unfinished indexing, the batch worker), and on
 shutdown stops it and extracts any facts still waiting in the memory batch. Mounts `frontend/dist` when it exists. CORS: `CORS_ORIGINS` plus any localhost port.
+
+### `config/gemini.py`, `config/redact.py`
+`gemini.py`: the Gemini embedding keys, the only place a `GoogleGenerativeAIEmbeddings` client is built (a test
+checks), the key pool and `with_keys()`, and Google's day (`provider_day`, `day_start`). `redact.py`: `scrub()`
+replaces every configured API key in a text with `[key]`, and its log filter does the same on every handler
+(`logs.setup`), so key text in an error can't reach `all.log`, `events.log`, the console or a stored message.
 
 ### `config/llm.py`
 | Function | Description |
@@ -1180,11 +1190,14 @@ every schema in 7.8. Changing `VOYAGE_RERANK_MODEL` requires recalibrating `VOYA
   (`VOYAGE_REQUESTS_PER_MINUTE`; one rerank ≈ 3,500 tokens), shared with memory embeddings; beyond that, answers use
   the slower LLM relevance check.
 - **Free-tier limits**: each Groq model allows 8,000 tokens/minute and 200,000/day per key; Gemini embeddings
-  1,000 requests/day, one per new or changed chunk (a chunk is 1,000 characters).
+  1,000 requests/day per Google project, one per new or changed chunk (a chunk is 1,000 characters).
+- **Gemini key states are in memory**: a restart forgets which key was refused for the day; the next refusal marks
+  it again. Google's per-day refusal wording isn't confirmed from a live 429 yet (none logged); a refusal that
+  doesn't name its period falls back to the short wait, then an hour after three.
 - **Chat messages per account**: 15 per 5 minutes and 60 a day (`CHAT_LIMIT_*`, `backend/chat_limits.py`), counted in
   memory, so a restart clears them.
 - **Embedding allowance**: each account may have 400 passages indexed a day, and indexing stops at 80% of the site's
-  1,000 (`EMBED_*`, `backend/library/embed_budget.py`); a 200,000-character report is about 250 passages. An upload or
+  day (1,000 per independent Gemini key; `EMBED_*`, `backend/library/embed_budget.py`); a 200,000-character report is about 250 passages. An upload or
   edit that doesn't fit is refused whole, before anything is embedded, with the numbers; questions are never refused.
 - **One library lock**: renames, edits, undo / redo and the queue's changes run one at a time (a hold over 2 s is
   logged as `lock_held`); the embedding calls of a change still run under it. The summary refresh after a large

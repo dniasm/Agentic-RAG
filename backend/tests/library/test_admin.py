@@ -10,9 +10,9 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from backend.config import api_meter, llm
+from backend.config import api_meter, gemini, llm
 from backend.config.settings import settings
-from backend.library import catalog, config
+from backend.library import catalog, config, embed_budget
 
 INVITE = "let-me-in-42"
 SECRET = "gsk_test_secret_key_never_shown"
@@ -59,7 +59,8 @@ def test_a_listed_account_sees_it_uncached(signed_in, admin):
     body = r.json()
     assert set(body) >= {"groq", "gemini", "voyage", "accounts"}
     assert len(body["groq"]["keys"]) == max(1, len(llm.groq_keys()))
-    assert body["gemini"]["site_limit"] == settings.embed_site_per_day
+    assert body["gemini"]["site_limit"] == embed_budget.site_day()["total"]
+    assert len(body["gemini"]["keys"]) == gemini.key_count()
     assert signed_in.get("/api/auth/me").json()["is_admin"] is True     # names are compared without case
     assert browser().get("/api/auth/state").json()["user"] is None
 

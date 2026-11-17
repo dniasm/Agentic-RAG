@@ -9,7 +9,7 @@ from pathlib import Path
 from langchain_core.documents import Document
 from qdrant_client import models
 
-from backend.config import api_meter
+from backend.config import gemini
 from backend.config.settings import settings
 from backend.rag import sparse, vectorstore
 
@@ -90,27 +90,30 @@ def split_documents(docs: list[Document]) -> list[Document]:
 # Gemini's free tier counts EVERY text in a batch as one request, limited to 100 per minute. Sending a
 # whole document at once therefore fails for any document over ~100 chunks, however long you wait.
 EMBED_BATCH = 90
-_RETRY_IN = re.compile(r"retry in ([\d.]+)s", re.I)
 
 
 def embed_paced(texts: list[str], title: str) -> list[list[float]]:
-    """Embed in batches under the per-minute limit; on a rate-limit error, wait as long as Google asks."""
-    emb = vectorstore.get_embeddings()
+    """Embed in batches under the per-minute limit. A refused batch goes whole to the next Gemini key
+    (config/gemini.py); when every key is limited, wait until the first is back (up to 6 tries), unless every key
+    is out for the day."""
     vectors: list[list[float]] = []
     for start in range(0, len(texts), EMBED_BATCH):
         batch = texts[start:start + EMBED_BATCH]
+
+        def send(emb, batch=batch):
+            return emb.embed_documents(batch, batch_size=EMBED_BATCH, task_type="RETRIEVAL_DOCUMENT",
+                                       titles=[title] * len(batch))
+
         for attempt in range(6):
             try:
-                vectors += emb.embed_documents(batch, batch_size=EMBED_BATCH, task_type="RETRIEVAL_DOCUMENT",
-                                               titles=[title] * len(batch))
-                api_meter.count("gemini", 0, "documents", calls=len(batch))   # each text is one request
+                vectors += gemini.with_keys(send, "documents", calls=len(batch))   # each text is one request
                 break
-            except Exception as e:
-                msg = str(e)
-                if "RESOURCE_EXHAUSTED" not in msg or attempt == 5:
+            except gemini.AllKeysLimited as e:
+                if e.for_day or attempt == 5:
                     raise
-                wait = float(_RETRY_IN.search(msg).group(1)) + 2 if _RETRY_IN.search(msg) else 60.0
-                log.info("Embedding rate limit hit (chunk %d of %d); waiting %.0fs", start, len(texts), wait)
+                wait = e.wait + 2
+                log.info("Embedding rate limit hit on every key (chunk %d of %d); waiting %.0fs",
+                         start, len(texts), wait)
                 time.sleep(wait)
     return vectors
 

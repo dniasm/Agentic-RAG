@@ -1,12 +1,13 @@
 """How much each outside API key is used: for the owner's admin panel (backend/api/routes/admin.py).
 
-Three providers, one key each except Groq (GROQ_API_KEY ... _4):
+Three providers, one key each except Groq (GROQ_API_KEY ... _4) and Gemini (GEMINI_API_KEY ... _4):
   * Groq: every HTTP response is counted per (key, model) by an httpx event hook on the clients that
     llm.groq_chat() builds, and the rate-limit headers Groq sends back (x-ratelimit-*) are kept as the latest
     word on what is left. The hook reads headers only, never the response body, so streaming is untouched.
     Tokens are in the body, so they come from a LangChain callback on each client instead (KeyTokens), which
     knows its key because each client is built for one key.
-  * Gemini: embedding requests, counted where they are sent (documents and questions; cache hits aren't sent).
+  * Gemini: embedding requests per key, counted by config/gemini.with_keys (documents and questions; cache hits
+    aren't sent), and refusals as "limited".
   * Voyage: requests, counted in config/voyage.call by use (rerank, find, recall, save).
 
 The key text is never stored or shown: keys are numbered 1-4 in the order of the settings.
@@ -167,6 +168,17 @@ def rows_since(hours: int) -> list[dict]:
         found = c.execute("SELECT hour, provider, key_index, model, calls, tokens, limited FROM api_usage "
                           "WHERE hour >= ? ORDER BY hour", (since,)).fetchall()
     return [dict(zip(("hour", "provider", "key", "model", "calls", "tokens", "limited"), r)) for r in found]
+
+
+def calls_by_key(provider: str, since_hour: str) -> dict[int, int]:
+    """Requests per key index for one provider from `since_hour` on (counts in memory included)."""
+    flush()
+    from backend.library import catalog
+    with catalog.tx() as c:
+        _ensure(c)
+        found = c.execute("SELECT key_index, SUM(calls) FROM api_usage WHERE provider = ? AND hour >= ? "
+                          "GROUP BY key_index", (provider, since_hour)).fetchall()
+    return {int(k): int(n) for k, n in found}
 
 
 def _run_timer() -> None:

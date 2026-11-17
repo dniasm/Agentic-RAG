@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import KeyCard from '../components/admin/KeyCard';
-import UsageBar from '../components/admin/UsageBar';
+import GeminiCard from '../components/admin/GeminiCard';
 import AccountsTable from '../components/admin/AccountsTable';
 import { apiService } from '../services/api';
 import { formatCount } from '../lib/format';
@@ -26,23 +26,6 @@ function useUsage() {
     return () => { clearTimeout(timer); document.removeEventListener('visibilitychange', tick); };
   }, [load]);
   return { data, error, load };
-}
-
-function Gemini({ g }) {
-  return (
-    <section className="panel p-5 flex flex-col gap-4 min-w-0">
-      <div>
-        <h3 className="text-section font-medium">Gemini embeddings</h3>
-        <p className="text-body text-muted">Our own count: Google doesn't report what's left. Its day runs on Pacific time ({g.day}).</p>
-      </div>
-      <UsageBar label="Requests today, all uses" used={g.total} limit={g.site_limit} />
-      <UsageBar label="Passages indexed (documents)" used={g.indexed_charged} limit={g.index_limit}
-                note="Indexing stops here, so the rest is kept for questions." />
-      <p className="text-small text-muted num">
-        {formatCount(g.documents)} for documents · {formatCount(g.questions)} for questions (repeat questions are cached)
-      </p>
-    </section>
-  );
 }
 
 function Voyage({ v }) {
@@ -85,7 +68,7 @@ export default function Admin() {
               {data.groq.keys.map((k) => <KeyCard key={k.key} entry={k} />)}
             </div>
             <div className="grid gap-4 md:grid-cols-2">
-              <Gemini g={data.gemini} />
+              <GeminiCard g={data.gemini} />
               <Voyage v={data.voyage} />
             </div>
             <AccountsTable accounts={data.accounts} />
