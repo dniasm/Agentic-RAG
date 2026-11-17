@@ -270,7 +270,7 @@ overridden by an environment variable / `.env` entry with the same name (case-in
 | `CORS_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | Other origins allowed to call the API (also trusted by the cross-site check). Empty in production: the app is served from the API's own origin. |
 | `ALLOWED_HOSTS` | `*.ts.net` | Host names the site answers to besides local addresses; any other `Host` is refused (400). In production, the exact public name. |
 | `API_DOCS` | `False` | `/docs`, `/redoc` and `/openapi.json`; development only. |
-| `EMBED_PER_USER_DAY` / `EMBED_PER_KEY_DAY` / `EMBED_SITE_PER_DAY` / `EMBED_INDEX_SHARE` | `400` / `1000` / unset / `0.8` | Passages each account may have indexed a day; requests per Gemini key a day; and the share of the site's day indexing may use (the rest is kept for questions). The site's day is what the keys have left: per key, `EMBED_PER_KEY_DAY` minus our count of its requests today, and nothing once Google has refused it for the day. So four independent keys give 4,000 and keys that share a project shrink it by themselves. `EMBED_SITE_PER_DAY`, if set, is a fixed total instead (`0`: no limit). Days are Gemini's: midnight Pacific, as Google documents it (not yet confirmed against the live quota page); counts kept in `app.db`. Undo and redo are held only to the site's whole day. |
+| `EMBED_PER_USER_DAY` / `EMBED_PER_KEY_DAY` / `EMBED_SITE_PER_DAY` / `EMBED_INDEX_SHARE` | `800` / `1000` / unset / `0.8` | Passages each account may have indexed a day; requests per Gemini key a day; and the share of the site's day indexing may use (the rest is kept for questions). The site's day is what the keys have left: per key, `EMBED_PER_KEY_DAY` minus our count of its requests today, and nothing once Google has refused it for the day. So four independent keys give 4,000 and keys that share a project shrink it by themselves. `EMBED_SITE_PER_DAY`, if set, is a fixed total instead (`0`: no limit). Days are Gemini's: midnight Pacific, as Google documents it (not yet confirmed against the live quota page); counts kept in `app.db`. Undo and redo are held only to the site's whole day. |
 | `CHAT_LIMIT_WINDOW_SECONDS` / `CHAT_LIMIT_PER_WINDOW` / `CHAT_LIMIT_PER_DAY` | `300` / `15` / `60` | Chat messages per account (0 turns a window off); over one, the chat answers 429 with how long to wait. |
 | `BOT_CONTACT` | `https://github.com/` | Contact in the User-Agent (required by Wikipedia's API). |
 
@@ -1202,7 +1202,7 @@ every schema in 7.8. Changing `VOYAGE_RERANK_MODEL` requires recalibrating `VOYA
   doesn't name its period falls back to the short wait, then an hour after three.
 - **Chat messages per account**: 15 per 5 minutes and 60 a day (`CHAT_LIMIT_*`, `backend/chat_limits.py`), counted in
   memory, so a restart clears them.
-- **Embedding allowance**: each account may have 400 passages indexed a day, and indexing stops at 80% of the site's
+- **Embedding allowance**: each account may have 800 passages indexed a day, and indexing stops at 80% of the site's
   day (1,000 per independent Gemini key; `EMBED_*`, `backend/library/embed_budget.py`); a 200,000-character report is about 250 passages. An upload or
   edit that doesn't fit is refused whole, before anything is embedded, with the numbers; questions are never refused.
 - **One library lock**: renames, edits, undo / redo and the queue's changes run one at a time (a hold over 2 s is
