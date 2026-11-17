@@ -37,6 +37,15 @@ def _fresh_chat_allowance():
 
 
 @pytest.fixture(autouse=True)
+def _fresh_embed_usage():
+    """Each test starts with no passages embedded today (the counts are kept in the test database)."""
+    from backend.library import catalog, embed_budget
+    embed_budget._ensure()
+    with catalog.tx() as c:
+        c.execute("DELETE FROM embed_usage")
+
+
+@pytest.fixture(autouse=True)
 def _no_font_downloads(monkeypatch):
     """Tests never download fonts: a test that wants one replaces font_fetch._download itself."""
     from backend.library import font_fetch

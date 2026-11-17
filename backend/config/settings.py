@@ -149,6 +149,12 @@ class Settings(BaseSettings):
     chat_limit_window_seconds: int = 300
     chat_limit_per_window: int = 15
     chat_limit_per_day: int = 60
+    # Embedding (backend/library/embed_budget.py; 0 turns a limit off): Gemini's free tier allows about 1,000 embedding
+    # requests a day for everyone, one per new or changed passage. Each account may index this many passages a day,
+    # and indexing stops at this share of the site's day, leaving the rest for the questions chats search with.
+    embed_per_user_day: int = 300
+    embed_site_per_day: int = 1000
+    embed_index_share: float = 0.8
 
     # --- Document library (backend/library) ---
     library_data_dir: str = str(BACKEND_DIR / "data")   # library/<user_id>/, versions/, logs/, catalog

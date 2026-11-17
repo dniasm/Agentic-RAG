@@ -22,7 +22,7 @@ from pathlib import Path
 
 from qdrant_client import models
 
-from backend.library import catalog, config, library, pdf_edit, titles
+from backend.library import catalog, config, embed_budget, library, pdf_edit, titles
 from backend.library.logs import event
 from backend.rag import ingestion, sparse, vectorstore
 from backend.config.settings import settings as day7_settings
@@ -444,8 +444,10 @@ def _reindex(doc: dict) -> dict:
     chunks = ingestion.split_documents(pages)
     vectors = _stored_vectors(doc["id"], doc["owner"])
     new_texts = list(dict.fromkeys(c.page_content for c in chunks if c.page_content not in vectors))
-    if new_texts:
+    if new_texts:   # the passages that really need embedding: refused whole if they don't fit today's allowance
+        embed_budget.check(doc["owner"], len(new_texts))
         vectors.update(zip(new_texts, ingestion.embed_paced(new_texts, doc["title"])))
+        embed_budget.charge(doc["owner"], len(new_texts))
 
     points = [models.PointStruct(
         id=str(uuid.uuid5(uuid.NAMESPACE_URL, f"{doc['id']}:{idx}")),

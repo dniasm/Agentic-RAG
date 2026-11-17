@@ -121,7 +121,10 @@ def ingest_file(path: Path, *, user_id: str, doc_id: str, filename: str) -> dict
 
     chunks = split_documents(pages)
     texts = [c.page_content for c in chunks]
+    from backend.library import embed_budget   # (imported here: the library imports this module)
+    embed_budget.check(user_id, len(texts))     # refused whole, before anything is embedded
     vectors = embed_paced(texts, filename)
+    embed_budget.charge(user_id, len(texts))
 
     points = []
     for idx, (chunk, vector) in enumerate(zip(chunks, vectors)):
