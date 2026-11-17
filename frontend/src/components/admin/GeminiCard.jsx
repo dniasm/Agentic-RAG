@@ -3,6 +3,7 @@ import UsageBar from './UsageBar';
 import { formatCount } from '../../lib/format';
 
 function keyNote(k) {
+  if (k.rejected) return 'Rejected by Google (mistyped or revoked?): skipped for an hour at a time.';
   if (k.out_for_day) return 'Refused by Google for the rest of its day.';
   if (k.cooldown_seconds) return `Rate-limited, back in ${Math.ceil(k.cooldown_seconds)} s.`;
   return null;

@@ -11,10 +11,13 @@ from backend.config.settings import settings
 _MIN_LENGTH = 8   # shorter values aren't real keys, and replacing them would mangle ordinary text
 
 
+_FIELDS = tuple(name for name in type(settings).model_fields if "api_key" in name)
+
+
 def secrets() -> list[str]:
-    """Every configured API key (any setting whose name holds "api_key"), longest first."""
-    found = {str(v) for name, v in settings.model_dump().items()
-             if "api_key" in name and v and len(str(v)) >= _MIN_LENGTH}
+    """Every configured API key (any setting whose name holds "api_key"), longest first. The values are read each
+    time (cheap: a handful of attributes), so a changed setting is never missed."""
+    found = {str(v) for v in (getattr(settings, name, "") for name in _FIELDS) if v and len(str(v)) >= _MIN_LENGTH}
     return sorted(found, key=len, reverse=True)
 
 

@@ -240,3 +240,41 @@ def test_the_log_filter_scrubs_messages_arguments_and_tracebacks():
     redact.KeyScrubber().filter(record)
     line = logging.Formatter().format(record)
     assert not any(k in line for k in KEYS) and line.count("[key]") == 2
+
+
+def test_a_key_on_the_hour_back_off_isnt_waited_for_under_the_lock(clients, monkeypatch):
+    errors, sent = clients
+    for k in (0, 1, 2):
+        gemini.pool.mark(k, Exception(PER_DAY))
+    for _ in range(gemini.STRIKES):
+        gemini.pool.mark(3, Exception(UNEXPLAINED), now=datetime.now(timezone.utc) - timedelta(minutes=5))
+    gemini.pool._until[3] = datetime.now(timezone.utc).timestamp() + gemini.STRIKE_WAIT
+    monkeypatch.setattr(ingestion.time, "sleep", lambda s: pytest.fail(f"waited {s:.0f} s"))
+    with pytest.raises(gemini.AllKeysLimited) as e:
+        real_embed_paced(["a"], "T")
+    assert not e.value.for_day and e.value.wait > ingestion.MAX_WAIT and not sent
+
+
+REJECTED = "403 PERMISSION_DENIED. API key not valid. Please pass a valid API key. reason: API_KEY_INVALID"
+
+
+def test_a_mistyped_fallback_key_is_skipped_and_the_next_one_used(clients, caplog):
+    errors, sent = clients
+    caplog.set_level(logging.INFO)
+    errors[0] = [PER_MINUTE]
+    errors[1] = [REJECTED, REJECTED]
+    assert real_embed_paced(["a"], "T") == [[2.0] * 3]               # key 3 answered
+    assert gemini.pool.rejected() == {1} and 1 in gemini.pool.cooldowns()
+    gemini.pool._until.clear()                                      # an hour later: both keys tried again
+    errors[0] = [PER_MINUTE]
+    real_embed_paced(["b"], "T")                                     # key 2 rejected again, not logged again
+    assert sum("gemini_key_rejected" in r.getMessage() for r in caplog.records) == 1   # logged once per key
+
+
+def test_every_key_rejected_is_an_error_not_a_rate_limit(clients):
+    errors, _ = clients
+    for k in range(4):
+        errors[k] = [REJECTED]
+    with pytest.raises(gemini.GeminiError) as e:
+        real_embed_query("rejected everywhere " + uuid.uuid4().hex)
+    assert not isinstance(e.value, gemini.AllKeysLimited) and "rejected every Gemini key" in str(e.value)

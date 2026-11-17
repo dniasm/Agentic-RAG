@@ -78,9 +78,10 @@ def _gemini(rows: list[dict], now: datetime) -> dict:
         if r["provider"] == "gemini" and r["model"] in ("documents", "questions")                 and embed_budget.provider_day(_hour_start(r["hour"])) == day:
             per_key[r["key"]][r["model"]] += r["calls"]
             per_key[r["key"]]["limited"] += r["limited"]
-    cooldowns, shared = gemini.pool.cooldowns(), gemini.pool.shared()
+    cooldowns, shared, rejected = gemini.pool.cooldowns(), gemini.pool.shared(), gemini.pool.rejected()
     keys = [{"key": s["index"] + 1, **per_key[s["index"]], "left": s["left"], "out_for_day": s["out_for_day"],
-             "cooldown_seconds": cooldowns.get(s["index"]), "shares_quota": s["index"] in shared}
+             "cooldown_seconds": cooldowns.get(s["index"]), "shares_quota": s["index"] in shared,
+             "rejected": s["index"] in rejected}
             for s in embed_budget.key_states(now)]
     site = embed_budget.site_day(now)
     documents = sum(k["documents"] for k in keys)

@@ -90,12 +90,13 @@ def split_documents(docs: list[Document]) -> list[Document]:
 # Gemini's free tier counts EVERY text in a batch as one request, limited to 100 per minute. Sending a
 # whole document at once therefore fails for any document over ~100 chunks, however long you wait.
 EMBED_BATCH = 90
+MAX_WAIT = 90.0   # longest wait for a key to come back; edits embed under the library lock, so never an hour
 
 
 def embed_paced(texts: list[str], title: str) -> list[list[float]]:
     """Embed in batches under the per-minute limit. A refused batch goes whole to the next Gemini key
     (config/gemini.py); when every key is limited, wait until the first is back (up to 6 tries), unless every key
-    is out for the day."""
+    is out for the day or the first back is more than MAX_WAIT away."""
     vectors: list[list[float]] = []
     for start in range(0, len(texts), EMBED_BATCH):
         batch = texts[start:start + EMBED_BATCH]
@@ -109,7 +110,7 @@ def embed_paced(texts: list[str], title: str) -> list[list[float]]:
                 vectors += gemini.with_keys(send, "documents", calls=len(batch))   # each text is one request
                 break
             except gemini.AllKeysLimited as e:
-                if e.for_day or attempt == 5:
+                if e.for_day or e.wait > MAX_WAIT or attempt == 5:
                     raise
                 wait = e.wait + 2
                 log.info("Embedding rate limit hit on every key (chunk %d of %d); waiting %.0fs",

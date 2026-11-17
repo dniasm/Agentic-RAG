@@ -12,7 +12,8 @@ How long a refused key stays out:
     key that is really out for the day isn't retried every minute if Google's wording changes.
 
 The free quota is per Google Cloud project: keys from the same project share it. When a key is refused for the day
-while our count for it is well under EMBED_PER_KEY_DAY, that is logged once and flagged on the Admin page.
+while our count for it is well under EMBED_PER_KEY_DAY, that is logged once and flagged on the Admin page. A key
+Google rejects outright (mistyped, revoked: 401/403) is skipped for an hour, logged once and flagged too.
 
 Key states are kept in memory: a restart forgets them (the next refusal marks the key again).
 """
@@ -35,6 +36,9 @@ _RATE_LIMIT = re.compile(r"RESOURCE_EXHAUSTED|\b429\b")
 _PER_DAY = re.compile(r"PerDay|per[ _-]day|daily", re.I)
 _PER_MINUTE = re.compile(r"PerMinute|per[ _-]minute", re.I)
 _RETRY_IN = re.compile(r"retry in ([\d.]+)\s*s", re.I)
+_REJECTED = re.compile(r"\b40[13]\b|API_KEY_INVALID|API key not valid|API key expired|PERMISSION_DENIED|"
+                       r"UNAUTHENTICATED", re.I)
+REJECTED_WAIT = 3600.0
 
 
 class GeminiError(RuntimeError):
@@ -117,6 +121,7 @@ class KeyPool:
         self._for_day: dict[int, str] = {}     # key -> the Google day it was refused for
         self._strikes: dict[int, int] = {}     # key -> refusals in a row that named no period
         self._shared: dict[int, int] = {}      # key -> our count when it was refused for the day (if well under)
+        self._rejected: set[int] = set()       # keys Google rejected (invalid, revoked, no permission)
 
     def available(self, count: int, now: float | None = None) -> list[int]:
         now = time.time() if now is None else now
@@ -163,9 +168,26 @@ class KeyPool:
                 from backend.library.logs import event
                 event("gemini_key_shares_quota", key=key + 1, used_today=used, per_key=settings.embed_per_key_day)
 
+    def reject(self, key: int, error: Exception) -> None:
+        """Google rejected the key itself (mistyped, revoked, no permission): out for an hour, so the next key is
+        tried instead of the request failing; logged once."""
+        with self._lock:
+            self._until[key] = time.time() + REJECTED_WAIT
+            first = key not in self._rejected
+            self._rejected.add(key)
+        log.warning("Gemini key %d was rejected; skipping it for an hour: %s", key + 1, redact.scrub(str(error))[:200])
+        if first:
+            from backend.library.logs import event
+            event("gemini_key_rejected", key=key + 1)
+
     def ok(self, key: int) -> None:
         with self._lock:
             self._strikes.pop(key, None)
+            self._rejected.discard(key)
+
+    def rejected(self) -> set[int]:
+        with self._lock:
+            return set(self._rejected)
 
     def out_for_day(self, key: int, now: datetime | None = None) -> bool:
         now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
@@ -188,6 +210,7 @@ class KeyPool:
             self._for_day.clear()
             self._strikes.clear()
             self._shared.clear()
+            self._rejected.clear()
 
 
 pool = KeyPool()
@@ -197,16 +220,26 @@ def is_rate_limit(error: Exception) -> bool:
     return bool(_RATE_LIMIT.search(str(error)))
 
 
+def is_rejected_key(error: Exception) -> bool:
+    return bool(_REJECTED.search(str(error)))
+
+
 def with_keys(call, use: str, calls: int = 1):
     """call(embeddings client) on the first key with capacity; on a rate limit, the next key. Counts `calls`
     requests (or one refusal) under the key that was used, as `use` ("documents" or "questions").
-    Raises AllKeysLimited when every key is limited, and errors with key text only after removing it."""
+    A key Google rejects (invalid, revoked) is skipped for an hour and the next one tried.
+    Raises AllKeysLimited when every key is limited, GeminiError when every key tried was rejected, and errors with
+    key text only after removing it."""
     count = key_count()
-    last = None
+    last, limited = None, False
     for key in pool.available(count):
         try:
             result = call(embeddings(key))
         except Exception as e:
+            if is_rejected_key(e) and not is_rate_limit(e):
+                pool.reject(key, e)
+                last = e
+                continue
             if not is_rate_limit(e):
                 clean = redact.scrub(str(e))
                 if clean != str(e):
@@ -214,11 +247,13 @@ def with_keys(call, use: str, calls: int = 1):
                 raise
             api_meter.count("gemini", key, use, limited=1)
             pool.mark(key, e)
-            last = e
+            last, limited = e, True
             continue
         pool.ok(key)
         api_meter.count("gemini", key, use, calls=calls)
         return result
+    if last is not None and not limited:
+        raise GeminiError(f"Google rejected every Gemini key tried: {redact.scrub(str(last))[:300]}")
     for_day = all(pool.out_for_day(k) for k in range(count))
     waits = pool.cooldowns()
     wait = min((waits.get(k, 0.0) for k in range(count)), default=0.0)
