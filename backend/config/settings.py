@@ -152,7 +152,7 @@ class Settings(BaseSettings):
     # Embedding (backend/library/embed_budget.py; 0 turns a limit off): Gemini's free tier allows about 1,000 embedding
     # requests a day for everyone, one per new or changed passage. Each account may index this many passages a day,
     # and indexing stops at this share of the site's day, leaving the rest for the questions chats search with.
-    embed_per_user_day: int = 300
+    embed_per_user_day: int = 400
     embed_site_per_day: int = 1000
     embed_index_share: float = 0.8
 
