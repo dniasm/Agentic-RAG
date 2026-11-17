@@ -267,7 +267,7 @@ overridden by an environment variable / `.env` entry with the same name (case-in
 | `CORS_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | Other origins allowed to call the API (also trusted by the cross-site check). Empty in production: the app is served from the API's own origin. |
 | `ALLOWED_HOSTS` | `*.ts.net` | Host names the site answers to besides local addresses; any other `Host` is refused (400). In production, the exact public name. |
 | `API_DOCS` | `False` | `/docs`, `/redoc` and `/openapi.json`; development only. |
-| `EMBED_PER_USER_DAY` / `EMBED_SITE_PER_DAY` / `EMBED_INDEX_SHARE` | `300` / `1000` / `0.8` | Passages each account may have indexed a day, the site's daily embedding quota, and the share of it indexing may use (the rest is kept for questions). Days are Gemini's (midnight Pacific); counts kept in `app.db`. |
+| `EMBED_PER_USER_DAY` / `EMBED_SITE_PER_DAY` / `EMBED_INDEX_SHARE` | `300` / `1000` / `0.8` | Passages each account may have indexed a day, the site's daily embedding quota, and the share of it indexing may use (the rest is kept for questions). Days are Gemini's: midnight Pacific, as Google documents it (not yet confirmed against the live quota page); counts kept in `app.db`. Undo and redo are held only to the site's whole day. |
 | `CHAT_LIMIT_WINDOW_SECONDS` / `CHAT_LIMIT_PER_WINDOW` / `CHAT_LIMIT_PER_DAY` | `300` / `15` / `60` | Chat messages per account (0 turns a window off); over one, the chat answers 429 with how long to wait. |
 | `BOT_CONTACT` | `https://github.com/` | Contact in the User-Agent (required by Wikipedia's API). |
 

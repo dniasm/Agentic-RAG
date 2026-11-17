@@ -59,9 +59,19 @@ def used(user_id: str | None = None, day: str | None = None) -> int:
     return int(row[0])
 
 
-def check(user_id: str, needed: int) -> None:
-    """Raise EmbedBudgetExceeded unless `needed` more chunks fit both the account's and the site's allowance."""
+def check(user_id: str, needed: int, safety: bool = False) -> None:
+    """Raise EmbedBudgetExceeded unless `needed` more chunks fit both the account's and the site's allowance.
+
+    safety: an undo or redo, the way back from a change. It isn't held to the account's cap or the indexing share
+    (someone who used up their day on edits can still undo one), only to the site's whole day."""
     if needed <= 0:
+        return
+    if safety:
+        whole, everyone = settings.embed_site_per_day, used()
+        if whole > 0 and everyone + needed > whole:
+            raise EmbedBudgetExceeded(
+                f"This needs {needed} passages indexed, and the site's embedding quota for today is used up "
+                f"({max(whole - everyone, 0)} left). Try again tomorrow.")
         return
     per_user, site = settings.embed_per_user_day, int(settings.embed_site_per_day * settings.embed_index_share)
     mine, everyone = used(user_id), used()

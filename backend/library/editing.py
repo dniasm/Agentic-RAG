@@ -431,7 +431,14 @@ def _stored_vectors(doc_id: str, owner: str) -> dict[str, list[float]]:
                 return vectors
 
 
-def _reindex(doc: dict) -> dict:
+def _why_unchanged(what: str, e: Exception) -> str:
+    """The message for a change that was put back: the embedding allowance says so itself (a limit, not a fault)."""
+    if isinstance(e, embed_budget.EmbedBudgetExceeded):
+        return str(e)
+    return f"The {what} failed and the document is unchanged: {str(e)[:200]}"
+
+
+def _reindex(doc: dict, safety: bool = False) -> dict:
     """day7's ingest_file, but a chunk whose text the index already holds keeps its vector: an edit changes a few
     chunks, and every embedded chunk is one Gemini request of the 1,000 a day. Loading, cleaning and splitting are
     day7's own functions and the points are built the same way (ids doc_id:index, the same metadata), so the index
@@ -445,7 +452,7 @@ def _reindex(doc: dict) -> dict:
     vectors = _stored_vectors(doc["id"], doc["owner"])
     new_texts = list(dict.fromkeys(c.page_content for c in chunks if c.page_content not in vectors))
     if new_texts:   # the passages that really need embedding: refused whole if they don't fit today's allowance
-        embed_budget.check(doc["owner"], len(new_texts))
+        embed_budget.check(doc["owner"], len(new_texts), safety=safety)   # (safety: an undo or redo)
         vectors.update(zip(new_texts, ingestion.embed_paced(new_texts, doc["title"])))
         embed_budget.charge(doc["owner"], len(new_texts))
 
@@ -609,7 +616,7 @@ def undo(doc_id: str, edit_id: int | None = None) -> dict:
     shutil.copy2(path, redo)
     try:
         shutil.copy2(backup, target)
-        reloaded = _reindex(doc)
+        reloaded = _reindex(doc, safety=True)
     except Exception as e:
         if target != path:
             target.unlink(missing_ok=True)
@@ -617,7 +624,7 @@ def undo(doc_id: str, edit_id: int | None = None) -> dict:
             shutil.copy2(current, path)
         redo.unlink(missing_ok=True)
         log.exception("Undo on %s failed", doc["title"])
-        raise EditError(f"The undo failed and the document is unchanged: {str(e)[:200]}") from e
+        raise EditError(_why_unchanged("undo", e)) from e
     finally:
         current.unlink(missing_ok=True)
     if target != path:
@@ -659,14 +666,14 @@ def redo(doc_id: str, edit_id: int | None = None) -> dict:
     shutil.copy2(path, current)
     try:
         shutil.copy2(saved, target)
-        reloaded = _reindex(doc)
+        reloaded = _reindex(doc, safety=True)
     except Exception as e:
         if target != path:
             target.unlink(missing_ok=True)
         else:
             shutil.copy2(current, path)
         log.exception("Redo on %s failed", doc["title"])
-        raise EditError(f"The redo failed and the document is unchanged: {str(e)[:200]}") from e
+        raise EditError(_why_unchanged("redo", e)) from e
     finally:
         current.unlink(missing_ok=True)
     if target != path:
@@ -863,7 +870,7 @@ def _edit(source: dict, doc: dict, op: str, find: str, text: str, replace_all: b
             shutil.copy2(backup, path)          # the index was not touched if embedding failed; the file goes back
             backup.unlink(missing_ok=True)
         log.exception("Editing %s failed", doc["title"])
-        raise EditError(f"The edit failed and the document is unchanged: {str(e)[:200]}") from e
+        raise EditError(_why_unchanged("edit", e)) from e
 
     if converted:   # from now on the document is the Markdown copy; the PDF lives on in versions/
         catalog.update_document(doc_id, ext=doc["ext"], file_name=doc["file_name"])

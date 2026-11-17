@@ -81,3 +81,34 @@ def test_searching_isnt_refused_when_indexing_is(library_docs, monkeypatch):
     embed_budget.charge("someone", 1)            # indexing is closed for the day
     found = library.find("support vector machine classifier")
     assert found["candidates"]                   # questions still search
+
+
+def test_an_undo_isnt_held_to_the_accounts_cap_only_to_the_sites_day(library_docs, monkeypatch):
+    doc = library_docs["svm.txt"]
+    before = _text(doc)
+    editing.edit(doc["id"], "replace", find="maximum margin hyperplane", text="widest separating boundary")
+    monkeypatch.setattr(settings, "embed_per_user_day", 1)
+    monkeypatch.setattr(settings, "embed_site_per_day", 1000)
+    embed_budget.charge(doc["owner"], 1)       # the account's day is used up: no more edits...
+    with pytest.raises(editing.EditError):
+        editing.edit(doc["id"], "replace", find="Kernels map", text="Kernel functions map")
+    editing.undo(doc["id"])                    # ...but the way back still works
+    assert _text(doc) == before
+
+
+def test_the_sites_whole_day_stops_an_undo_too(library_docs, monkeypatch):
+    doc = library_docs["svm.txt"]
+    editing.edit(doc["id"], "replace", find="maximum margin hyperplane", text="widest separating boundary")
+    monkeypatch.setattr(settings, "embed_site_per_day", 1)
+    embed_budget.charge("someone", 1)
+    with pytest.raises(editing.EditError, match="quota for today is used up"):
+        editing.undo(doc["id"])
+
+
+def test_a_refusal_reads_as_the_limit_not_a_failure(library_docs, monkeypatch):
+    doc = library_docs["svm.txt"]
+    monkeypatch.setattr(settings, "embed_per_user_day", 1)
+    embed_budget.charge(doc["owner"], 1)
+    with pytest.raises(editing.EditError) as e:
+        editing.edit(doc["id"], "replace", find="maximum margin hyperplane", text="widest separating boundary")
+    assert str(e.value).startswith("This needs") and "failed" not in str(e.value)
