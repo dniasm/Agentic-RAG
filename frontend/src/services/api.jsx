@@ -69,6 +69,11 @@ export const apiService = {
   async me() {
     return request('/auth/me');
   },
+
+  // ---------- admin (accounts in ADMIN_USERNAMES; 404 for everyone else)
+  async adminUsage() {
+    return request('/admin/usage');
+  },
   async logout() {
     try { await request('/auth/logout', { method: 'POST' }); } catch { /* logged out locally either way */ }
   },

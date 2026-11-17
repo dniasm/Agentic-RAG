@@ -110,6 +110,8 @@ def sign_up(username: str, password: str, invite: str = "", address: str = "") -
             raise AuthError("That invite code isn't right.", 403)
     if catalog.user_by_name(username):
         raise AuthError("That username is taken.", 409)
+    if is_admin_name(username):   # an admin name is never claimable by signing up: only an existing account counts
+        raise AuthError("That username is taken.", 409)
     user = catalog.create_user(username, hash_password(password))
     event("signup", user=user["id"], username=username, first=state == "first")
     if state == "first":
@@ -170,5 +172,15 @@ def user_for(token: str | None) -> dict | None:
     return catalog.user_for_token(_token_hash(token)) if token else None
 
 
+def admin_names() -> set[str]:
+    """settings.admin_usernames, compared without case, as logins are (users.username is COLLATE NOCASE)."""
+    from backend.config.settings import settings
+    return {n.strip().casefold() for n in (settings.admin_usernames or "").split(",") if n.strip()}
+
+
+def is_admin_name(username: str) -> bool:
+    return (username or "").strip().casefold() in admin_names()
+
+
 def public(user: dict) -> dict:
-    return {"id": user["id"], "username": user["username"]}
+    return {"id": user["id"], "username": user["username"], "is_admin": is_admin_name(user["username"])}

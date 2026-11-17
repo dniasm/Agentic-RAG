@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { BarChart3, FileText, LogOut, MessageSquare, Monitor, Moon, Pencil, Plus, Sun, Trash2 } from 'lucide-react';
+import { BarChart3, FileText, Gauge, LogOut, MessageSquare, Monitor, Moon, Pencil, Plus, Sun, Trash2 } from 'lucide-react';
 import Mark from './Mark';
 import { groupByRecency } from '../lib/format';
 import { hrefFor } from '../lib/route';
@@ -40,6 +40,8 @@ const NAV = [
   { page: 'documents', label: 'Documents', icon: FileText },
   { page: 'overview', label: 'Overview', icon: BarChart3 },
 ];
+// Shown to admins only, as a convenience: the server's check is what protects the page.
+const ADMIN_NAV = { page: 'admin', label: 'Admin', icon: Gauge };
 
 function NavLink({ href, active, icon: Icon, children, onNavigate }) {
   return (
@@ -166,7 +168,7 @@ export default function Sidebar({
       </a>
 
       <nav aria-label="Main" className="flex flex-col gap-0.5">
-        {NAV.map((item) => (
+        {(user?.is_admin ? [...NAV, ADMIN_NAV] : NAV).map((item) => (
           <NavLink
             key={item.page}
             href={hrefFor(item.page)}

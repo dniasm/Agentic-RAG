@@ -477,21 +477,17 @@ def _rename(args: dict, guard: Guard, actions: list) -> dict:
 # ---------------------------------------------------------------- the loop
 def _llm(model: str, retries: int, key: int = 0):
     """`model` with tools, on Groq key number `key` (day7's GROQ_API_KEY ... GROQ_API_KEY_4)."""
-    from langchain_groq import ChatGroq
-
     from backend.config import llm
 
-    return ChatGroq(model=model, temperature=0, api_key=llm.api_key(key), max_retries=retries,
+    return llm.groq_chat(key, model=model, temperature=0, max_retries=retries,
                     reasoning_effort=config.AGENT_REASONING or None).bind_tools(TOOLS)
 
 
 def _checker(key: int = 0):
     """The 20B without tools, for one-word questions."""
-    from langchain_groq import ChatGroq
-
     from backend.config import llm
 
-    return ChatGroq(model=config.BACKUP_MODEL, temperature=0, api_key=llm.api_key(key), max_retries=1,
+    return llm.groq_chat(key, model=config.BACKUP_MODEL, temperature=0, max_retries=1,
                     reasoning_effort="low")
 
 

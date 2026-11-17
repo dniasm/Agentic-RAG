@@ -96,4 +96,6 @@ def call(priority: int, fn: Callable[[object], T]) -> T:
             settings.voyage_save_max_wait)[priority]
     if not limiter().acquire(priority, wait):
         raise VoyageBusy(f"no Voyage request slot free within {wait:g} s ({_NAMES[priority]})")
+    from backend.config import api_meter
+    api_meter.count("voyage", 0, _NAMES[priority], calls=1)   # sent (whether or not it succeeds)
     return fn(client())

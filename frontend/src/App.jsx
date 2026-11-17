@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import { Loader2, Menu, Plus, X } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import DocumentPreview from './components/DocumentPreview';
@@ -6,12 +6,14 @@ import Login from './pages/Login';
 import Chat from './pages/Chat';
 import Documents from './pages/Documents';
 import Overview from './pages/Overview';
+// Its own chunk: only admins ever load it.
+const Admin = lazy(() => import('./pages/Admin'));
 import { apiService, setUnauthorizedHandler } from './services/api';
 import { hrefFor, navigate, useRoute } from './lib/route';
 import { forgetConversation } from './state/chatStore';
 import { onDocumentsChanged } from './state/documentEvents';
 
-const PAGE_TITLES = { chat: 'Chat', documents: 'Documents', overview: 'Overview' };
+const PAGE_TITLES = { chat: 'Chat', documents: 'Documents', overview: 'Overview', admin: 'Admin' };
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -177,6 +179,9 @@ export default function App() {
         )}
         {route.page === 'documents' && <Documents onChanged={refreshDocuments} />}
         {route.page === 'overview' && <Overview documents={documents} />}
+        {route.page === 'admin' && (
+          <Suspense fallback={<p className="p-8 text-body text-muted">Loading…</p>}><Admin /></Suspense>
+        )}
       </main>
       <DocumentPreview documents={documents || []} />
     </div>

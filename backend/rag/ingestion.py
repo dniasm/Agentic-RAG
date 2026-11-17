@@ -9,6 +9,7 @@ from pathlib import Path
 from langchain_core.documents import Document
 from qdrant_client import models
 
+from backend.config import api_meter
 from backend.config.settings import settings
 from backend.rag import sparse, vectorstore
 
@@ -102,6 +103,7 @@ def embed_paced(texts: list[str], title: str) -> list[list[float]]:
             try:
                 vectors += emb.embed_documents(batch, batch_size=EMBED_BATCH, task_type="RETRIEVAL_DOCUMENT",
                                                titles=[title] * len(batch))
+                api_meter.count("gemini", 0, "documents", calls=len(batch))   # each text is one request
                 break
             except Exception as e:
                 msg = str(e)

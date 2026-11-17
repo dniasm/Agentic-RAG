@@ -94,7 +94,8 @@ and every change to them.
 4. To change a document yourself, open it (its name on the Documents page) and use **Edit a passage**. Each
    document's "⋯" menu has Rename, Undo, Redo, Download and Remove.
 
-Your documents and chats are visible only to you. On a phone, Back closes an open editor, then the preview.
+Your documents and chats are visible only to you. The site's owner can see how much each account uses (message and
+indexing counts, never their content). On a phone, Back closes an open editor, then the preview.
 
 ## Measured improvements
 

@@ -261,6 +261,7 @@ overridden by an environment variable / `.env` entry with the same name (case-in
 | `HISTORY_TURNS` | `6` | Past messages passed to the agent. |
 | `DATABASE_PATH` | `backend/data/app.db` | SQLite file. |
 | `SIGNUP_CODE` | `""` | Invite code for every sign-up after the first; empty: sign-ups closed. |
+| `ADMIN_USERNAMES` | `""` | Accounts that can open the Admin page (API key usage), comma-separated, without case. A listed name can't be signed up for, so list accounts that already exist. Empty: no one. |
 | `LIBRARY_DATA_DIR` | `backend/data` | The library's files, versions, fonts and logs (§22). |
 | `LIBRARY_AGENT_MODEL` / `LIBRARY_BACKUP_MODEL` / `LIBRARY_AGENT_REASONING` | `openai/gpt-oss-120b` / `openai/gpt-oss-20b` / `low` | The document agent, and the model that takes over when it is rate-limited. |
 | `LIBRARY_TPM_LIMIT` / `LIBRARY_BACKUP_TPM_LIMIT` | `8000` / `8000` | Groq tokens per minute the queue paces itself to. |
@@ -814,6 +815,22 @@ the answer). It sums input, output and hidden-reasoning tokens per model and per
   with the routing context (message, source preference, route reason, path, latency), so expensive or misrouted
   questions can be found.
 
+### Per-key usage (the Admin page)
+`config/api_meter.py` counts every call to an outside API by provider, key and model, for the owner's Admin page
+(`#/admin`, `GET /api/admin/usage`, accounts in `ADMIN_USERNAMES` only):
+- **Groq:** every chat client is built by `llm.groq_chat()` (a test checks no other file builds one). Its HTTP
+  clients are the Groq SDK's defaults with one response hook, which counts the call (and 429s) for its key and
+  keeps the `x-ratelimit-*` headers: Groq's own word on what is left and when it resets. The hook reads headers only,
+  so streaming is untouched, and never raises. Tokens come from a callback on each client, which knows its key.
+- **Gemini:** embedding requests, where they are sent (documents in `embed_paced`, questions on a cache miss).
+- **Voyage:** requests in `voyage.call`, by use (rerank, find, recall, save).
+
+Counts are kept in memory and added to `app.db` (`api_usage`, one row per UTC hour, provider, key and model) every
+30 s and when the page reads them; a crash loses at most those seconds. Keys are shown as "Key 1–4", never their
+text. The page gives Groq counts as "today (UTC)" and "last 24 hours", since it isn't confirmed which one Groq's
+daily limits use; the headers' remaining numbers are the authoritative ones. Per account it shows chat and indexing
+counts against their allowances, never message content or document titles.
+
 ---
 
 ## 12. Backend module reference
@@ -909,6 +926,10 @@ Accounts live in `backend/library/auth.py` (one login for the chat and the libra
 3. `tailscale funnel --bg 127.0.0.1:8000`; turn it off with `tailscale funnel --https=443 off`.
 4. **Before sharing the link:** from outside the tailnet, make one wrong login with a forged header (`curl -H "X-Forwarded-For: 1.2.3.4" …/api/auth/login`) and check that the backend's log shows your real address, not `1.2.3.4`. Otherwise one visitor could dodge, or exhaust, the wrong-password limit.
 
+### Admin
+`dependencies.require_admin` lets through only accounts named in `ADMIN_USERNAMES` and answers `404` to everyone
+else, signed in or not. A listed name can't be taken by signing up, so an invite code alone never makes an admin.
+
 ### Request guard
 `dependencies.get_current_user` reads the cookie, looks up the token's hash and returns `{id, username}`. Every
 failure returns `401 Please log in.`; the frontend then shows the login screen.
@@ -989,7 +1010,8 @@ need the login cookie. Errors have the shape `{"detail": "message"}` (a rename's
 | `POST /auth/signup` | `{"username", "password", "invite"?}` | the user, and the login cookie set |
 | `POST /auth/login` | `{"username", "password"}` | the user, and the login cookie set — `429` while throttled |
 | `POST /auth/logout` | — | the token deleted, the cookie cleared |
-| `GET /auth/me` | — | `{"id", "username"}` |
+| `GET /auth/me` | — | `{"id", "username", "is_admin"}` |
+| `GET /admin/usage` | — | API key usage for the Admin page (accounts in `ADMIN_USERNAMES`; `404` for everyone else; `no-store`) |
 | `GET /documents` | — | `[DocumentOut]`, each with `edit_id` (the edit Undo takes back) and `redo_id` (the one Redo brings back), or `null` |
 | `POST /documents/upload` | multipart `file` | `{"status": "processing" \| "duplicate", "filename", "chunks_indexed", "document"}` — `400`, `413`; indexing errors appear on the document (`status: "failed"`, `error`) |
 | `DELETE /documents/{id}` | — | `204` |

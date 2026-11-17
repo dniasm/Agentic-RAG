@@ -65,6 +65,13 @@ class Allowance:
             sent.append(now)
             return now
 
+    def counts(self) -> dict[str, list[int]]:
+        """{user_id: [messages in each window of windows(), in order]} for the admin panel (read only)."""
+        with self._lock:
+            now = self._clock()
+            return {user: [sum(1 for t in sent if now - t < seconds) for seconds, _n, _d in self.windows()]
+                    for user, sent in self._sent.items() if sent}
+
     def refund(self, user_id: str, token: float) -> None:
         """Give back a reserved message that never started a run."""
         with self._lock:

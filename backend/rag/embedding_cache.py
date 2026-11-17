@@ -46,6 +46,8 @@ def embed_query(text: str) -> list[float]:
         return json.loads(row[0])
     stats["misses"] += 1
     vector = get_embeddings().embed_query(text, task_type="RETRIEVAL_QUERY")
+    from backend.config import api_meter
+    api_meter.count("gemini", 0, "questions", calls=1)
     with _lock:
         _db().execute("INSERT OR REPLACE INTO query_embeddings (key, vector) VALUES (?, ?)", (key, json.dumps(vector)))
         _db().commit()

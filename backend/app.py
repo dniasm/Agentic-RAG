@@ -16,7 +16,7 @@ if _PROJECT_ROOT not in sys.path:
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.api.routes import auth, chat, documents, health
+from backend.api.routes import admin, auth, chat, documents, health
 from backend.config.settings import settings
 from backend.library import api as library_api
 from backend.memory.store import ensure_memory_collection
@@ -82,7 +82,7 @@ app.add_middleware(Compression)
 app.add_middleware(SecurityMiddleware)
 
 #ROUTES
-for module in (health, auth, chat, documents):
+for module in (health, auth, chat, documents, admin):
     app.include_router(module.router, prefix = "/api")
 app.include_router(library_api.router, prefix = "/api")  # /api/library/*
 

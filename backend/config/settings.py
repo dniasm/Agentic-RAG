@@ -159,6 +159,9 @@ class Settings(BaseSettings):
     # --- Document library (backend/library) ---
     library_data_dir: str = str(BACKEND_DIR / "data")   # library/<user_id>/, versions/, logs/, catalog
     signup_code: str = ""                # needed for every sign-up after the first; empty: sign-ups closed
+    # Accounts that can open the Admin page (API key usage), comma-separated usernames; empty: no one. A listed name
+    # can't be signed up for: list accounts that already exist.
+    admin_usernames: str = ""
     library_agent_model: str = "openai/gpt-oss-120b"
     library_backup_model: str = "openai/gpt-oss-20b"   # takes over when the 120B is rate-limited
     library_agent_reasoning: str = "low"

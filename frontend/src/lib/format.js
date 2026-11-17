@@ -42,3 +42,12 @@ export function groupByRecency(conversations, now = new Date()) {
   }
   return groups.filter((g) => g.items.length);
 }
+
+/** "just now", "42 s ago", "5 min ago", "3 h ago": how old a reading is. */
+export function formatAgo(seconds) {
+  if (seconds == null) return '—';
+  if (seconds < 5) return 'just now';
+  if (seconds < 60) return `${Math.round(seconds)} s ago`;
+  if (seconds < 3600) return `${Math.round(seconds / 60)} min ago`;
+  return `${Math.round(seconds / 3600)} h ago`;
+}
