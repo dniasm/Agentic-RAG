@@ -35,11 +35,24 @@ class LibraryError(Exception):
 WRITE_LOCK = threading.RLock()
 
 
+LOCK_SLOW_SECONDS = 2.0   # held longer than this: one "lock_held" line in events.log (everyone else waited)
+_held = threading.local()   # how deep this thread is in the (re-entrant) lock: only the outermost hold is timed
+
+
 def _exclusive(fn):
     @functools.wraps(fn)
     def wrapper(*args, **kwargs):
         with WRITE_LOCK:
-            return fn(*args, **kwargs)
+            depth = getattr(_held, "depth", 0)
+            _held.depth = depth + 1
+            start = time.monotonic()
+            try:
+                return fn(*args, **kwargs)
+            finally:
+                _held.depth = depth
+                held = time.monotonic() - start
+                if depth == 0 and held > LOCK_SLOW_SECONDS:
+                    event("lock_held", op=fn.__name__, seconds=round(held, 1))
     return wrapper
 
 
