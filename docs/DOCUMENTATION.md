@@ -267,6 +267,7 @@ overridden by an environment variable / `.env` entry with the same name (case-in
 | `CORS_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | Other origins allowed to call the API (also trusted by the cross-site check). Empty in production: the app is served from the API's own origin. |
 | `ALLOWED_HOSTS` | `*.ts.net` | Host names the site answers to besides local addresses; any other `Host` is refused (400). In production, the exact public name. |
 | `API_DOCS` | `False` | `/docs`, `/redoc` and `/openapi.json`; development only. |
+| `CHAT_LIMIT_WINDOW_SECONDS` / `CHAT_LIMIT_PER_WINDOW` / `CHAT_LIMIT_PER_DAY` | `300` / `15` / `60` | Chat messages per account (0 turns a window off); over one, the chat answers 429 with how long to wait. |
 | `BOT_CONTACT` | `https://github.com/` | Contact in the User-Agent (required by Wikipedia's API). |
 
 Frontend: `VITE_API_URL` (optional) overrides the API base URL; by default the app calls `/api` and the Vite dev
@@ -1152,18 +1153,29 @@ every schema in 7.8. Changing `VOYAGE_RERANK_MODEL` requires recalibrating `VOYA
 
 ## 20. Known limitations
 
-- **Voyage rate limits** — without a payment method on the Voyage account, 3 requests / 10,000 tokens per minute
-  (one rerank ≈ 3,500 tokens), shared with memory embeddings; beyond that, answers use the slower LLM relevance check.
-- **Free-tier limits** — each Groq model allows 8,000 tokens/minute and 200,000/day; Gemini embeddings 1,000/day.
-- **Single-process embedded Qdrant** — use a Qdrant server for multiple workers.
-- **One file indexed at a time** — uploads queue on one background worker; a large file delays those after it.
-- **No OCR** — image-only PDFs cannot be indexed.
-- **LLM judges are fallible** — the gate, grading and evaluation reduce, but don't eliminate, wrong routes and
+- **Voyage rate limits**: without a payment method on the Voyage account, 3 requests / 10,000 tokens per minute
+  (`VOYAGE_REQUESTS_PER_MINUTE`; one rerank ≈ 3,500 tokens), shared with memory embeddings; beyond that, answers use
+  the slower LLM relevance check.
+- **Free-tier limits**: each Groq model allows 8,000 tokens/minute and 200,000/day per key; Gemini embeddings
+  1,000 requests/day, one per new or changed chunk (a chunk is 1,000 characters).
+- **Chat messages per account**: 15 per 5 minutes and 60 a day (`CHAT_LIMIT_*`, `backend/chat_limits.py`), counted in
+  memory, so a restart clears them.
+- **No per-account limit on embedding**: one large upload (about 250 chunks for a 200,000-character report) or a
+  whole-text save that rewrites a big file can use a large share of the day's Gemini quota for everyone.
+- **One library lock**: renames, edits, undo / redo and the queue's changes run one at a time; a PDF edit that
+  re-wraps a long paragraph can hold it for tens of seconds, and other accounts' changes wait.
+- **Single-process embedded Qdrant**: one backend at a time (use a Qdrant server for several workers); a FULL backup
+  needs the backend stopped.
+- **One file indexed at a time**: uploads queue on one background worker; a large file delays those after it.
+- **No OCR**: image-only PDFs cannot be indexed, edited or converted.
+- **LLM judges are fallible**: the gate, grading and evaluation reduce, but don't eliminate, wrong routes and
   ungrounded answers.
-- **No rate limiting** on chat endpoints (wrong passwords are throttled).
-- **PDF edits** keep the layout or refuse: text needing more than one new page, scanned PDFs, and PDFs without a
-  text map (some Word / Chrome exports) can only be converted to a Markdown copy. Page references in the body text and
-  table-of-contents numbers are not renumbered when a page is added.
+- **PDF edits** keep the layout or refuse. Refused with "a shorter wording may fit": text needing more than one new
+  page. Offered as a Markdown copy instead (only when the passage would be found in it): a passage spanning several
+  paragraphs or columns, letters no available font has, PDFs without a text map (some Word / Chrome exports). Page
+  references in the body text and table-of-contents numbers are not renumbered when a page is added.
+- **The public site** (Tailscale Funnel) is up only while this laptop is awake and the backend runs; backups are taken
+  by hand (`backend/scripts/backup.py`).
 
 ---
 
