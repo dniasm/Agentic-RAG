@@ -20,6 +20,7 @@ import shutil
 import uuid
 from pathlib import Path
 
+import pymupdf
 from qdrant_client import models
 
 from backend.library import catalog, config, embed_budget, library, pdf_edit, summaries, titles
@@ -461,7 +462,8 @@ def _reindex(doc: dict, safety: bool = False) -> dict:
         vector={vectorstore.DENSE: vectors[c.page_content], vectorstore.SPARSE: sparse.document_vector(c.page_content)},
         payload={"page_content": c.page_content, "metadata": {
             "user_id": doc["owner"], "doc_id": doc["id"], "source": doc["title"], "page": c.metadata.get("page"),
-            "chunk_index": idx, "start_index": c.metadata.get("start_index")}},
+            "chunk_index": idx, "start_index": c.metadata.get("start_index"),
+            **({"ocr": True} if c.metadata.get("ocr") else {})}},
     ) for idx, c in enumerate(chunks)]
     vectorstore.upsert(points)
     client = vectorstore.get_client()
@@ -796,6 +798,22 @@ def _edit_locked(doc_id: str, op: str, *, find: str = "", text: str = "", replac
     return result
 
 
+def _scanned_page_with(doc: dict, find: str) -> int | None:
+    """The scanned page that holds `find`, if any: from the OCR cache only (this runs under the library lock, so it
+    never starts an OCR run)."""
+    from backend.rag import ocr
+    path = config.LIBRARY_DIR / doc["file_name"]
+    with pymupdf.open(str(path)) as pdf:
+        scanned = [n for n in range(1, len(pdf) + 1) if ocr.needs_ocr(pdf[n - 1])]
+    if not scanned:
+        return None
+    pattern = _pattern(find, ignore_case=True)
+    for n, text in ocr.read_pages(path, scanned, cached_only=True).items():
+        if pattern.search(text):
+            return n
+    return None
+
+
 def _edit(source: dict, doc: dict, op: str, find: str, text: str, replace_all: bool, loose: bool = False) -> dict:
     """The edit itself. `source` is the document as stored; `doc` is the file to edit (the same, or a Markdown
     copy of a PDF)."""
@@ -838,6 +856,9 @@ def _edit(source: dict, doc: dict, op: str, find: str, text: str, replace_all: b
             if doc["ext"] == ".docx" and _pattern(find, ignore_case=True).search(document_text(doc).replace("\n", " ")):
                 raise EditError("That text runs across more than one paragraph of this Word document, and a change "
                                 "has to stay inside one. Replace it one paragraph at a time.")
+            if doc["ext"] == ".pdf" and (page := _scanned_page_with(doc, find)):
+                raise EditError(f"That text is on page {page}, a scanned image: its words were read by OCR for "
+                                "searching, but there are no letters on the page to change. It can't be edited.")
             if doc["ext"] == ".pdf" and _pattern(find, ignore_case=True).search(document_text(doc)):
                 raise pdf_edit.CantKeepLayout("The text couldn't be located in the PDF's page layout.")
             raise EditError("That text isn't in the document. Check the exact wording.")

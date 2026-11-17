@@ -32,7 +32,14 @@ const rehypePlugins = [[rehypeKatex, { throwOnError: false, strict: false }]];
 function sourceTitle(src) {
   if (!src) return undefined;
   if (src.type === 'web') return src.title || src.url;
-  return `${src.document}${src.page != null ? `, page ${src.page}` : ''}`;
+  const place = docPlace(src);
+  return `${src.document}${place ? `, ${place}` : ''}`;
+}
+
+// Where in a document a passage is: its page, and whether the page was a scan read by OCR.
+function docPlace(src) {
+  const page = src.page != null ? `page ${src.page}` : '';
+  return src.ocr ? `${page}${page ? ' · ' : ''}scanned, read by OCR` : page;
 }
 
 function Markdown({ text, sources = [] }) {
@@ -144,7 +151,7 @@ function Sources({ sources }) {
               ) : (
                 <span className="font-medium truncate">{src.document}</span>
               )}
-              <span className="text-muted">{src.type === 'web' ? hostname(src.url) : src.page != null ? `page ${src.page}` : ''}</span>
+              <span className="text-muted">{src.type === 'web' ? hostname(src.url) : docPlace(src)}</span>
             </p>
             {src.snippet && <p className="mt-0.5 text-body text-muted line-clamp-2">{src.snippet}</p>}
           </div>

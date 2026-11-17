@@ -163,6 +163,14 @@ class Settings(BaseSettings):
     embed_per_key_day: int = 1000
     embed_site_per_day: int | None = None
     embed_index_share: float = 0.8
+    # OCR of PDF pages without a text layer, for the index only (backend/rag/ocr.py; needs the tesseract program).
+    ocr_enabled: bool = True
+    ocr_tesseract: str = ""            # the program's path; empty: found on the PATH or in its usual Windows place
+    ocr_language: str = "eng"
+    ocr_dpi: int = 300
+    ocr_max_pixels: int = 25_000_000   # a page is rendered smaller than OCR_DPI rather than past this
+    ocr_page_timeout: int = 60         # seconds per page
+    ocr_max_pages: int = 60            # per document
 
     # --- Document library (backend/library) ---
     library_data_dir: str = str(BACKEND_DIR / "data")   # library/<user_id>/, versions/, logs/, catalog

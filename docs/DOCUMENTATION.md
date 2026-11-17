@@ -361,6 +361,7 @@ Most backend folders contain an empty `__init__.py`; it only lets Python import 
 | `editing.py` | Replace or append text in TXT / MD / DOCX / PDF, re-index, keep backups; undo and redo. |
 | `pdf_edit.py` | In-place PDF editing: finds lines and paragraphs, re-wraps in the document's own fonts, moves content below (onto a new page if needed), and checks the result before saving. |
 | `tiny_font.py` | A font cut down to the few letters an edit needs (fontTools), so a PDF grows by kilobytes, not a whole font. |
+| `../rag/ocr.py` | OCR for PDF pages without a text layer: tesseract per page with a time limit, the render capped in dpi and pixels, results cached by the rendered image (`ocr_cache.db`) so an edit's re-read doesn't run it again. |
 | `pdf_encoding.py` | What a simple font's codes stand for when it has no copy-text map (ToUnicode): from its `/Encoding` (WinAnsi, MacRoman or Standard, its `/Differences` glyph names, or the embedded program's own encoding), so new letters are written in the document's own font. Glyph names the Adobe Glyph List can't resolve stay unmapped. A wrong code is refused by the checks on the saved page. |
 | `font_fetch.py` | Fonts a PDF needs and the machine lacks: one pinned HTTPS URL each, verified against `fonts/manifest.json` (SHA-256), cached in `data/fonts/fetched/`. |
 | `batch.py` | The queue: many changes run one at a time by a background worker, within Groq's tokens-per-minute limit; restart-safe. |
@@ -744,12 +745,15 @@ every 2 s while a file is still processing. Steps 4–8 run in the background.
 3. **Record** — a `documents` row with `status="processing"`, a provisional title from the file name, and the file
    saved in `backend/data/library/<user_id>/`. Then, on the worker, the model writes a title, a summary and keywords
    from the opening text (`library/titles.py`), and the stored file is renamed after the title.
-4. **Load** — PDF: one document per page (page numbers kept for citations); DOCX: paragraphs + table rows; TXT/MD as-is.
+4. **Load** — PDF: one document per page (page numbers kept for citations); a page with no text layer but an image
+   (a scan) is read by OCR (`rag/ocr.py`, the tesseract program, for the index only: the stored file is unchanged)
+   and its passages are marked `ocr`, so sources say "scanned, read by OCR"; DOCX: paragraphs + table rows; TXT/MD as-is.
    `_clean` removes null bytes, re-joins hyphenated line breaks, collapses whitespace. No text → `IngestionError`: the document is marked failed with that message.
 5. **Chunk** — 1,000 chars / 200 overlap, splitting on paragraphs → lines → sentences → words; chunks ≤ 20 chars dropped.
 6. **Embed** — `embed_paced`: Gemini `RETRIEVAL_DOCUMENT`, batches of 90, waiting when the free tier's per-minute limit is hit.
 7. **Upsert** — Qdrant points with ids `uuid5(doc_id:chunk_index)`, a `dense` vector and a `bm25` sparse vector, and
-   payload `{page_content, metadata: {user_id, doc_id, source, title, file_name, page, chunk_index, start_index}}`.
+   payload `{page_content, metadata: {user_id, doc_id, source, title, file_name, page, chunk_index, start_index}}`
+   (and `ocr: true` for a scanned page's passages).
 8. **Finish** — `indexed` with page/chunk counts, or `failed` with the error (partial vectors removed). A document
    removed while it was being indexed has its vectors removed when indexing ends.
 
@@ -1207,7 +1211,10 @@ every schema in 7.8. Changing `VOYAGE_RERANK_MODEL` requires recalibrating `VOYA
 - **Single-process embedded Qdrant**: one backend at a time (use a Qdrant server for several workers); a FULL backup
   needs the backend stopped.
 - **One file indexed at a time**: uploads queue on one background worker; a large file delays those after it.
-- **No OCR**: image-only PDFs cannot be indexed, edited or converted.
+- **Scanned pages** are read by OCR for searching only (English by default, `OCR_LANGUAGE`; at most 60 pages a
+  document, 60 s a page, rendered at up to 300 dpi and 25 megapixels: `OCR_*`). Misread letters are possible, and
+  the text on those pages can't be edited or converted. Without the tesseract program, they are skipped (one
+  `ocr_unavailable` event). A PDF uploaded before OCR existed is re-read only if it is uploaded again.
 - **LLM judges are fallible**: the gate, grading and evaluation reduce, but don't eliminate, wrong routes and
   ungrounded answers.
 - **PDF edits** keep the layout or refuse. Refused with "a shorter wording may fit": text needing more than one new

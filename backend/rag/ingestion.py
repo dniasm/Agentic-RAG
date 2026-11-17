@@ -47,11 +47,19 @@ def load_file(path: Path) -> tuple[list[Document], int]:
                 reader.decrypt("")
             except Exception as e:
                 raise IngestionError("PDF is password-protected") from e
-        docs = []
+        docs, empty = [], []
         for i, page in enumerate(reader.pages, start=1):
             text = _clean(page.extract_text() or "")
             if text:
                 docs.append(Document(page_content=text, metadata={"page": i}))
+            else:
+                empty.append(i)
+        if empty:   # scanned pages: their text read by OCR, for the index only (the file isn't changed)
+            from backend.rag import ocr
+            for i, text in ocr.read_pages(path, empty).items():
+                if text := _clean(text):
+                    docs.append(Document(page_content=text, metadata={"page": i, "ocr": True}))
+            docs.sort(key=lambda d: d.metadata["page"])
         return docs, len(reader.pages)
 
     if ext == ".docx":
@@ -139,6 +147,7 @@ def ingest_file(path: Path, *, user_id: str, doc_id: str, filename: str) -> dict
             "doc_id": doc_id,
             "source": filename,
             "page": chunk.metadata.get("page"),
+            **({"ocr": True} if chunk.metadata.get("ocr") else {}),
             "chunk_index": idx,
             "start_index": chunk.metadata.get("start_index"),
         }

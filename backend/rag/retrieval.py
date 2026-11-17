@@ -32,7 +32,8 @@ def _hit(p, query: str) -> dict:
     meta = p.payload.get("metadata", {})
     return {
         "id": str(p.id), "content": p.payload.get("page_content", ""), "source": meta.get("source"),
-        "page": meta.get("page"), "doc_id": meta.get("doc_id"), "chunk_index": meta.get("chunk_index"),
+        "page": meta.get("page"), "ocr": bool(meta.get("ocr")), "doc_id": meta.get("doc_id"),
+        "chunk_index": meta.get("chunk_index"),
         "score": 0.0, "rrf": 0.0, "dense_rank": None, "bm25_rank": None, "bm25": None, "matched_query": query,
     }
 
