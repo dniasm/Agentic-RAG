@@ -49,7 +49,7 @@ from pathlib import Path
 
 import pymupdf
 
-from backend.library import config, font_fetch
+from backend.library import config, font_fetch, pdf_encoding
 from backend.library.tiny_font import tiny_font
 
 log = logging.getLogger(__name__)
@@ -1686,10 +1686,15 @@ def _utf16(hexstr: bytes) -> str:
 
 def _font_codes(doc: pymupdf.Document, xref: int) -> dict[str, bytes]:
     """What the font's codes read as, turned round: {"a": b"a", "fi": b"\x0c"}, from its copy-text map (ToUnicode).
+    For a simple font without one, from its /Encoding instead (pdf_encoding).
     Codes keep the map's byte width (one for a simple font, two for a CID font)."""
     kind, ref = doc.xref_get_key(xref, "ToUnicode")
     if kind != "xref":
-        return {}
+        codes = pdf_encoding.encoding_codes(doc, xref)
+        for letters, lig in LIGATURES:
+            if letters in codes:
+                codes.setdefault(lig, codes[letters])
+        return codes
     cmap = doc.xref_stream(int(ref.split()[0])) or b""
     codes: dict[str, bytes] = {}
 
@@ -1708,7 +1713,10 @@ def _font_codes(doc: pymupdf.Document, xref: int) -> dict[str, bytes]:
                 for k, d in enumerate(re.findall(rb"<([0-9A-Fa-f]*)>", dst)):
                     add(a + k, len(lo), _utf16(d))
             else:
-                first = bytes.fromhex(dst[1:-1].decode())
+                try:
+                    first = bytes.fromhex(dst[1:-1].decode())
+                except ValueError:   # (malformed: MuPDF itself writes some with an odd number of digits)
+                    continue
                 for k in range(b - a + 1):   # the last byte counts up
                     value = (int.from_bytes(first, "big") + k).to_bytes(len(first), "big")
                     add(a + k, len(lo), value.decode("utf-16-be", "ignore"))
@@ -1748,11 +1756,32 @@ class _OwnFonts:
         program = self._load(xref)
         return program is not None and all(program.has_glyph(ord(ch)) for ch in c)
 
+    def _agrees(self, xref: int, codes: dict[str, bytes]) -> bool:
+        """For a map taken from /Encoding (no ToUnicode): every letter MuPDF reads in this font on the page is drawn
+        with the glyph the program has for that letter, so letters and glyphs line up in this font at all. It can't
+        see a wrong code in the map itself: the checks on the saved page (letter positions, _check_own_glyphs) are
+        what refuse that, and the edit is then written the old way."""
+        program = self._load(xref)
+        if program is None:
+            return False
+        names = {font_key(n) for n in (self.doc.xref_get_key(xref, "BaseFont")[1].lstrip("/"), program.name)}
+        for span in self.page.get_texttrace():
+            if font_key(span["font"]) not in names:
+                continue
+            for u, gid, _o, _b in span["chars"]:
+                if u > 32 and chr(u) in codes and program.has_glyph(u) != gid:
+                    return False
+        return True
+
     def code(self, name: str, c: str) -> tuple[int, bytes] | None:
         """The font object of that name that draws `c`, and its code for it."""
         for xref in self.by_name.get(font_key(name), []):
             if xref not in self._codes:
-                self._codes[xref] = _font_codes(self.doc, xref)
+                codes = _font_codes(self.doc, xref)
+                if codes and self.doc.xref_get_key(xref, "ToUnicode")[0] == "null" and not self._agrees(xref, codes):
+                    log.info("Font %s: its /Encoding doesn't read the page as MuPDF does; not written in", name)
+                    codes = {}
+                self._codes[xref] = codes
             code = self._codes[xref].get(c)
             if code is not None and self._has(xref, c):
                 return xref, code

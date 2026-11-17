@@ -361,6 +361,7 @@ Most backend folders contain an empty `__init__.py`; it only lets Python import 
 | `editing.py` | Replace or append text in TXT / MD / DOCX / PDF, re-index, keep backups; undo and redo. |
 | `pdf_edit.py` | In-place PDF editing: finds lines and paragraphs, re-wraps in the document's own fonts, moves content below (onto a new page if needed), and checks the result before saving. |
 | `tiny_font.py` | A font cut down to the few letters an edit needs (fontTools), so a PDF grows by kilobytes, not a whole font. |
+| `pdf_encoding.py` | What a simple font's codes stand for when it has no copy-text map (ToUnicode): from its `/Encoding` (WinAnsi, MacRoman or Standard, its `/Differences` glyph names, or the embedded program's own encoding), so new letters are written in the document's own font. Glyph names the Adobe Glyph List can't resolve stay unmapped. A wrong code is refused by the checks on the saved page. |
 | `font_fetch.py` | Fonts a PDF needs and the machine lacks: one pinned HTTPS URL each, verified against `fonts/manifest.json` (SHA-256), cached in `data/fonts/fetched/`. |
 | `batch.py` | The queue: many changes run one at a time by a background worker, within Groq's tokens-per-minute limit; restart-safe. |
 | `limits.py` | Groq's tokens-per-minute window, shared by the chat and the queue. |
@@ -1211,7 +1212,7 @@ every schema in 7.8. Changing `VOYAGE_RERANK_MODEL` requires recalibrating `VOYA
   ungrounded answers.
 - **PDF edits** keep the layout or refuse. Refused with "a shorter wording may fit": text needing more than one new
   page. Offered as a Markdown copy instead (only when the passage would be found in it): a passage spanning several
-  paragraphs or columns, letters no available font has, PDFs without a text map (some Word / Chrome exports). Page
+  paragraphs or columns, letters no available font has, composite (CID) fonts without a text map. (Simple fonts without one, as Word, PowerPoint and many exporters write them, are read from their encoding.) Page
   references in the body text and table-of-contents numbers are not renumbered when a page is added.
 - **The public site** (Tailscale Funnel) is up only while this laptop is awake and the backend runs; backups are taken
   by hand (`backend/scripts/backup.py`).
@@ -1848,7 +1849,9 @@ breaking, the document's own hyphenation) in the same fonts, sizes, colours, ker
 grows, what is below moves down; what no longer fits goes onto a new page inserted after it, carrying the running
 headers and footers, with page numbers renumbered; a paragraph can continue across the break. Every edit is checked
 before it is saved: letter by letter, the whole text in reading order, and pixel by pixel outside the changed area.
-Letters the PDF's fonts lack are taken from complete copies (`font_fetch.py`: downloaded on demand from one pinned
+New letters are written with the PDF's own font objects by their codes: from each font's copy-text map
+(ToUnicode), or, for a simple font without one (Word, PowerPoint, many exporters), from its `/Encoding`
+(`pdf_encoding.py`). Letters the PDF's fonts lack are taken from complete copies (`font_fetch.py`: downloaded on demand from one pinned
 HTTPS URL each, verified against `fonts/manifest.json`, cached in `data/fonts/fetched/`; Arial, Times New Roman,
 Calibri and similar are drawn with metric-compatible free fonts, and the reply says so), cut down to just those
 letters (`tiny_font.py`). When the agent wrote the text and a letter is still missing, it rewords around it.
