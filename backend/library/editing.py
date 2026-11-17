@@ -22,7 +22,7 @@ from pathlib import Path
 
 from qdrant_client import models
 
-from backend.library import catalog, config, embed_budget, library, pdf_edit, titles
+from backend.library import catalog, config, embed_budget, library, pdf_edit, summaries, titles
 from backend.library.logs import event
 from backend.rag import ingestion, sparse, vectorstore
 from backend.config.settings import settings as day7_settings
@@ -565,26 +565,23 @@ def undo_refresh_expected(doc: dict) -> bool:
 def _finish(doc: dict, reloaded: dict, before: str | None = None) -> bool:
     """After the file and index have changed: update the catalog row. The summary and keywords (which drive search
     by content) are written again by the model, about 2,200 Groq tokens, unless the change is small: under
-    SUMMARY_REFRESH_SHARE of the text, the old summary still holds. Returns whether it was refreshed."""
+    SUMMARY_REFRESH_SHARE of the text, the old summary still holds. That model call is only scheduled here, to run
+    after the library lock is released (backend/library/summaries.py). Returns whether a refresh was queued."""
     path = config.LIBRARY_DIR / doc["file_name"]
     data = path.read_bytes()
     from backend.library import export   # imported here: export imports this module
     fields = dict(sha256=ingestion.file_sha256(data), size_bytes=len(data),
                   pages=export.page_count(catalog.get_document(doc["id"]) or doc, reloaded["pages"]),
                   chunks=reloaded["chunks"])
-    refreshed = False
+    queue = False
     try:
-        text = _plain_text(path)
-        if before is None or changed_share(before, text) >= config.SUMMARY_REFRESH_SHARE:
-            others = [d["title"] for d in catalog.list_documents(owner=doc["owner"])
-                      if d["id"] != doc["id"] and d["status"] != "failed"]
-            profile, refreshed = titles.profile_document(doc["original_name"], text[: config.TITLE_SOURCE_CHARS], others)
-            if refreshed:
-                fields.update(summary=profile.summary, keywords=profile.keywords)
+        queue = before is None or changed_share(before, _plain_text(path)) >= config.SUMMARY_REFRESH_SHARE
     except Exception:
-        log.warning("Couldn't refresh the summary of %s", doc["title"], exc_info=True)
+        log.warning("Couldn't compare the text of %s", doc["title"], exc_info=True)
     catalog.update_document(doc["id"], **fields)
-    return refreshed
+    if queue:   # after the new hash is stored: the refresh is written only if the document is still this one
+        summaries.schedule(doc["id"], fields["sha256"])
+    return queue
 
 
 @library._exclusive
@@ -634,7 +631,7 @@ def undo(doc_id: str, edit_id: int | None = None) -> dict:
     catalog.move_edit_to_undone({**last, "doc_id": doc_id}, redo.name, path.suffix)   # the backup stays for a redo
     event("undo", doc=doc_id, title=doc["title"], undid=last["detail"], chunks=reloaded["chunks"],
           embedded=reloaded["embedded"],
-          summary_refreshed=refreshed)
+          summary_refresh_queued=refreshed)
     return {"status": "undone", "undid": last["detail"], "title": doc["title"], "redo_id": last["id"],
             "chunks_reindexed": reloaded["chunks"], "edits_left": len(catalog.edit_history(doc_id))}
 
@@ -683,7 +680,7 @@ def redo(doc_id: str, edit_id: int | None = None) -> dict:
     catalog.restore_undone(undone["id"])
     saved.unlink(missing_ok=True)
     event("redo", doc=doc_id, title=doc["title"], redid=undone["detail"], chunks=reloaded["chunks"],
-          embedded=reloaded["embedded"], summary_refreshed=refreshed)
+          embedded=reloaded["embedded"], summary_refresh_queued=refreshed)
     return {"status": "redone", "redid": undone["detail"], "title": doc["title"], "edit_id": undone["id"],
             "chunks_reindexed": reloaded["chunks"]}
 
@@ -886,7 +883,7 @@ def _edit(source: dict, doc: dict, op: str, find: str, text: str, replace_all: b
     _drop_redo_history(doc_id)
     event("edit", doc=doc_id, title=doc["title"], op=op, changes=changed, chunks=reloaded["chunks"],
           embedded=reloaded["embedded"], detail=detail,
-          converted=converted, summary_refreshed=refreshed)
+          converted=converted, summary_refresh_queued=refreshed)
     return {"status": "edited", "operation": op, "changes": changed, "chunks_reindexed": reloaded["chunks"],
             "chunks_embedded": reloaded["embedded"], "title": doc["title"], "previews": previews, "converted": converted,
             "layout": info.get("layout"),

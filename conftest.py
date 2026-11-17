@@ -37,6 +37,14 @@ def _fresh_chat_allowance():
 
 
 @pytest.fixture(autouse=True)
+def _summaries_settled():
+    """A summary refresh a test scheduled finishes before the next test starts (it runs on its own worker)."""
+    yield
+    from backend.library import summaries
+    summaries.wait_idle()
+
+
+@pytest.fixture(autouse=True)
 def _fresh_embed_usage():
     """Each test starts with no passages embedded today (the counts are kept in the test database)."""
     from backend.library import catalog, embed_budget

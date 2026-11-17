@@ -1164,8 +1164,10 @@ every schema in 7.8. Changing `VOYAGE_RERANK_MODEL` requires recalibrating `VOYA
 - **Embedding allowance**: each account may have 300 passages indexed a day, and indexing stops at 80% of the site's
   1,000 (`EMBED_*`, `backend/library/embed_budget.py`); a 200,000-character report is about 250 passages. An upload or
   edit that doesn't fit is refused whole, before anything is embedded, with the numbers; questions are never refused.
-- **One library lock**: renames, edits, undo / redo and the queue's changes run one at a time; a PDF edit that
-  re-wraps a long paragraph can hold it for tens of seconds, and other accounts' changes wait.
+- **One library lock**: renames, edits, undo / redo and the queue's changes run one at a time (a hold over 2 s is
+  logged as `lock_held`); the embedding calls of a change still run under it. The summary refresh after a large
+  change runs afterwards, outside the lock, on its own worker; a refresh still pending when the backend stops is lost
+  (the old summary stays until the next large change).
 - **Single-process embedded Qdrant**: one backend at a time (use a Qdrant server for several workers); a FULL backup
   needs the backend stopped.
 - **One file indexed at a time**: uploads queue on one background worker; a large file delays those after it.

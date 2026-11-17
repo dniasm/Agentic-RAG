@@ -77,6 +77,8 @@ def refreshes(monkeypatch):
 def test_a_small_edit_and_its_undo_keep_the_summary(library_docs, monkeypatch):
     doc = library_docs["svm.txt"]
     editing.edit(doc["id"], "append", text="Kernels map the data into a higher dimensional space. " * 30)
+    from backend.library import summaries
+    summaries.wait_idle()                                           # (that large append's own refresh, first)
     seen = refreshes(monkeypatch)                                   # a document of a realistic length from here on
     editing.edit(doc["id"], "replace", find="classifier", text="model")
     editing.undo(doc["id"])
@@ -87,6 +89,8 @@ def test_a_large_edit_refreshes_the_summary(library_docs, monkeypatch):
     seen = refreshes(monkeypatch)
     doc = library_docs["svm.txt"]
     editing.edit(doc["id"], "append", text="Zebrafish are striped fish from South Asia. " * 30)
+    from backend.library import summaries
+    summaries.wait_idle()                                           # (written in the background, after the edit)
     assert seen == [1]
     assert config.SUMMARY_REFRESH_SHARE == 0.05
 
