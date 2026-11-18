@@ -12,19 +12,16 @@ from functools import lru_cache
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from qdrant_client import QdrantClient, models
 
+from backend.config import gemini
 from backend.config.settings import settings
 
 # The embedded (local-path) Qdrant client is not safe for concurrent writers.
 _lock = threading.RLock()
 
 
-@lru_cache
-def get_embeddings() -> GoogleGenerativeAIEmbeddings:
-    return GoogleGenerativeAIEmbeddings(
-        model=settings.embedding_model,
-        google_api_key=settings.gemini_api_key,
-        output_dimensionality=settings.embedding_dim,
-    )
+def get_embeddings(key: int = 0) -> GoogleGenerativeAIEmbeddings:
+    """The client for one Gemini key. Embedding requests go through backend.config.gemini.with_keys instead."""
+    return gemini.embeddings(key)
 
 
 @lru_cache

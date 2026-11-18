@@ -8,7 +8,7 @@ import unittest
 from unittest import mock
 
 from backend.config import voyage
-from backend.config.voyage import RECALL, RERANK, SAVE, RateLimiter
+from backend.config.voyage import FIND, RECALL, RERANK, SAVE, RateLimiter
 
 
 class Limiter(unittest.TestCase):
@@ -20,6 +20,13 @@ class Limiter(unittest.TestCase):
         self.assertFalse(lim.acquire(RECALL, timeout=0))
         self.assertTrue(lim.acquire(RERANK, timeout=0))  # the reserved one
         self.assertFalse(lim.acquire(RERANK, timeout=0))  # the minute is used up
+
+    def test_the_document_agents_find_also_leaves_the_reranker_its_slot(self):
+        lim = RateLimiter(per_minute=3, reserve=1, window=60)
+        self.assertTrue(lim.acquire(FIND, timeout=0))
+        self.assertTrue(lim.acquire(FIND, timeout=0))
+        self.assertFalse(lim.acquire(FIND, timeout=0))
+        self.assertTrue(lim.acquire(RERANK, timeout=0))
 
     def test_slots_free_up_after_the_window(self):
         lim = RateLimiter(per_minute=1, reserve=0, window=0.2)

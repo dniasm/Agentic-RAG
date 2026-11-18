@@ -43,9 +43,9 @@ def ensure_loaded() -> bool:
 
 
 # ---------------------------------------------------------------- Voyage
-def _score_voyage(query: str, texts: list[str]) -> list[float]:
+def _score_voyage(query: str, texts: list[str], priority: int = voyage.RERANK) -> list[float]:
     # Highest priority on the shared Voyage limit; if no slot frees up in time, score() falls back.
-    result = voyage.call(voyage.RERANK, lambda c: c.rerank(query, texts, model=settings.voyage_rerank_model,
+    result = voyage.call(priority, lambda c: c.rerank(query, texts, model=settings.voyage_rerank_model,
                                                          truncation=True))
     scores = [0.0] * len(texts)
     for r in result.results:
@@ -54,7 +54,7 @@ def _score_voyage(query: str, texts: list[str]) -> list[float]:
 
 
 # ---------------------------------------------------------------- scoring and zones
-def score(query: str, hits: list[dict]) -> list[dict] | None:
+def score(query: str, hits: list[dict], priority: int = voyage.RERANK) -> list[dict] | None:
     """Attach "relevance" (0-1) and "scorer" to each hit and return them sorted best first.
     Returns None if the reranker could not score them (the caller then uses the LLM relevance check)."""
     if not hits:
@@ -64,7 +64,7 @@ def score(query: str, hits: list[dict]) -> list[dict] | None:
     texts = [h["content"][:PASSAGE_CHARS] for h in hits]
     started = time.perf_counter()
     try:
-        scores = _score_voyage(query, texts)
+        scores = _score_voyage(query, texts, priority)
     except Exception as e:  # rate limit, network, service error
         log.warning("Reranker voyage failed (%s): %s", type(e).__name__, str(e)[:200])
         return None

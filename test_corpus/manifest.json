@@ -1,0 +1,254 @@
+[
+  {
+    "file": "health/report.md",
+    "source_title": "Middle East respiratory syndrome coronavirus - Kingdom of Saudi Arabia",
+    "url": "https://www.who.int/emergencies/disease-outbreak-news/item/2025-DON560",
+    "license": "WHO, CC BY-NC-SA 3.0 IGO",
+    "scenario": "same title: MERS Saudi Arabia (Mar 2025); same file name as outbreaks/report.md"
+  },
+  {
+    "file": "outbreaks/report.md",
+    "source_title": "Middle East respiratory syndrome coronavirus - Kingdom of Saudi Arabia",
+    "url": "https://www.who.int/emergencies/disease-outbreak-news/item/2025-DON569",
+    "license": "WHO, CC BY-NC-SA 3.0 IGO",
+    "scenario": "same title: MERS Saudi Arabia (May 2025); same file name as health/report.md"
+  },
+  {
+    "file": "health/marburg_rwanda.md",
+    "source_title": "Marburg virus disease - Rwanda",
+    "url": "https://www.who.int/emergencies/disease-outbreak-news/item/2024-DON544",
+    "license": "WHO, CC BY-NC-SA 3.0 IGO",
+    "scenario": "same title: Marburg Rwanda (Nov 2024)"
+  },
+  {
+    "file": "health/marburg_rwanda_update.docx",
+    "source_title": "Marburg virus disease - Rwanda",
+    "url": "https://www.who.int/emergencies/disease-outbreak-news/item/2024-DON548",
+    "license": "WHO, CC BY-NC-SA 3.0 IGO",
+    "scenario": "same title: Marburg Rwanda (Dec 2024)"
+  },
+  {
+    "file": "health/download (3).md",
+    "source_title": "Avian Influenza A(H5N1) - Cambodia",
+    "url": "https://www.who.int/emergencies/disease-outbreak-news/item/2025-DON575",
+    "license": "WHO, CC BY-NC-SA 3.0 IGO",
+    "scenario": "bird flu cluster: H5N1 Cambodia; meaningless name"
+  },
+  {
+    "file": "health/H5N1_mx.txt",
+    "source_title": "Avian Influenza A(H5N1) - Mexico",
+    "url": "https://www.who.int/emergencies/disease-outbreak-news/item/2025-DON564",
+    "license": "WHO, CC BY-NC-SA 3.0 IGO",
+    "scenario": "bird flu cluster: H5N1 Mexico"
+  },
+  {
+    "file": "health/doc1.md",
+    "source_title": "Avian Influenza A(H5N5)- United States of America",
+    "url": "https://www.who.int/emergencies/disease-outbreak-news/item/2025-DON590",
+    "license": "WHO, CC BY-NC-SA 3.0 IGO",
+    "scenario": "bird flu cluster: H5N5 USA; meaningless name"
+  },
+  {
+    "file": "health/measles_morocco.md",
+    "source_title": "Measles - Morocco",
+    "url": "https://www.who.int/emergencies/disease-outbreak-news/item/2025-DON568",
+    "license": "WHO, CC BY-NC-SA 3.0 IGO",
+    "scenario": "measles cluster: Morocco"
+  },
+  {
+    "file": "health/untitled.txt",
+    "source_title": "Measles - United States of America",
+    "url": "https://www.who.int/emergencies/disease-outbreak-news/item/2025-DON561",
+    "license": "WHO, CC BY-NC-SA 3.0 IGO",
+    "scenario": "measles cluster: USA; meaningless name"
+  },
+  {
+    "file": "health/nipah_india.md",
+    "source_title": "Nipah Virus Infection - India",
+    "url": "https://www.who.int/emergencies/disease-outbreak-news/item/2025-DON577",
+    "license": "WHO, CC BY-NC-SA 3.0 IGO",
+    "scenario": "Nipah cluster: India"
+  },
+  {
+    "file": "health/nipah_bangladesh.docx",
+    "source_title": "Nipah virus infection - Bangladesh",
+    "url": "https://www.who.int/emergencies/disease-outbreak-news/item/2025-DON582",
+    "license": "WHO, CC BY-NC-SA 3.0 IGO",
+    "scenario": "Nipah cluster: Bangladesh"
+  },
+  {
+    "file": "health/final_v2_FINAL.md",
+    "source_title": "Rabies - Timor-Leste",
+    "url": "https://www.who.int/emergencies/disease-outbreak-news/item/2025-DON576",
+    "license": "WHO, CC BY-NC-SA 3.0 IGO",
+    "scenario": "unique content: rabies Timor-Leste; meaningless name"
+  },
+  {
+    "file": "health/anthrax_thailand.md",
+    "source_title": "Anthrax - Thailand",
+    "url": "https://www.who.int/emergencies/disease-outbreak-news/item/2025-DON573",
+    "license": "WHO, CC BY-NC-SA 3.0 IGO",
+    "scenario": "unique content: anthrax Thailand"
+  },
+  {
+    "file": "health/cholera_angola.txt",
+    "source_title": "Cholera - Angola",
+    "url": "https://www.who.int/emergencies/disease-outbreak-news/item/2025-DON562",
+    "license": "WHO, CC BY-NC-SA 3.0 IGO",
+    "scenario": "unique content: cholera Angola"
+  },
+  {
+    "file": "health/malaria_ethiopia.md",
+    "source_title": "Malaria - Ethiopia",
+    "url": "https://www.who.int/emergencies/disease-outbreak-news/item/2024-DON542",
+    "license": "WHO, CC BY-NC-SA 3.0 IGO",
+    "scenario": "malaria cluster: outbreak in Ethiopia"
+  },
+  {
+    "file": "health/malaria_fact_sheet.md",
+    "source_title": "Malaria",
+    "url": "https://www.who.int/news-room/fact-sheets/detail/malaria",
+    "license": "WHO, CC BY-NC-SA 3.0 IGO",
+    "scenario": "malaria cluster: global fact sheet"
+  },
+  {
+    "file": "health/measles.md",
+    "source_title": "Measles",
+    "url": "https://www.who.int/news-room/fact-sheets/detail/measles",
+    "license": "WHO, CC BY-NC-SA 3.0 IGO",
+    "scenario": "measles cluster: global fact sheet"
+  },
+  {
+    "file": "health/tb.md",
+    "source_title": "Tuberculosis",
+    "url": "https://www.who.int/news-room/fact-sheets/detail/tuberculosis",
+    "license": "WHO, CC BY-NC-SA 3.0 IGO",
+    "scenario": "unique content: tuberculosis"
+  },
+  {
+    "file": "health/New Document.docx",
+    "source_title": "Diabetes",
+    "url": "https://www.who.int/news-room/fact-sheets/detail/diabetes",
+    "license": "WHO, CC BY-NC-SA 3.0 IGO",
+    "scenario": "unique content: diabetes; meaningless name"
+  },
+  {
+    "file": "health/hypertension.md",
+    "source_title": "Hypertension",
+    "url": "https://www.who.int/news-room/fact-sheets/detail/hypertension",
+    "license": "WHO, CC BY-NC-SA 3.0 IGO",
+    "scenario": "unique content: hypertension"
+  },
+  {
+    "file": "ml/cnn.md",
+    "source_title": "Convolutional neural network",
+    "url": "https://en.wikipedia.org/wiki/Convolutional_neural_network",
+    "license": "Wikipedia, CC BY-SA 4.0",
+    "scenario": "neural network cluster"
+  },
+  {
+    "file": "ml/rnn.md",
+    "source_title": "Recurrent neural network",
+    "url": "https://en.wikipedia.org/wiki/Recurrent_neural_network",
+    "license": "Wikipedia, CC BY-SA 4.0",
+    "scenario": "neural network cluster; sequence models with LSTM"
+  },
+  {
+    "file": "ml/notes.txt",
+    "source_title": "Long short-term memory",
+    "url": "https://en.wikipedia.org/wiki/Long_short-term_memory",
+    "license": "Wikipedia, CC BY-SA 4.0",
+    "scenario": "neural network cluster; same file name as rl/notes.txt"
+  },
+  {
+    "file": "ml/transformer_wiki.md",
+    "source_title": "Transformer (deep learning)",
+    "url": "https://en.wikipedia.org/wiki/Transformer_%28deep_learning%29",
+    "license": "Wikipedia, CC BY-SA 4.0",
+    "scenario": "transformer cluster with 1706.03762.pdf"
+  },
+  {
+    "file": "ml/decision_tree.md",
+    "source_title": "Decision tree learning",
+    "url": "https://en.wikipedia.org/wiki/Decision_tree_learning",
+    "license": "Wikipedia, CC BY-SA 4.0",
+    "scenario": "tree cluster"
+  },
+  {
+    "file": "ml/random_forest.md",
+    "source_title": "Random forest",
+    "url": "https://en.wikipedia.org/wiki/Random_forest",
+    "license": "Wikipedia, CC BY-SA 4.0",
+    "scenario": "tree cluster; ensembles with gradient boosting"
+  },
+  {
+    "file": "ml/ml_stuff.txt",
+    "source_title": "Gradient boosting",
+    "url": "https://en.wikipedia.org/wiki/Gradient_boosting",
+    "license": "Wikipedia, CC BY-SA 4.0",
+    "scenario": "tree cluster; meaningless name"
+  },
+  {
+    "file": "rl/notes.txt",
+    "source_title": "Reinforcement learning",
+    "url": "https://en.wikipedia.org/wiki/Reinforcement_learning",
+    "license": "Wikipedia, CC BY-SA 4.0",
+    "scenario": "RL cluster; same file name as ml/notes.txt"
+  },
+  {
+    "file": "rl/q_learning.docx",
+    "source_title": "Q-learning",
+    "url": "https://en.wikipedia.org/wiki/Q-learning",
+    "license": "Wikipedia, CC BY-SA 4.0",
+    "scenario": "RL cluster"
+  },
+  {
+    "file": "ml/gan.md",
+    "source_title": "Generative adversarial network",
+    "url": "https://en.wikipedia.org/wiki/Generative_adversarial_network",
+    "license": "Wikipedia, CC BY-SA 4.0",
+    "scenario": "generative cluster with autoencoder"
+  },
+  {
+    "file": "ml/Document (2).md",
+    "source_title": "Autoencoder",
+    "url": "https://en.wikipedia.org/wiki/Autoencoder",
+    "license": "Wikipedia, CC BY-SA 4.0",
+    "scenario": "generative cluster; meaningless name"
+  },
+  {
+    "file": "ml/kmeans.txt",
+    "source_title": "K-means clustering",
+    "url": "https://en.wikipedia.org/wiki/K-means_clustering",
+    "license": "Wikipedia, CC BY-SA 4.0",
+    "scenario": "unique content: clustering"
+  },
+  {
+    "file": "ml/llm.md",
+    "source_title": "Large language model",
+    "url": "https://en.wikipedia.org/wiki/Large_language_model",
+    "license": "Wikipedia, CC BY-SA 4.0",
+    "scenario": "unique-ish: LLMs (touches transformers)"
+  },
+  {
+    "file": "ml/overfitting.md",
+    "source_title": "Overfitting",
+    "url": "https://en.wikipedia.org/wiki/Overfitting",
+    "license": "Wikipedia, CC BY-SA 4.0",
+    "scenario": "unique content: overfitting"
+  },
+  {
+    "file": "ml/1706.03762.pdf",
+    "source_title": "arXiv:1706.03762",
+    "url": "https://arxiv.org/pdf/1706.03762",
+    "license": "arXiv (authors' licence)",
+    "scenario": "transformer cluster: 'Attention Is All You Need'; number-only name"
+  },
+  {
+    "file": "ml/1502.03167.pdf",
+    "source_title": "arXiv:1502.03167",
+    "url": "https://arxiv.org/pdf/1502.03167",
+    "license": "arXiv (authors' licence)",
+    "scenario": "unique content: batch normalization; number-only name"
+  }
+]

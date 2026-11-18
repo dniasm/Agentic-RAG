@@ -1,11 +1,12 @@
 // Hash routes, so the back button, refresh and links work without a server-side router:
-//   #/chat (new chat) · #/chat/<id> · #/documents · #/overview
+//   #/chat (new chat) · #/chat/<id> · #/documents · #/overview · #/admin (listed accounts only)
 import { useEffect, useState } from 'react';
 
 export function parseHash(hash = window.location.hash) {
   const parts = hash.replace(/^#\/?/, '').split('/').filter(Boolean);
   if (parts[0] === 'documents') return { page: 'documents' };
   if (parts[0] === 'overview') return { page: 'overview' };
+  if (parts[0] === 'admin') return { page: 'admin' };
   return { page: 'chat', conversationId: parts[0] === 'chat' ? parts[1] || null : null };
 }
 

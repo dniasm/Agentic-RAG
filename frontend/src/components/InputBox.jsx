@@ -80,7 +80,7 @@ export default function InputBox({ onSend, busy, conversationKey = 'new', placeh
         onKeyDown={onKeyDown}
         placeholder={placeholder}
         aria-describedby="composer-keys"
-        className="w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-reading text-ink placeholder:text-muted focus:outline-none"
+        className="text-field w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-reading text-ink placeholder:text-muted focus:outline-none"
         style={{ maxHeight: MAX_HEIGHT }}
       />
       <div className="flex items-center gap-3 px-3 pb-3 pt-1">

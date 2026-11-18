@@ -1,0 +1,55 @@
+/* The PDF viewer (lib/pdfViewer.js), from the document library's own page. Its tokens map to the app's. */
+.pdfv { --secondary-hover: var(--active); --hover: var(--raised); --data: var(--hue); --radius-control: 6px; }
+.pdfv { display: flex; flex-direction: column; height: 100%; min-height: 0; min-width: 0; }
+.pdfv-bar { display: flex; align-items: center; gap: 4px; padding: 6px 12px; border-bottom: 1px solid var(--border); font-size: 13px; color: var(--muted); }
+.pdfv-btn, .pdfv-zoom {
+  display: inline-grid; place-items: center; height: 30px; min-width: 30px; padding: 0 6px; border: 0;
+  border-radius: var(--radius-control); background: transparent; color: var(--text); cursor: pointer; text-decoration: none;
+}
+.pdfv-btn:hover, .pdfv-zoom:hover, .pdfv-btn[aria-pressed="true"] { background: var(--secondary-hover); }
+.pdfv-btn svg { width: 16px; height: 16px; }
+.pdfv-zoom { min-width: 54px; font-variant-numeric: tabular-nums; }
+.pdfv-pageno { display: inline-flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
+.pdfv-input {
+  width: 38px; height: 28px; text-align: center; border: 1px solid var(--border); border-radius: var(--radius-control);
+  background: var(--surface);
+}
+.pdfv-sep { width: 1px; height: 18px; margin: 0 6px; background: var(--border); }
+.pdfv-fill { flex: 1; }
+.pdfv-main { flex: 1; display: flex; min-height: 0; }
+.pdfv-thumbs {
+  width: 104px; flex: none; overflow-y: auto; padding: 12px 8px; border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 10px; align-items: center;
+}
+.pdfv-thumbs[hidden] { display: none; }
+.pdfv-thumb {
+  display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 4px; border: 0; border-radius: var(--radius-control);
+  background: transparent; cursor: pointer; font-size: 12px; color: var(--muted);
+}
+.pdfv-thumb canvas { width: 72px; background: #fff; border: 1px solid var(--border); border-radius: 2px; }
+.pdfv-thumb:hover { background: var(--hover); }
+.pdfv-thumb.current canvas { outline: 2px solid var(--data); outline-offset: 1px; }
+.pdfv-thumb.current { color: var(--text); }
+.pdfv-view {
+  flex: 1; overflow: auto; min-width: 0; background: var(--ground); cursor: grab; touch-action: none;
+  user-select: none; -webkit-user-select: none; outline: none;
+}
+.pdfv-view.dragging { cursor: grabbing; }
+.pdfv-pages { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 16px; width: max-content; min-width: 100%; }
+.pdfv-page { position: relative; flex: none; background: #fff; border: 1px solid var(--border); border-radius: 2px; }
+.pdfv-page canvas { display: block; width: 100%; height: 100%; }
+/* pdf.js text layer: transparent text placed exactly over the drawn page, so it can be selected and copied */
+.pdfv .textLayer {
+  position: absolute; inset: 0; overflow: clip; line-height: 1; text-align: initial; transform-origin: 0 0;
+  -webkit-text-size-adjust: none; text-size-adjust: none; forced-color-adjust: none; z-index: 0;
+  user-select: text; -webkit-user-select: text;
+}
+.pdfv .textLayer :is(span, br) { color: transparent; position: absolute; white-space: pre; cursor: text; transform-origin: 0% 0%; }
+.pdfv .textLayer > :not(.markedContent), .pdfv .textLayer .markedContent span:not(.markedContent) { z-index: 1; }
+.pdfv .textLayer span.markedContent { top: 0; height: 0; }
+.pdfv .textLayer span[role="img"] { user-select: none; -webkit-user-select: none; cursor: default; }
+.pdfv .textLayer ::selection { background: color-mix(in srgb, var(--data), transparent 70%); }
+.pdfv .textLayer br::selection { background: transparent; }
+.pdfv .textLayer .endOfContent {
+  display: block; position: absolute; inset: 100% 0 0; z-index: 0; cursor: default; user-select: none; -webkit-user-select: none;
+}

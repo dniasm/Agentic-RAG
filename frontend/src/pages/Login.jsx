@@ -50,10 +50,11 @@ function ExampleAnswer() {
   );
 }
 
-export default function Login({ onAuthenticated, systemOnline }) {
+export default function Login({ onAuthenticated, systemOnline, signups = 'closed' }) {
   const [mode, setMode] = useState('login');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [invite, setInvite] = useState('');
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const registering = mode === 'register';
@@ -64,7 +65,7 @@ export default function Login({ onAuthenticated, systemOnline }) {
     setBusy(true);
     try {
       const user = registering
-        ? await apiService.register(username.trim(), password)
+        ? await apiService.register(username.trim(), password, invite.trim())
         : await apiService.login(username.trim(), password);
       onAuthenticated(user);
     } catch (err) {
@@ -105,7 +106,7 @@ export default function Login({ onAuthenticated, systemOnline }) {
                 id="username"
                 className="input"
                 required
-                minLength={3}
+                minLength={registering ? 3 : undefined}
                 maxLength={32}
                 pattern="[A-Za-z0-9_.\-]+"
                 autoComplete="username"
@@ -125,14 +126,30 @@ export default function Login({ onAuthenticated, systemOnline }) {
                 type="password"
                 className="input"
                 required
-                minLength={6}
+                minLength={registering ? 8 : undefined}  // older accounts may have shorter passwords
                 autoComplete={registering ? 'new-password' : 'current-password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 aria-describedby={registering ? 'password-rules' : undefined}
               />
               {registering && (
-                <p id="password-rules" className="mt-1.5 text-small text-muted">At least 6 characters.</p>
+                <p id="password-rules" className="mt-1.5 text-small text-muted">At least 8 characters.</p>
+              )}
+
+              {registering && signups === 'invite' && (
+                <>
+                  <label htmlFor="invite" className="field-label mt-4">Invite code</label>
+                  <input
+                    id="invite"
+                    className="input"
+                    required
+                    autoComplete="off"
+                    value={invite}
+                    onChange={(e) => setInvite(e.target.value)}
+                    aria-describedby="invite-rules"
+                  />
+                  <p id="invite-rules" className="mt-1.5 text-small text-muted">Ask the site's owner for one.</p>
+                </>
               )}
 
               {error && (
@@ -147,16 +164,18 @@ export default function Login({ onAuthenticated, systemOnline }) {
               </button>
             </form>
 
+            {(registering || signups !== 'closed') && (
             <p className="mt-6 text-body text-muted">
               {registering ? 'Already have an account?' : 'New here?'}{' '}
               <button
                 type="button"
-                className="font-medium text-ink underline-offset-4 hover:underline"
+                className="tap-target font-medium text-ink underline-offset-4 hover:underline"
                 onClick={() => { setMode(registering ? 'login' : 'register'); setError(null); }}
               >
                 {registering ? 'Log in' : 'Create an account'}
               </button>
             </p>
+            )}
           </div>
         </div>
       </section>

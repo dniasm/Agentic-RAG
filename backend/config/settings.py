@@ -23,6 +23,11 @@ class Settings(BaseSettings):
     groq_api_key_3: str = ""
     groq_api_key_4: str = ""
     gemini_api_key: str = ""
+    # Optional embedding keys (backend/config/gemini.py): a request refused on one key goes to the next. Gemini's free
+    # quota is per Google Cloud project, so each key must come from a different project to add anything.
+    gemini_api_key_2: str = ""
+    gemini_api_key_3: str = ""
+    gemini_api_key_4: str = ""
     tavily_api_key: str = ""  # optional but recommended; DuckDuckGo/Wikipedia are used otherwise
     voyage_api_key: str = ""
     # Wikimedia requires automated clients to identify themselves with a contact URL or email.
@@ -57,7 +62,6 @@ class Settings(BaseSettings):
     collection_name: str = "agentic_rag_docs_v2"
 
     # --- Ingestion ---
-    upload_dir: str = str(BACKEND_DIR / "documents")
     chunk_size: int = 1000
     chunk_overlap: int = 200
     max_upload_mb: int = 20
@@ -84,6 +88,7 @@ class Settings(BaseSettings):
     voyage_requests_per_minute: int = 3
     voyage_rerank_reserve: int = 1      # slots recall and saves leave free for the reranker
     voyage_rerank_max_wait: float = 10.0  # seconds a rerank waits for a slot before the LLM relevance check
+    voyage_find_max_wait: float = 0.0     # the document agent's find: busy means cosine scores at once
     voyage_recall_max_wait: float = 3.0   # seconds memory recall waits, then answers without past conversations
     voyage_save_max_wait: float = 120.0   # seconds a background episode save waits
     # rerank-2.5's score scale: unrelated passages still score ~0.3. Measured best scores (74 questions):
@@ -138,9 +143,46 @@ class Settings(BaseSettings):
 
     # --- Auth / persistence ---
     database_path: str = str(BACKEND_DIR / "data" / "app.db")
-    jwt_secret: str = ""                # auto-generated & persisted when empty
-    jwt_expire_minutes: int = 60 * 24
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+    # Web hardening (backend/security.py). The public name(s) the site answers to besides local addresses, e.g.
+    # "laptop.tailnet.ts.net" or "*.ts.net"; any other Host header is refused.
+    allowed_hosts: str = "*.ts.net"
+    api_docs: bool = False   # /docs, /redoc and /openapi.json: development only
+    # Chat messages per account (backend/chat_limits.py; 0 turns a window off). The model quota is shared: Groq allows
+    # about 200k tokens a day per key for the 120B, about 800k with four keys, and a message costs about 4.3k tokens,
+    # so about 185 messages a day for everyone; a day's cap of 60 keeps one account to a third of that.
+    chat_limit_window_seconds: int = 300
+    chat_limit_per_window: int = 15
+    chat_limit_per_day: int = 60
+    # Embedding (backend/library/embed_budget.py; 0 turns a limit off): Gemini's free tier allows about 1,000 embedding
+    # requests a day per key (per Google project), one per new or changed passage. The site's day is what the keys
+    # have left (EMBED_PER_KEY_DAY each, none for a key Google refused for the day), unless EMBED_SITE_PER_DAY is set:
+    # then it is that fixed total. Each account may index this many passages a day, and indexing stops at this share
+    # of the site's day, leaving the rest for the questions chats search with.
+    embed_per_user_day: int = 800
+    embed_per_key_day: int = 1000
+    embed_site_per_day: int | None = None
+    embed_index_share: float = 0.8
+    # OCR of PDF pages without a text layer, for the index only (backend/rag/ocr.py; needs the tesseract program).
+    ocr_enabled: bool = True
+    ocr_tesseract: str = ""            # the program's path; empty: found on the PATH or in its usual Windows place
+    ocr_language: str = "eng"
+    ocr_dpi: int = 300
+    ocr_max_pixels: int = 25_000_000   # a page is rendered smaller than OCR_DPI rather than past this
+    ocr_page_timeout: int = 60         # seconds per page
+    ocr_max_pages: int = 60            # per document
+
+    # --- Document library (backend/library) ---
+    library_data_dir: str = str(BACKEND_DIR / "data")   # library/<user_id>/, versions/, logs/, catalog
+    signup_code: str = ""                # needed for every sign-up after the first; empty: sign-ups closed
+    # Accounts that can open the Admin page (API key usage), comma-separated usernames; empty: no one. A listed name
+    # can't be signed up for: list accounts that already exist.
+    admin_usernames: str = ""
+    library_agent_model: str = "openai/gpt-oss-120b"
+    library_backup_model: str = "openai/gpt-oss-20b"   # takes over when the 120B is rate-limited
+    library_agent_reasoning: str = "low"
+    library_tpm_limit: int = 8000         # Groq free tier, tokens per minute, 120B
+    library_backup_tpm_limit: int = 8000  # the 20B's own limit
 
 
 @lru_cache

@@ -114,7 +114,7 @@ function Library({ documents }) {
           {top.map((d, i) => (
             <li key={d.id} className="py-2.5 border-t border-rule first:border-t-0">
               <p className="flex items-baseline justify-between gap-3 text-body">
-                <span className="truncate" title={d.filename}>{d.filename}</span>
+                <span className="truncate" title={d.title}>{d.title}</span>
                 <span className="num text-muted flex-none">{formatCount(d.chunks)}</span>
               </p>
               <div className="mt-1.5 h-[2px] rounded-full" aria-hidden="true"

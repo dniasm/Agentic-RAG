@@ -27,6 +27,8 @@ CONTEXT_INTRO = "Passages from the user's documents:"
 def format_block(i: int, d: dict) -> str:
     """One numbered passage, as the answer writer (and the answer checker) see it."""
     page = f", page {d['page']}" if d.get("page") else ""
+    if d.get("ocr"):
+        page += ", a scanned page read by OCR: letters may be misread"
     return f"[{i}] (source: {d['source']}{page})\n{d['content']}"
 
 
@@ -56,9 +58,11 @@ def to_sources(docs: list[dict]) -> list[dict]:
     return [
         {
             "type": "document",
+            "doc_id": d.get("doc_id"),
             "title": d["source"],
             "document": d["source"],
             "page": d.get("page"),
+            "ocr": bool(d.get("ocr")),
             "score": d.get("score"),
             "snippet": d["content"][:280],
         }

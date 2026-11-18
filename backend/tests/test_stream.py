@@ -39,7 +39,7 @@ class StreamSurvivesDisconnect(unittest.TestCase):
 
         conv = {"id": "c1", "title": "t"}
         self.patches = [
-            mock.patch.object(chat, "_prepare", return_value=(conv, [], [], [])),
+            mock.patch.object(chat, "_prepare", return_value=(conv, [], [], [], {"conversation_id": "c1"})),
             mock.patch.object(chat, "stream_agent", side_effect=slow_agent),
             mock.patch.object(chat, "_persist", side_effect=fake_persist),
         ]

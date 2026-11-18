@@ -1,43 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { FileText, Loader2, Upload, X } from 'lucide-react';
 import { apiService } from '../services/api';
-import { formatCount, formatDay, formatSize } from '../lib/format';
+import { formatCount, formatSize } from '../lib/format';
+import DocumentRow from '../components/DocumentRow';
+import QueuePanel from '../components/QueuePanel';
+import { openPreview } from '../state/previewStore';
+import { onDocumentsChanged } from '../state/documentEvents';
 
 const ACCEPTED = ['.pdf', '.docx', '.txt', '.md'];
 const MAX_MB = 20;
 const POLL_MS = 2000;
-const plural = (n, word) => `${formatCount(n)} ${word}${n === 1 ? '' : 's'}`;
-
-function Status({ doc }) {
-  if (doc.status === 'failed') return <span className="pill-negative">Failed</span>;
-  if (doc.status !== 'indexed') return <span className="pill-warning">Indexing</span>;
-  return <span className="text-body text-muted">Ready</span>;
-}
-
-function RemoveAction({ doc, onRemove }) {
-  const [confirming, setConfirming] = useState(false);
-  const [busy, setBusy] = useState(false);
-  if (!confirming) {
-    return (
-      <button className="font-medium text-body hover:underline underline-offset-4" onClick={() => setConfirming(true)}>
-        Remove
-      </button>
-    );
-  }
-  return (
-    <span className="inline-flex items-center gap-3 text-body whitespace-nowrap">
-      <button
-        className="font-medium text-negative hover:underline underline-offset-4 disabled:opacity-50"
-        disabled={busy}
-        onClick={async () => { setBusy(true); await onRemove(doc); setBusy(false); setConfirming(false); }}
-      >
-        {busy ? 'Removing…' : 'Remove'}
-      </button>
-      <button className="text-muted hover:text-ink" onClick={() => setConfirming(false)}>Keep</button>
-    </span>
-  );
-}
-
 function Notice({ notice, onClose }) {
   const tone = notice.type === 'error'
     ? 'bg-[var(--pill-negative-bg)] text-[var(--pill-negative-ink)]'
@@ -76,12 +48,16 @@ export default function Documents({ onChanged }) {
   };
 
   useEffect(() => { load(); }, []);
+  // an edit saved in the preview: which edit Undo and Redo apply to has changed
+  useEffect(() => onDocumentsChanged(() => load()), []);
 
   // Indexing runs on the server after the upload returns: check back while any file is still being indexed.
   const indexing = documents.filter((d) => d.status === 'processing').map((d) => d.id).join(',');
   const indexingBefore = useRef('');
   useEffect(() => {
     if (indexingBefore.current && indexing !== indexingBefore.current) onChanged?.(); // one finished
+    // "… is being indexed": once nothing is, the rows say it themselves
+    if (!indexing) setNotice((n) => (n?.untilIndexed ? null : n));
     indexingBefore.current = indexing;
     if (!indexing) return undefined;
     const timer = setTimeout(load, POLL_MS);
@@ -96,6 +72,7 @@ export default function Documents({ onChanged }) {
       const data = await apiService.uploadDocument(file);
       return {
         ok: true,
+        indexing: data.status !== 'duplicate',
         text: data.status === 'duplicate'
           ? `${data.filename} was already added (${formatCount(data.chunks_indexed)} passages).`
           : `${data.filename} is being indexed. It's listed below and can be asked about once it shows Ready.`,
@@ -116,7 +93,8 @@ export default function Documents({ onChanged }) {
       setUploading((q) => q.slice(1));
     }
     if (fileInput.current) fileInput.current.value = '';
-    setNotice({ type: results.some((r) => !r.ok) ? 'error' : 'success', lines: results.map((r) => r.text) });
+    const failedSome = results.some((r) => !r.ok);
+    setNotice({ type: failedSome ? 'error' : 'success', lines: results.map((r) => r.text), untilIndexed: !failedSome && results.some((r) => r.indexing) });
     await load();
     onChanged?.();
   };
@@ -125,10 +103,29 @@ export default function Documents({ onChanged }) {
     try {
       await apiService.deleteDocument(doc.id);
       setDocuments((prev) => prev.filter((d) => d.id !== doc.id));
+      setNotice({ type: 'success', lines: [`Removed “${doc.title}”.`] });   // replaces an older note, which may be about it
       onChanged?.();
     } catch (err) {
-      setNotice({ type: 'error', lines: [`${doc.filename}: ${err.message}`] });
+      setNotice({ type: 'error', lines: [`${doc.title}: ${err.message}`] });
     }
+  };
+
+  // Rename, Undo and Redo: the list is read again afterwards (the name, and which edit Undo/Redo now apply to).
+  const changed = async (line) => {
+    setNotice({ type: 'success', lines: [line] });
+    await load();
+    onChanged?.();
+  };
+  const failed = (line) => setNotice({ type: 'error', lines: [line] });
+  const undo = async (doc) => {
+    try { await apiService.undoEdit(doc.id, doc.edit_id); }
+    catch (err) { failed(`${doc.title}: ${err.message}`); await load(); throw err; }
+    await changed(`Undid the latest edit to “${doc.title}”. Redo brings it back.`);
+  };
+  const redo = async (doc) => {
+    try { await apiService.redoEdit(doc.id, doc.redo_id); }
+    catch (err) { failed(`${doc.title}: ${err.message}`); await load(); throw err; }
+    await changed(`Brought back the edit to “${doc.title}”.`);
   };
 
   const ready = documents.filter((d) => d.status === 'indexed');
@@ -146,8 +143,9 @@ export default function Documents({ onChanged }) {
       onDrop={(e) => { e.preventDefault(); dragDepth.current = 0; setDragging(false); handleFiles(e.dataTransfer.files); }}
     >
       <div className="max-w-[1400px] px-4 sm:px-6 lg:px-8 py-8">
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
+        {/* Phone: title, then a full-width button. Tablet: the button on its own row, at the left. Wide: side by side. */}
+        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div className="min-w-0">
             <h1 className="text-title font-medium tracking-[-0.01em]">Documents</h1>
             <p className="mt-1 text-body text-muted">
               {loading
@@ -157,7 +155,7 @@ export default function Documents({ onChanged }) {
                   : 'Nothing to answer from yet.'}
             </p>
           </div>
-          <div className="flex flex-col items-stretch sm:items-end gap-1.5 w-full sm:w-auto">
+          <div className="flex flex-col items-stretch sm:items-start md:items-end gap-1.5 w-full md:w-auto flex-none">
             <button className="btn-primary" onClick={() => fileInput.current?.click()} disabled={busy} aria-describedby="upload-rules">
               {busy ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : <Upload className="w-4 h-4" aria-hidden="true" />}
               {busy ? 'Adding…' : 'Upload documents'}
@@ -170,6 +168,8 @@ export default function Documents({ onChanged }) {
                onChange={(e) => handleFiles(e.target.files)} />
 
         {notice && <div className="mt-6"><Notice notice={notice} onClose={() => setNotice(null)} /></div>}
+
+        <QueuePanel onTaskFinished={() => { load(); onChanged?.(); }} />
 
         <div className={`mt-6 ${emptyLibrary ? '' : 'panel'}`}>
           {loadError && (
@@ -239,31 +239,11 @@ export default function Documents({ onChanged }) {
                 ))}
 
                 {documents.map((doc) => (
-                  <tr key={doc.id} className="border-t border-rule align-middle">
-                    <td className="px-4 py-3 max-w-0 w-full md:w-[42%]">
-                      <span className="flex items-center gap-2.5 min-w-0">
-                        <FileText className="w-4 h-4 flex-none text-muted" strokeWidth={1.6} aria-hidden="true" />
-                        <span className="min-w-0">
-                          <span className="block truncate font-medium" title={doc.filename}>{doc.filename}</span>
-                          {/* Phone: the other fields move to a second line instead of being dropped. */}
-                          <span className="md:hidden block text-small text-muted num">
-                            {doc.status === 'indexed'
-                              ? `${plural(doc.pages, 'page')} · ${plural(doc.chunks, 'passage')} · ${formatSize(doc.size_bytes)}`
-                              : formatSize(doc.size_bytes)}
-                            {doc.status !== 'indexed' && <span className="ml-2 align-middle"><Status doc={doc} /></span>}
-                          </span>
-                          {doc.error && <span className="block text-small text-[var(--pill-negative-ink)] truncate" title={doc.error}>{doc.error}</span>}
-                        </span>
-                      </span>
-                    </td>
-                    {/* A document still being indexed has no pages or passages yet: a dash, not a zero. */}
-                    <td className="px-4 text-right num hidden md:table-cell">{doc.status === 'indexed' ? formatCount(doc.pages) : <span className="text-muted">—</span>}</td>
-                    <td className="px-4 text-right num hidden md:table-cell">{doc.status === 'indexed' ? formatCount(doc.chunks) : <span className="text-muted">—</span>}</td>
-                    <td className="px-4 text-right num text-muted hidden md:table-cell whitespace-nowrap">{formatSize(doc.size_bytes)}</td>
-                    <td className="px-4 text-right text-muted hidden md:table-cell whitespace-nowrap">{formatDay(doc.created_at)}</td>
-                    <td className="px-4 hidden md:table-cell"><Status doc={doc} /></td>
-                    <td className="px-4 text-right whitespace-nowrap"><RemoveAction doc={doc} onRemove={remove} /></td>
-                  </tr>
+                  <DocumentRow
+                    key={doc.id} doc={doc} onPreview={openPreview} onUndo={undo} onRedo={redo} onRemove={remove}
+                    onError={failed}
+                    onRenamed={(r) => !r.unchanged && changed(`Renamed “${r.old_title}” to “${r.new_title}”.`)}
+                  />
                 ))}
               </tbody>
             </table>

@@ -55,6 +55,7 @@ export const fromApi = (m) => ({
   rewrittenQueries: m.meta?.rewritten_queries || [],
   evaluation: m.meta?.evaluation || null,
   latencyMs: m.meta?.latency_ms,
+  actions: m.meta?.actions || [],   // document changes: Preview / Undo, and the chat's side panel
   createdAt: m.created_at,
 });
 
@@ -140,6 +141,7 @@ export async function sendMessage(text, conversationId, { onCreated, onDone } = 
         rewrittenQueries: data.rewritten_queries,
         evaluation: data.evaluation,
         latencyMs: data.latency_ms,
+        actions: data.actions || [],
       })),
     });
   } catch (err) {

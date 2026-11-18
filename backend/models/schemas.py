@@ -5,32 +5,26 @@ from pydantic import BaseModel, Field
 
 
 # ---------------------------------------------------------------- auth
-class Credentials(BaseModel):
-    username: str = Field(min_length=3, max_length=32, pattern=r"^[A-Za-z0-9_.-]+$")
-    password: str = Field(min_length=6, max_length=128)
-
-
 class UserOut(BaseModel):
     id: str
     username: str
-
-
-class TokenOut(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-    user: UserOut
+    is_admin: bool = False
 
 
 # ---------------------------------------------------------------- documents
 class DocumentOut(BaseModel):
     id: str
+    title: str            # the library's name for it (renamed by the agent); filename is the uploaded name
     filename: str
+    ext: str = ""
     size_bytes: int
     pages: int
     chunks: int
     status: str
     error: str | None = None
     created_at: str
+    edit_id: int | None = None   # the latest edit, which Undo takes back
+    redo_id: int | None = None   # the edit undone most recently, which Redo brings back
 
 
 class UploadOut(BaseModel):
@@ -58,6 +52,7 @@ class ChatResponse(BaseModel):
     rewritten_queries: list[str] = []
     evaluation: dict[str, Any] | None = None
     trace: list[dict[str, Any]] = []
+    actions: list[dict[str, Any]] = []   # document changes (rename, edit, ...): Preview / Undo buttons
     latency_ms: int
 
 

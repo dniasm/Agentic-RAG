@@ -7,6 +7,7 @@ import 'katex/dist/katex.min.css';
 import { ChevronDown, ChevronRight, Info, Loader2 } from 'lucide-react';
 import { formatSeconds } from '../lib/format';
 import { withCitations, withMath } from '../lib/answerText';
+import DocumentActions from './DocumentActions';
 
 const STEP_LABELS = {
   router: 'Read the question',
@@ -31,7 +32,14 @@ const rehypePlugins = [[rehypeKatex, { throwOnError: false, strict: false }]];
 function sourceTitle(src) {
   if (!src) return undefined;
   if (src.type === 'web') return src.title || src.url;
-  return `${src.document}${src.page != null ? `, page ${src.page}` : ''}`;
+  const place = docPlace(src);
+  return `${src.document}${place ? `, ${place}` : ''}`;
+}
+
+// Where in a document a passage is: its page, and whether the page was a scan read by OCR.
+function docPlace(src) {
+  const page = src.page != null ? `page ${src.page}` : '';
+  return src.ocr ? `${page}${page ? ' · ' : ''}scanned, read by OCR` : page;
 }
 
 function Markdown({ text, sources = [] }) {
@@ -143,7 +151,7 @@ function Sources({ sources }) {
               ) : (
                 <span className="font-medium truncate">{src.document}</span>
               )}
-              <span className="text-muted">{src.type === 'web' ? hostname(src.url) : src.page != null ? `page ${src.page}` : ''}</span>
+              <span className="text-muted">{src.type === 'web' ? hostname(src.url) : docPlace(src)}</span>
             </p>
             {src.snippet && <p className="mt-0.5 text-body text-muted line-clamp-2">{src.snippet}</p>}
           </div>
@@ -157,14 +165,14 @@ function Disclosure({ label, count, open, onToggle }) {
   const Icon = open ? ChevronDown : ChevronRight;
   return (
     <button type="button" onClick={onToggle} aria-expanded={open}
-            className="inline-flex items-center gap-0.5 font-medium text-ink hover:underline underline-offset-4">
+            className="tap-target inline-flex items-center gap-0.5 font-medium text-ink hover:underline underline-offset-4">
       {label} <span className="num">({count})</span>
       <Icon className="w-3.5 h-3.5" aria-hidden="true" />
     </button>
   );
 }
 
-function AgentAnswer({ msg }) {
+function AgentAnswer({ msg, undoable, redoable, onUndo, onRedo }) {
   const [open, setOpen] = useState(null); // 'sources' | 'steps' | null
   const toggle = (what) => setOpen((v) => (v === what ? null : what));
   const sources = msg.sources || [];
@@ -184,6 +192,9 @@ function AgentAnswer({ msg }) {
       )}
 
       <Markdown text={msg.text} sources={sources} />
+      {msg.actions?.length > 0 && (
+        <DocumentActions actions={msg.actions} undoable={undoable} redoable={redoable} onUndo={onUndo} onRedo={onRedo} />
+      )}
 
       <div className="mt-3 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-small text-muted">
         <Provenance msg={msg} />
@@ -239,7 +250,7 @@ function PendingAnswer({ msg }) {
   );
 }
 
-export default function Message({ msg }) {
+export default function Message({ msg, undoable = new Set(), redoable = new Set(), onUndo, onRedo }) {
   if (msg.sender === 'user') {
     return (
       <div className="flex justify-end">
@@ -255,5 +266,5 @@ export default function Message({ msg }) {
       </p>
     );
   }
-  return <AgentAnswer msg={msg} />;
+  return <AgentAnswer msg={msg} undoable={undoable} redoable={redoable} onUndo={onUndo} onRedo={onRedo} />;
 }

@@ -4,7 +4,10 @@ Runs every case in router_cases.json through the real router node (small model +
 unsure), with the case's documents "uploaded", and records the chosen source, tokens and time.
 No retrieval or answers are generated, so it needs no Qdrant and can run with the backend running.
 
-    python benchmark/run_router.py [--gap 9] [--only st-hey,doc-gdpr-sum] [--out router_eval.json]
+    python benchmark/run_router.py [--gap 9] [--only st-hey,doc-gdpr-sum] [--repeat 5] [--out router_eval.json]
+
+Cases marked "borderline" run --repeat times. "baseline" in the summary counts only the cases from before the
+document-action route (no "added" field), to compare with router_eval_prompt_final.json (73 correct, 79 acceptable).
 """
 import argparse
 import json
@@ -23,7 +26,7 @@ from langgraph.graph import END, START, StateGraph  # noqa: E402
 from backend.config.usage import UsageTracker  # noqa: E402
 from backend.graph import nodes  # noqa: E402
 
-SOURCES = ["greeting", "direct", "rag", "web_search"]
+SOURCES = ["greeting", "manage", "direct", "rag", "web_search"]
 
 
 class _S(TypedDict, total=False):
@@ -63,7 +66,7 @@ def run_case(graph, case: dict, doc_names: list[str]) -> dict:
     chosen = out["intent"]
     ok = chosen == case["expect"]
     return {
-        "id": case["id"], "group": case["group"], "message": case["message"], "expect": case["expect"],
+        "id": case["id"], "group": case["group"], "added": case.get("added"), "borderline": case.get("borderline", False), "message": case["message"], "expect": case["expect"],
         "also_ok": case.get("also_ok", []),
         "chosen": chosen, "source_preference": out["source_preference"], "query_is_clear": out["query_is_clear"],
         "standalone_query": out["standalone_query"], "reason": out["route_reason"],
@@ -107,6 +110,7 @@ def main():
     ap.add_argument("--gap", type=float, default=9.0, help="seconds between cases (small model: 8k tokens/min)")
     ap.add_argument("--only", default="", help="comma-separated case ids")
     ap.add_argument("--out", default="router_eval.json")
+    ap.add_argument("--repeat", type=int, default=1, help="runs of each borderline case")
     args = ap.parse_args()
 
     data = json.loads((BENCH_DIR / "router_cases.json").read_text(encoding="utf-8"))
@@ -114,6 +118,7 @@ def main():
     if args.only:
         wanted = set(args.only.split(","))
         cases = [c for c in cases if c["id"] in wanted]
+    cases = [c for c in cases for _ in range(args.repeat if c.get("borderline") else 1)]
 
     graph = _graph()
     rows = []
@@ -127,6 +132,8 @@ def main():
               f"{row['tokens']:>5} tok{' (reviewed)' if row['reviewed'] else ''} :: {row['message'][:60]}", flush=True)
 
     summary = summarise(rows)
+    summary["baseline"] = {k: summarise([r for r in rows if not r["added"]])[k] for k in ("cases", "correct", "acceptable")}
+    summary["added"] = {k: summarise([r for r in rows if r["added"]])[k] for k in ("cases", "correct", "acceptable")}
     out = BENCH_DIR / "results" / args.out
     out.write_text(json.dumps({"timestamp": time.strftime("%Y-%m-%d %H:%M:%S"), "summary": summary, "rows": rows},
                               indent=2, ensure_ascii=False), encoding="utf-8")

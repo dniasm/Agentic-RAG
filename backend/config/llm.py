@@ -65,6 +65,12 @@ class KeyPool:
         with self._lock:
             return self._last_error.get(model) or RuntimeError(f"No Groq key available for {model}")
 
+    def cooldowns(self) -> dict[tuple[str, int], float]:
+        """{(model, key index): seconds until Groq said that key may be used for that model again} (admin panel)."""
+        now = time.monotonic()
+        with self._lock:
+            return {k: round(t - now, 1) for k, t in self._until.items() if t > now}
+
     def reset(self) -> None:
         with self._lock:
             self._until.clear()
@@ -86,28 +92,42 @@ def call_with_keys(model: str, factory: Callable[[int], object], call: Callable[
     raise key_pool.last_error(model)
 
 
-def _key(index: int) -> str:
+def api_key(index: int) -> str:
+    """The Groq key at `index` in the pool (for callers that build their own clients for call_with_keys)."""
     keys = groq_keys()
     return keys[index] if index < len(keys) else settings.groq_api_key
+
+
+_key = api_key
+
+
+def groq_chat(key: int = 0, **options) -> ChatGroq:
+    """The one place a Groq chat client is built (a test checks that no other file does): on Groq key `key`, with
+    that key's metered HTTP clients and token counter (backend/config/api_meter.py) for the admin panel."""
+    from backend.config import api_meter
+
+    http, http_async = api_meter.groq_http_clients(key)
+    return ChatGroq(api_key=api_key(key), http_client=http, http_async_client=http_async,
+                    callbacks=[api_meter.key_tokens(key)], **options)
 
 
 @lru_cache
 def get_llm(temperature: float | None = None, key: int = 0) -> ChatGroq:
     """Stronger model used to write user-facing answers (LLM_TEMPERATURE unless given)."""
-    return ChatGroq(
+    return groq_chat(
+        key,
         model=settings.llm_model,
         temperature=settings.llm_temperature if temperature is None else temperature,
-        api_key=_key(key),
         max_retries=2,
     )
 
 @lru_cache
 def get_fast_llm(key: int = 0) -> ChatGroq:
     """Cheap, deterministic model for routing / grading / rewriting / evaluation."""
-    return ChatGroq(
+    return groq_chat(
+        key,
         model=settings.fast_llm_model,
         temperature=0,
-        api_key=_key(key),
         max_retries=2,
         reasoning_effort=settings.fast_llm_reasoning_effort or None,
     )
@@ -117,10 +137,10 @@ def get_fast_llm(key: int = 0) -> ChatGroq:
 def get_memory_llm(key: int = 0) -> ChatGroq:
     """Qwen: extracts persistent memories. Separate rate limit from gpt-oss, and it answers without
     hidden reasoning, so a structured extraction costs a few dozen output tokens instead of hundreds."""
-    return ChatGroq(
+    return groq_chat(
+        key,
         model=settings.memory_llm_model,
         temperature=0,
-        api_key=_key(key),
         max_retries=2,
     )
 
@@ -129,10 +149,10 @@ def get_memory_llm(key: int = 0) -> ChatGroq:
 def get_judge_llm(key: int = 0) -> ChatGroq:
     """Large model for reviews and answer evaluation: deterministic, with lighter hidden reasoning.
     Same verdicts in testing, ~60% fewer output tokens, which matters under the free tier's TPM limit."""
-    return ChatGroq(
+    return groq_chat(
+        key,
         model=settings.llm_model,
         temperature=0,
-        api_key=_key(key),
         max_retries=2,
         reasoning_effort=settings.judge_reasoning_effort or None,
     )
@@ -142,10 +162,10 @@ def get_judge_llm(key: int = 0) -> ChatGroq:
 def get_backup_writer(temperature: float | None = None, key: int = 0) -> ChatGroq:
     """The small model, set up for writing answers, used when the large model's quota is exhausted.
     Each Groq model has its own rate limits, so the small model usually still has capacity."""
-    return ChatGroq(
+    return groq_chat(
+        key,
         model=settings.fast_llm_model,
         temperature=settings.llm_temperature if temperature is None else temperature,
-        api_key=_key(key),
         max_retries=2,
     )
 

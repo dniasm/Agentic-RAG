@@ -162,6 +162,14 @@ class Route(BaseModel):
     standalone_query: str = Field(description="See STANDALONE QUERY.")
     confidence: Literal["high", "medium", "low"] = Field(description="Your confidence in this classification.")
     confidence_required: bool = Field(description="See FACT CHECK.")
+    # A field of its own, not a third MESSAGE TYPE: every wording of it in the prompt moved other cases (2026-11-15,
+    # "what's the meaning of life" went to small talk 5 times in 5).
+    document_action: bool = Field(
+        default=False,
+        description="True when the user asks you to do something to their uploaded documents or document tasks: "
+                    "rename or retitle, edit, replace, append or fix text, undo a change, queue or cancel tasks, "
+                    "export, download or convert, list them, or which were renamed. False for questions about "
+                    "what a document says, and for summaries.")
 
 
 ROUTER_PROMPT = """You are the intake step of a research assistant. Classify the latest user message; do not
@@ -193,7 +201,7 @@ STANDALONE QUERY
 Rewrite the latest message only as much as needed to be self-contained, resolving references from the
 conversation. Keep its intent, language, names, dates and numbers; never add facts or context you don't have.
 
-Uploaded documents ({doc_count}): {doc_names}
+{recent_change}Uploaded documents ({doc_count}): {doc_names}
 
 Persistent user memories:
 {memories}
@@ -275,12 +283,92 @@ def _code_route(state: AgentState) -> tuple | None:
       (with no history the message is already standalone).
     Returns (kind, preference, clear, confidence_required, standalone, reason) or None."""
     query = state["query"].strip()
+    managed = manage_in_code(state)
+    if managed:
+        return "document_action", "auto", True, False, query, managed
     if len(query) <= 40 and _PLAIN_SMALL_TALK.match(query):
         return "small_talk", "auto", True, False, query, "Plain greeting, thanks or goodbye (decided in code)."
     docs = state.get("doc_names", [])
-    if docs and not state.get("history") and asks_for_documents(query, docs):
+    if docs and not state.get("history") and asks_for_documents(query, docs) and not _ACTION_WORD.search(query):
         return ("information_request", "documents", True, True, query,
                 "First message, explicitly asks for the user's documents (decided in code).")
+    return None
+
+
+# A message naming a document that asks for a change goes to the router (it may be a document action), not
+# straight to the documents in code.
+_ACTION_WORD = re.compile(r"\b(?:re-?name|re-?title|retitle|replace|append|undo|edit|delete|remove|export|download|"
+                          r"convert|fix|update|queue|cancel|change\s+the\s+(?:name|title))\b", re.I)
+_BARE_UNDO = re.compile(r"^\s*(?:please\s+)?(?:undo|redo)(?:\s+(?:that|it|this|the\s+last(?:\s+(?:change|edit|rename))?))?"
+                        r"(?:\s+please)?[\s.!]*$", re.I)
+_QUEUE_STATUS = re.compile(r"^\s*(?:what'?s\s+(?:in\s+)?the\s+queue|queue\s+status|(?:how'?s|how\s+is)\s+the\s+"
+                           r"(?:queue|batch)(?:\s+going)?|is\s+the\s+(?:batch|queue)\s+(?:done|finished))[\s?.!]*$", re.I)
+
+
+# Right after the document agent changed a document, a message that carries on with that change goes back to it:
+# "regenerate it again", "on second thought make it shorter", "a new version", "revert". Without this the router
+# sent such follow-ups to model knowledge, which answered that it can't see or edit the file.
+_FOLLOW_UP = re.compile(   # clear follow-up wording only: anything looser is left to the router (see _recent_change)
+    r"\b(?:re-?generate|re-?do|re-?write|re-?word|re-?phrase|(?:it|that|this|one)\s+again|try\s+again|"
+    r"second\s+thoughts?|revert|go\s+back|put\s+(?:it|that)\s+back|undo\s+(?:it|that)|"
+    r"(?:make|change|shorten|lengthen|condense|expand)\s+(?:it|that|this)|"
+    r"another\s+(?:version|draft|try|go)|new\s+(?:version|wording|draft)|different\s+(?:wording|version)|"
+    r"generate\s+(?:it|that|this|another))\b", re.I)
+FOLLOW_UP_MAX_WORDS = 30
+_UNDO_WORDS = ("undo", "revert")
+
+
+def _near(word: str, target: str) -> bool:
+    """One letter wrong, missing, extra, or two neighbours swapped ("udno", "undoo", "revrt")."""
+    if word == target:
+        return True
+    if abs(len(word) - len(target)) > 1:
+        return False
+    if len(word) == len(target):
+        diff = [i for i, (a, b) in enumerate(zip(word, target)) if a != b]
+        return len(diff) == 1 or (len(diff) == 2 and diff[1] == diff[0] + 1
+                                   and word[diff[0]] == target[diff[1]] and word[diff[1]] == target[diff[0]])
+    short, long_ = sorted((word, target), key=len)
+    return any(long_[:i] + long_[i + 1:] == short for i in range(len(long_)))
+
+
+def _undo_typo(query: str) -> bool:
+    """A bare undo, spelled wrong: one word near "undo" or "revert", with "please", "it" or "that" around it."""
+    words = [w for w in re.findall(r"[a-z]+", query.lower()) if w not in ("please", "it", "that", "this", "pls")]
+    return len(words) == 1 and any(_near(words[0], t) for t in _UNDO_WORDS)
+
+
+def _recent_change(state: AgentState) -> str:
+    changed = state.get("agent_changed") or []
+    if not changed:
+        return ""
+    return (f"The previous answer {'; '.join(changed)}. A message that continues that work (rewriting, regenerating, "
+            "expanding, shortening or undoing it, or a new version of the same passage) is a document_action.\n\n")
+
+
+# The library's own state (rename and edit history, the list of documents): only the agent knows it.
+_LIBRARY_STATE = re.compile(r"^\s*(?:(?:which|what)\s+(?:of\s+)?(?:my\s+)?(?:documents|docs|files)\s+"
+                            r"(?:have\s+been|were|got|did\s+you)\s+(?:renamed|retitled|edited|changed)|"
+                            r"(?:list|show)\s+(?:me\s+)?(?:all\s+)?my\s+(?:documents|docs|files))[\s?.!]*$", re.I)
+
+
+def manage_in_code(state: AgentState) -> str | None:
+    """The few messages that go to the document agent without the router, with the reason; None otherwise.
+    Kept narrow on purpose: "rename" alone is not one ("how do I rename a file in Linux?" is a question)."""
+    query = state["query"]
+    if state.get("agent_pending"):
+        return "The document agent asked a question last turn; this is the answer (decided in code)."
+    if _BARE_UNDO.match(query):
+        return "A bare undo (decided in code)."
+    if state.get("agent_changed"):
+        if _undo_typo(query):
+            return "An undo, misspelled, right after a change (decided in code)."
+        if len(query.split()) <= FOLLOW_UP_MAX_WORDS and _FOLLOW_UP.search(query):
+            return "Continues the change the document agent just made (decided in code)."
+    if _QUEUE_STATUS.match(query):
+        return "Asks about the queued document tasks (decided in code)."
+    if _LIBRARY_STATE.match(query):
+        return "Asks about the library itself: its documents or their rename and edit history (decided in code)."
     return None
 
 
@@ -299,6 +387,7 @@ def router_node(state: AgentState) -> dict:
         memories=memory_text,
         history=history_to_text(state.get("history", [])[-6:]),
         query=state["query"],
+        recent_change=_recent_change(state),
     )
 
     review_context = (
@@ -324,7 +413,7 @@ def router_node(state: AgentState) -> dict:
             review_context=review_context,
         )
 
-        kind = r.message_type
+        kind = "document_action" if r.document_action else r.message_type
         pref = r.source_preference
         clear = r.query_is_clear
         confidence_required = r.confidence_required
@@ -355,7 +444,11 @@ def _route_update(state: AgentState, kind: str, pref: str, clear: bool, confiden
         reason = f"The message explicitly asks for the user's documents (router had chosen {pref}). {reason}"
         pref = "documents"
 
-    if kind == "small_talk":
+    if kind == "document_action":
+        intent = "manage"
+        detail = f"A change to the user's documents: the document agent handles it. {reason}"
+
+    elif kind == "small_talk":
         intent = "greeting"
         detail = f"Small talk. {reason}"
 
@@ -423,6 +516,47 @@ def _route_update(state: AgentState, kind: str, pref: str, clear: bool, confiden
             ),
             *review_steps,
         ],
+    }
+
+
+# ============================================================
+# 1b. Document actions (the library's agent)
+# ============================================================
+
+def manage_node(state: AgentState) -> dict:
+    """Rename, edit, undo, queue or export through the library's agent (backend/library/agent.py), in this
+    conversation's agent session. Each tool call is shown as it happens. No answer check: the agent's replies
+    about its own actions are written from what the tools did."""
+    from backend.evaluation.reviewer import emit_live
+    from backend.library import agent
+
+    steps: list[dict] = []
+
+    def on_step(name: str, args: dict, result: dict) -> None:
+        step = _step("manage", f"{name}: {result.get('status', 'done')}", tool=name, args=args,
+                     status=result.get("status"))
+        steps.append(step)
+        emit_live(step)
+
+    try:
+        if state.get("agent_changed") and _undo_typo(state["query"]) and not _BARE_UNDO.match(state["query"]):
+            titles = re.findall(r'"([^"]+)"', state["agent_changed"][-1])
+            out = agent.confirm_undo(state["conversation_id"], state["query"], titles[0] if titles else None,
+                                     owner=state["user_id"])
+        else:
+            out = agent.chat(state["conversation_id"], state["query"], owner=state["user_id"], on_step=on_step,
+                             context_doc_ids=state.get("cited_doc_ids") or [],
+                             other_answer=state.get("other_answer"))
+    except PermissionError:
+        out = {"reply": "That chat belongs to another user.", "actions": [], "failed": True}
+    return {
+        "answer": out["reply"],
+        "tool": "manage_documents",
+        "actions": out.get("actions", []),
+        "sources": [],
+        "evaluation": None,
+        "trace": [*steps, _step("manage", f"{len(out.get('actions', []))} change(s) made.",
+                                failed=out.get("failed", False))],
     }
 
 

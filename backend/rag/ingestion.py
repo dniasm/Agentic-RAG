@@ -9,6 +9,7 @@ from pathlib import Path
 from langchain_core.documents import Document
 from qdrant_client import models
 
+from backend.config import gemini
 from backend.config.settings import settings
 from backend.rag import sparse, vectorstore
 
@@ -34,7 +35,8 @@ def _clean(text: str) -> str:
 
 
 def load_file(path: Path) -> tuple[list[Document], int]:
-    """Return one Document per page (PDF) or per file (others), plus the page count."""
+    """Return one Document per page (PDF) or per file (others), plus the page count. Only a PDF's passages carry a
+    page: a Word or text file has no fixed pages, and "page 1" on every citation from it was wrong."""
     ext = path.suffix.lower()
     if ext == ".pdf":
         from pypdf import PdfReader
@@ -45,11 +47,19 @@ def load_file(path: Path) -> tuple[list[Document], int]:
                 reader.decrypt("")
             except Exception as e:
                 raise IngestionError("PDF is password-protected") from e
-        docs = []
+        docs, empty = [], []
         for i, page in enumerate(reader.pages, start=1):
             text = _clean(page.extract_text() or "")
             if text:
                 docs.append(Document(page_content=text, metadata={"page": i}))
+            else:
+                empty.append(i)
+        if empty:   # scanned pages: their text read by OCR, for the index only (the file isn't changed)
+            from backend.rag import ocr
+            for i, text in ocr.read_pages(path, empty).items():
+                if text := _clean(text):
+                    docs.append(Document(page_content=text, metadata={"page": i, "ocr": True}))
+            docs.sort(key=lambda d: d.metadata["page"])
         return docs, len(reader.pages)
 
     if ext == ".docx":
@@ -61,11 +71,11 @@ def load_file(path: Path) -> tuple[list[Document], int]:
             for row in table.rows:
                 parts.append(" | ".join(cell.text.strip() for cell in row.cells))
         text = _clean("\n".join(parts))
-        return ([Document(page_content=text, metadata={"page": 1})] if text else []), 1
+        return ([Document(page_content=text, metadata={})] if text else []), 1
 
     if ext in {".txt", ".md"}:
         text = _clean(path.read_text(encoding="utf-8", errors="ignore"))
-        return ([Document(page_content=text, metadata={"page": 1})] if text else []), 1
+        return ([Document(page_content=text, metadata={})] if text else []), 1
 
     raise IngestionError(f"Unsupported file type: {ext}")
 
@@ -88,26 +98,31 @@ def split_documents(docs: list[Document]) -> list[Document]:
 # Gemini's free tier counts EVERY text in a batch as one request, limited to 100 per minute. Sending a
 # whole document at once therefore fails for any document over ~100 chunks, however long you wait.
 EMBED_BATCH = 90
-_RETRY_IN = re.compile(r"retry in ([\d.]+)s", re.I)
+MAX_WAIT = 90.0   # longest wait for a key to come back; edits embed under the library lock, so never an hour
 
 
 def embed_paced(texts: list[str], title: str) -> list[list[float]]:
-    """Embed in batches under the per-minute limit; on a rate-limit error, wait as long as Google asks."""
-    emb = vectorstore.get_embeddings()
+    """Embed in batches under the per-minute limit. A refused batch goes whole to the next Gemini key
+    (config/gemini.py); when every key is limited, wait until the first is back (up to 6 tries), unless every key
+    is out for the day or the first back is more than MAX_WAIT away."""
     vectors: list[list[float]] = []
     for start in range(0, len(texts), EMBED_BATCH):
         batch = texts[start:start + EMBED_BATCH]
+
+        def send(emb, batch=batch):
+            return emb.embed_documents(batch, batch_size=EMBED_BATCH, task_type="RETRIEVAL_DOCUMENT",
+                                       titles=[title] * len(batch))
+
         for attempt in range(6):
             try:
-                vectors += emb.embed_documents(batch, batch_size=EMBED_BATCH, task_type="RETRIEVAL_DOCUMENT",
-                                               titles=[title] * len(batch))
+                vectors += gemini.with_keys(send, "documents", calls=len(batch))   # each text is one request
                 break
-            except Exception as e:
-                msg = str(e)
-                if "RESOURCE_EXHAUSTED" not in msg or attempt == 5:
+            except gemini.AllKeysLimited as e:
+                if e.for_day or e.wait > MAX_WAIT or attempt == 5:
                     raise
-                wait = float(_RETRY_IN.search(msg).group(1)) + 2 if _RETRY_IN.search(msg) else 60.0
-                log.info("Embedding rate limit hit (chunk %d of %d); waiting %.0fs", start, len(texts), wait)
+                wait = e.wait + 2
+                log.info("Embedding rate limit hit on every key (chunk %d of %d); waiting %.0fs",
+                         start, len(texts), wait)
                 time.sleep(wait)
     return vectors
 
@@ -120,7 +135,10 @@ def ingest_file(path: Path, *, user_id: str, doc_id: str, filename: str) -> dict
 
     chunks = split_documents(pages)
     texts = [c.page_content for c in chunks]
+    from backend.library import embed_budget   # (imported here: the library imports this module)
+    embed_budget.check(user_id, len(texts))     # refused whole, before anything is embedded
     vectors = embed_paced(texts, filename)
+    embed_budget.charge(user_id, len(texts))
 
     points = []
     for idx, (chunk, vector) in enumerate(zip(chunks, vectors)):
@@ -129,6 +147,7 @@ def ingest_file(path: Path, *, user_id: str, doc_id: str, filename: str) -> dict
             "doc_id": doc_id,
             "source": filename,
             "page": chunk.metadata.get("page"),
+            **({"ocr": True} if chunk.metadata.get("ocr") else {}),
             "chunk_index": idx,
             "start_index": chunk.metadata.get("start_index"),
         }

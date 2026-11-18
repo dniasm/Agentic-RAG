@@ -1,4 +1,5 @@
 import json
+from contextlib import contextmanager
 import logging
 import re
 import time
@@ -9,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
+from backend import chat_limits
 from backend.api.dependencies import get_current_user
 from backend.config.settings import settings
 from backend.config.usage import UsageTracker, record as record_usage
@@ -18,6 +20,7 @@ from backend.memory.store import (
     search_memories,
     delete_conversation_memories,
 )
+from backend.library import activity, agent, catalog
 from backend.models import database as db
 from backend.models.schemas import (
     ChatRequest,
@@ -100,7 +103,7 @@ _STREAM_END = object()  # marks the end of an answer's event stream
 def _prepare(
     req: ChatRequest,
     user: dict,
-) -> tuple[dict, list[dict], list[dict], list[str]]:
+) -> tuple[dict, list[dict], list[dict], list[str], dict]:
     if req.conversation_id:
         conv = db.get_conversation(user["id"], req.conversation_id)
         if not conv:
@@ -111,13 +114,23 @@ def _prepare(
     else:
         conv = db.create_conversation(user["id"], req.message)
 
-    history = [
-        {"role": m["role"], "content": m["content"]}
-        for m in db.list_messages(
-            conv["id"],
-            limit=settings.history_turns,
-        )
-    ]
+    recent = db.list_messages(conv["id"], limit=settings.history_turns)
+    history = [{"role": m["role"], "content": m["content"]} for m in recent]
+    last_answer = next((m for m in reversed(recent) if m["role"] == "assistant"), None)
+    context = {
+        "conversation_id": conv["id"],
+        # the document agent waits for an answer to its question: the router is skipped
+        "agent_pending": bool(last_answer) and last_answer.get("tool") == "manage_documents"
+                         and agent.has_open_question(conv["id"]),
+        # "rename that one": the documents the previous answer was based on
+        "cited_doc_ids": [src["doc_id"] for src in (last_answer or {}).get("meta", {}).get("sources", [])
+                          if src.get("doc_id")],
+        # what the document agent's previous answer changed: "regenerate it", "udno" continue that work
+        "agent_changed": _changes_in(last_answer),
+        # a draft another part of the chat wrote, which the document agent never saw ("yup use that")
+        "other_answer": last_answer["content"] if last_answer and last_answer.get("tool") != "manage_documents"
+                        else None,
+    }
 
     # Exact facts and preferences from SQLite.
     _wait_for_memory(user["id"], conv["id"])
@@ -156,17 +169,11 @@ def _prepare(
     except Exception:
         log.exception("Semantic memory retrieval failed")
 
-    doc_names = [
-        d["filename"]
-        for d in db.list_documents(
-            user["id"],
-            status="indexed",
-        )
-    ]
+    doc_names = catalog.indexed_titles(user["id"])
 
     db.add_message(conv["id"], "user", req.message)
 
-    return conv, history, memories, doc_names
+    return conv, history, memories, doc_names, context
 
 
 def _persist(
@@ -188,6 +195,7 @@ def _persist(
         "rewritten_queries": state.get("rewritten_queries", []),
         "evaluation": state.get("evaluation"),
         "trace": state.get("trace", []),
+        "actions": state.get("actions", []),   # document changes: Preview / Undo buttons, also after a reload
         "latency_ms": latency_ms,
         "usage": tracker.summary(),  # the answer's tokens; memory extraction runs after this is saved
     }
@@ -256,7 +264,7 @@ def _remember_exchange(user_id: str, conv_id: str, user_message: str, history: l
     if (
         answer
         and len(question) >= 20
-        and state.get("tool") not in ("greeting", "no_results")
+        and state.get("tool") not in ("greeting", "no_results", "manage_documents")
         and state.get("intent") != "error"
     ):
         try:
@@ -346,40 +354,105 @@ def _error_state(e: Exception) -> dict:
 # ----------------------------------------------------------------
 # Chat
 
+_conversation_locks: dict[str, threading.Lock] = {}
+_conversation_locks_guard = threading.Lock()
+
+
+def _conversation_lock(conv_id: str | None) -> threading.Lock:
+    """One message at a time per conversation, on every route: two quick messages must not race on its
+    history or on the document agent's session. A new conversation has no id yet and needs none."""
+    if not conv_id:
+        return threading.Lock()
+    with _conversation_locks_guard:
+        return _conversation_locks.setdefault(conv_id, threading.Lock())
+
+BUSY_WAIT_SECONDS = 2.0   # a second message waits this long for the first, then gets a 409
+
+
+def _take(lock: threading.Lock) -> None:
+    if not lock.acquire(timeout=BUSY_WAIT_SECONDS):
+        raise HTTPException(status_code=409, detail="Still working on your previous message in this chat.")
+
+
+def _changes_in(answer: dict | None) -> list[str]:
+    """What a document agent's answer changed, in words ('edited "CV"'); empty for any other answer."""
+    if not answer or answer.get("tool") != "manage_documents":
+        return []
+    words = {"edit": "edited", "rename": "renamed", "undo": "undid an edit to", "redo": "redid an edit to"}
+    out = []
+    for a in (answer.get("meta") or {}).get("actions") or []:
+        title = a.get("new_title") or a.get("title")
+        if a.get("type") in words and title:
+            out.append(f'{words[a["type"]]} "{title}"')
+    return out
+
+
+def _allow(user_id: str) -> float:
+    """One message from the account's allowance (backend/chat_limits.py), before anything starts: 429 when over it."""
+    try:
+        return chat_limits.allowance.reserve(user_id)
+    except chat_limits.ChatLimited as e:
+        raise HTTPException(status_code=429, detail=e.message(), headers={"Retry-After": str(e.retry_after)}) from None
+
+
+@contextmanager
+def _turn(conv_id: str | None, user_id: str):
+    token = _allow(user_id)
+    lock = _conversation_lock(conv_id)
+    try:
+        _take(lock)
+    except BaseException:
+        chat_limits.allowance.refund(user_id, token)   # another message is still running here: this one didn't start
+        raise
+    try:
+        yield token
+    finally:
+        lock.release()
+
+
 @router.post("/chat", response_model=ChatResponse)
 def chat(req: ChatRequest, user: dict = Depends(get_current_user)):
-    conv, history, memories, doc_names = _prepare(req, user)
-    started = time.perf_counter()
-    tracker = UsageTracker()
+    with _turn(req.conversation_id, user["id"]) as token:
+        try:
+            conv, history, memories, doc_names, context = _prepare(req, user)
+        except BaseException:
+            chat_limits.allowance.refund(user["id"], token)   # refused before a run started
+            raise
+        started = time.perf_counter()
+        tracker = UsageTracker()
 
-    try:
-        state = run_agent(
-            req.message,
-            user,
-            history,
-            memories,
-            doc_names,
-            callbacks=[tracker],
-        )
-    except Exception as e:
-        state = _error_state(e)
+        try:
+            state = run_agent(
+                req.message,
+                user,
+                history,
+                memories,
+                doc_names,
+                callbacks=[tracker],
+                context=context,
+            )
+        except Exception as e:
+            state = _error_state(e)
 
-    return _persist(
-        conv,
-        state,
-        started,
-        user["id"],
-        req.message,
-        history,
-        tracker,
-        len(memories),
-    )
+        return _persist(conv, state, started, user["id"], req.message, history, tracker, len(memories))
 
 
 @router.post("/chat/stream")
 def chat_stream(req: ChatRequest, user: dict = Depends(get_current_user)):
     """Stream metadata, status, trace steps, answer drafts, and final result."""
-    conv, history, memories, doc_names = _prepare(req, user)
+    token = _allow(user["id"])   # before the stream opens and before the chat's lock
+    lock = _conversation_lock(req.conversation_id)
+    try:
+        _take(lock)   # released by the worker thread when the answer is saved
+    except BaseException:
+        chat_limits.allowance.refund(user["id"], token)
+        raise
+    try:
+        conv, history, memories, doc_names, context = _prepare(req, user)
+    except BaseException:
+        lock.release()
+        chat_limits.allowance.refund(user["id"], token)
+        raise
     started = time.perf_counter()
     tracker = UsageTracker()
 
@@ -401,6 +474,7 @@ def chat_stream(req: ChatRequest, user: dict = Depends(get_current_user)):
                 memories,
                 doc_names,
                 callbacks=[tracker],
+                context=context,
             ):
                 if kind == "final":
                     final = payload
@@ -441,6 +515,7 @@ def chat_stream(req: ChatRequest, user: dict = Depends(get_current_user)):
                 ),
             ))
         finally:
+            lock.release()
             events_q.put(_STREAM_END)
 
     threading.Thread(target=produce, name=f"chat-{conv['id'][:8]}", daemon=True).start()
@@ -493,6 +568,23 @@ def conversation_messages(
         )
 
     return db.list_messages(conv_id)
+
+
+@router.get("/conversations/{conv_id}/documents")
+def conversation_documents(conv_id: str, user: dict = Depends(get_current_user)):
+    """The documents this conversation renamed, edited or undid, newest first (the chat's side panel)."""
+    if not db.get_conversation(user["id"], conv_id):
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return activity.documents_changed_in(db.list_tool_messages(conv_id, "manage_documents"), user["id"],
+                                         catalog.tasks_run_for(conv_id))
+
+
+@router.get("/conversations/{conv_id}/pending")
+def conversation_pending(conv_id: str, user: dict = Depends(get_current_user)):
+    """How many tasks this conversation queued are still to run: the side panel looks again while any are."""
+    if not db.get_conversation(user["id"], conv_id):
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return {"tasks": catalog.pending_tasks_for(conv_id)}
 
 
 @router.patch("/conversations/{conv_id}", response_model=ConversationOut)
