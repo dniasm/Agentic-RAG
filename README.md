@@ -24,6 +24,45 @@ The **Documents** page does the same with buttons. See [Document library](#docum
 | Web search | Tavily if `TAVILY_API_KEY` is set, then DuckDuckGo, then Wikipedia |
 | Document library | PyMuPDF + fontTools (in-place PDF edits), python-docx, fpdf2 (PDF export), pyphen (hyphenation) |
 
+## Architecture
+
+The browser talks REST to one **orchestrator** (FastAPI + LangGraph, `backend/`), which holds no database. Everything
+the server pushes back (chat answers as they are written, indexing progress, the batch queue) goes over one WebSocket
+per tab. The orchestrator calls four **gRPC services**, each owning its own data.
+
+```mermaid
+flowchart LR
+    C["Client (React)"] -- "REST /api/*" --> O["Orchestrator<br/>FastAPI + LangGraph :8000<br/>no database"]
+    O -- "WebSocket /api/ws" --> C
+    O <-- "gRPC" --> U["User :50061"]
+    O <-- "gRPC" --> V["Conversation :50062"]
+    O <-- "gRPC" --> M["Memory :50063"]
+    O <-- "gRPC" --> D["Document :50064"]
+    U --- UD[("user.db")]
+    V --- VD[("conversation.db")]
+    M --- MD[("memory.db<br/>+ Qdrant")]
+    D --- DD[("document.db<br/>+ Qdrant")]
+    O -. "files" .-> F[("LIBRARY_DATA_DIR<br/>library/, versions/")]
+```
+
+| Protocol | Between | What it carries | Where |
+|---|---|---|---|
+| REST (HTTP/JSON, login cookie) | browser to orchestrator | sign-up and login, `POST /api/chat/stream` (`202`, the answer comes over the socket), conversations, document upload and actions, `/api/library/*`, health | `backend/api/routes/`, `backend/library/api.py` |
+| WebSocket `GET /api/ws` | orchestrator to browser | `system` `hello \| resync \| heartbeat \| pong`; `chat` `meta \| status \| step \| draft \| final \| error`; `queue` `task \| changed`; `library` `document` (the browser sends only `{"type":"ping"}`) | `backend/realtime/schema.py` |
+| gRPC (`agentic_rag.v1`, plus `grpc.health.v1`) | orchestrator to each service | User 13 RPCs, Conversation 10, Memory 10, Document 49 (ingest and read-pages stream progress); a deadline on every call, the request id as metadata | `protos/agentic_rag_proto/*.proto`, `backend/clients.py` |
+| SQL (SQLite, one file per service) | inside a service | User: `users`, `auth_tokens`, `embed_usage`, `api_usage`. Conversation: `conversations`, `messages`. Memory: `user_facts` (+ episodes in its own Qdrant folder). Document: `documents`, `renames`, `edits`, `undone_edits`, `batches`, `batch_tasks`, `sessions`, `page_text`, `query_embeddings` (+ passages in its own Qdrant folder) | `services/<name>/db.py` |
+
+A request costs one `ValidateToken` call to the User service at the door. Measured in one process on loopback
+(`python scripts/grpc_overhead.py`, 200 round-trips each, Windows, Python 3.14), the median / 95th percentile is:
+
+| Call | Median | p95 |
+|---|---|---|
+| `ValidateToken` (User) | 0.75 ms | 0.86 ms |
+| `ListConversations` (Conversation) | 0.72 ms | 0.85 ms |
+| `auth.user_for` (the whole sign-in check) | 0.76 ms | 0.89 ms |
+
+Across containers or machines the network's own latency is added to each call.
+
 ## Agent workflow
 
 ```
@@ -140,6 +179,10 @@ Old vs current, from the benchmarks and the token log (details: [`docs/DOCUMENTA
 | `backend/memory/` | Conversation memory (Voyage embeddings in Qdrant) |
 | `backend/evaluation/` | Code citation check, LLM answer check, decision reviews |
 | `backend/tests/` | Unit tests (no API calls) |
+| `services/` | The four gRPC services (`user`, `conversation`, `memory`, `document`) and `common/` (server, config, logging, SQLite helper) |
+| `protos/`, `agentic_rag_proto/` | The `.proto` sources and the generated Python code |
+| `scripts/` | `run_all.py`, `gen_protos.py`, `grpc_healthcheck.py`, `grpc_overhead.py`, `logs.py`, the `migrate_*.py` scripts, `ci_test_coverage.py` |
+| `Dockerfile`, `docker-compose.yml` | One image, one compose file for the whole stack ([Docker](#docker)) |
 | `frontend/` | React app: pages, components, API client, chat store; `backend/web.py` serves its build in production |
 | `benchmark/` | Benchmark scripts, question sets, corpus, saved results |
 | `scripts/experiments/` | One-off model experiments |
@@ -167,7 +210,7 @@ Backend (from the project root):
 ```bash
 python -m venv .venv && .venv\Scripts\activate
 pip install -r requirements.txt
-uvicorn app:app --reload      # works from the project root or from backend/
+python scripts/run_all.py      # the four services and the orchestrator (or: start the services, then `uvicorn app:app --reload`)
 ```
 
 Frontend:
@@ -202,6 +245,37 @@ e.g. `python -m scripts.experiments.test_gate`.
 > The embedded Qdrant store allows only one process at a time. `--reload` is fine, but don't run
 > several workers against the same `backend/vector_db/qdrant_data`. Set `QDRANT_URL` to use a Qdrant server instead.
 
+### Everything at once
+
+```bash
+python scripts/run_all.py              # the four services, then the orchestrator on :8000; Ctrl+C stops all of them
+python scripts/run_all.py --port 8001  # another orchestrator port
+```
+
+It refuses to start if a port is taken (nothing is killed), starts each service only when the one before answers
+`grpc.health.v1` with SERVING, then the orchestrator. `GET /api/health/services` (public) reports each service's
+health with `all_up`, and the System page reads it.
+
+### Docker
+
+One image (a Node stage builds `frontend/dist`; the runtime is `python:3.14-slim` with tesseract and the DejaVu fonts,
+running as a non-root user) serves the orchestrator and the four services; `docker-compose.yml` picks the command.
+Each service has its own named volume for its database and Qdrant folder, the orchestrator has one for the document
+files (`LIBRARY_DATA_DIR`), and `logs` is shared. API keys come from `.env` (optional for compose, never copied into the
+image: `.dockerignore` leaves it out).
+
+```bash
+docker compose up -d --build                  # http://localhost:8000
+curl http://localhost:8000/api/health/services   # all_up: true once every service answers its health check
+docker compose logs -f orchestrator
+docker compose down                           # keeps the volumes; `down -v` deletes the data too
+```
+
+The orchestrator starts only after the four services pass their health check (`scripts/grpc_healthcheck.py`), and
+refuses to start without `GROQ_API_KEY` and `GEMINI_API_KEY` (the Docker CI job passes dummy ones: nothing there calls a
+model). Moving data from an older install into the volumes means running the migrations below against the published
+service ports, which compose does not publish; run them before switching to Docker, or add `ports:` to the services.
+
 ## WebSocket
 
 Everything the server pushes to the browser goes over **one WebSocket per tab**, `GET /api/ws`; the browser asks for
@@ -223,8 +297,7 @@ on the socket tagged with the `turn_id` the browser put on the POST.
 
 ## Services
 
-Work in progress: the backend is becoming an orchestrator that talks gRPC to four services (user, conversation,
-memory, document), each owning its own SQLite database. All four are live, and the orchestrator holds no database: accounts are the User service's, chats the Conversation service's, facts the Memory service's, and the library catalog (documents, renames, edits and undo, the document chat's sessions and queued batches) the Document service's.
+The backend is an orchestrator that talks gRPC to four services (user, conversation, memory, document), each owning its own SQLite database. The orchestrator holds no database: accounts are the User service's, chats the Conversation service's, facts the Memory service's, and the library catalog (documents, renames, edits and undo, the document chat's sessions and queued batches) the Document service's. The overview, protocols and timings are in [Architecture](#architecture).
 
 | Path | Holds |
 |---|---|
@@ -347,6 +420,32 @@ python -m services.document            # on its own; `python scripts/run_all.py`
 python scripts/migrate_documents_rag.py   # once, BACKEND STOPPED, service running: copy the passages (with vectors) and caches
 ```
 
+## Migrating an older install
+
+Only for a database from before the services (the old `backend/data/app.db` and the orchestrator's embedded Qdrant
+folder). A new install needs none of this.
+
+> **Stop the backend and back up first.** Copy `backend/data/` somewhere safe before anything else (or run
+> `python -m backend.scripts.backup`). Every script also backs up what it reads into `--dest` (default
+> `D:\onboarding_tasks\backups`), copies without deleting anything, keeps ids and timestamps, verifies, and can be run
+> again. The old tables and folders stay where they were, unused; delete them by hand once the app has been seen working.
+
+Start the services with `python scripts/run_all.py` (the orchestrator it also starts must be stopped for steps 3 to 5,
+so stop it, or start only the services with `python -m services.<name>`). Run the scripts **in this order**; each needs
+the service it fills to be running:
+
+| # | Script | Needs running | Backend | What moves |
+|---|---|---|---|---|
+| 1 | `python scripts/migrate_users.py` | User service (50061) | stopped (the backup is consistent either way) | accounts, logins, usage counts. Do this first: nobody can sign in until it is done, and later steps give rows to these accounts |
+| 2 | `python scripts/migrate_conversations.py` | Conversation service (50062) | stopped | chats and messages |
+| 3 | `python scripts/migrate_memory.py` | Memory service (50063, with `VOYAGE_API_KEY`) | **must be stopped** (reads the orchestrator's Qdrant folder directly) | facts, and episodes with their vectors |
+| 4 | `python scripts/migrate_documents_rag.py` | Document service (50064) | **must be stopped** (same Qdrant folder) | passages with dense and sparse vectors, OCR and question-embedding caches |
+| 5 | `python scripts/migrate_library_catalog.py` | Document service (50064) | stopped | document rows, renames, edits and undo, the library chat's sessions and queued batches. The files stay in `LIBRARY_DATA_DIR` |
+
+Each script accepts `--source`, `--address` and `--dest`; steps 3 and 4 also take `--qdrant`. Exit code 0 means every
+check passed. Then start everything (`run_all.py` or `docker compose up -d`) and look at the Documents page and a
+chat.
+
 ## Logging
 
 The orchestrator and every service write one line format to the console and to files in `logs/` (git-ignored):
@@ -368,6 +467,8 @@ login cookies, passwords and tokens are masked; logged values are cut at 300 cha
 
 If a log file cannot be written, one message goes to stderr and the app carries on.
 
+In Docker every container writes into the shared `logs` volume (`LOG_DIR=/app/logs`): `docker compose exec orchestrator python scripts/logs.py --since 30m`.
+
 ```bash
 python scripts/logs.py --since 30m --level WARNING     # all services merged by time
 python scripts/logs.py --request <id>                  # every line of one request, across services
@@ -376,6 +477,22 @@ python scripts/logs.py --follow --service orchestrator --grep upload
 ```
 
 The shared module is `services/common/log.py` (both `backend/` and `services/` already import from `services/common/`).
+
+## CI
+
+Workflows in `.github/workflows/`, one per area (every `backend/tests/**/test_*.py` is in exactly one; `python
+scripts/ci_test_coverage.py` fails otherwise):
+
+| Workflow | Runs |
+|---|---|
+| `agent-rag.yml` Agent · RAG | routing, citations, reranking, Voyage, memory and document-upload tests |
+| `gateway.yml` Gateway · API | the REST routes, the WebSocket and stream, chat limits, compression, and `test_e2e_services.py` (sign-up, upload, chat over the socket and logout through all four services in one process) |
+| `library.yml` Library · Documents | the document library in matrix suites: PDF editing and export, OCR, catalog, agent, batch queue |
+| `services.yml` Services · gRPC | the service bootstrap tests and each service over real gRPC (matrix), and `scripts/gen_protos.py --check` |
+| `ops.yml` Ops · Tooling | backup, library merge, logging, and the test-coverage guard (`ci_test_coverage.py`) |
+| `security.yml` Security | login, origin and header checks, accounts, shared logins, admin |
+| `web.yml` Web · Frontend | `npm ci`, `npm run build` and the front end's logic tests |
+| `docker.yml` Docker | on `main`, and on other branches only when Docker-related files, `services/` or the protos change: builds the image, `docker compose up -d` with dummy keys, waits for `/api/health/services` to say `all_up`, prints the logs on failure, tears down |
 
 ## Benchmark
 
