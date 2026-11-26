@@ -20,7 +20,7 @@ from services.common.inprocess import RunningService  # noqa: E402
 from services.conversation import db as _conversation_store  # noqa: E402
 from services.conversation.server import build_service as _build_conversation  # noqa: E402
 
-CONVERSATION_DB = _conversation_store.open_db()   # a test that must change rows the API can't reaches it here
+CONVERSATION_DB = _conversation_store.open_db()   # the service's own database
 CONVERSATION = RunningService(lambda: _build_conversation(CONVERSATION_DB)).start()
 from backend.config.settings import settings as _settings  # noqa: E402
 

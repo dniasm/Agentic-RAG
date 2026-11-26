@@ -7,7 +7,6 @@ import sqlite3
 import tempfile
 import unittest
 
-import conftest   # the session's Conversation service and its database (CONVERSATION_DB)
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -82,8 +81,11 @@ class Stats(unittest.TestCase):
 
     def test_stats_come_from_the_columns(self):
         self.answers()
-        with conftest.CONVERSATION_DB.tx() as c:  # the JSON is no longer read
-            c.execute("UPDATE messages SET meta = 'not json' WHERE conversation_id = ?", (self.conv,))
+        # the session's Conversation service keeps its file in SERVICES_DATA_DIR (conftest.py)
+        con = sqlite3.connect(os.path.join(os.environ["SERVICES_DATA_DIR"], "conversation.db"), timeout=30)
+        with con:  # the JSON is no longer read
+            con.execute("UPDATE messages SET meta = 'not json' WHERE conversation_id = ?", (self.conv,))
+        con.close()
         stats = db.user_stats(self.uid)
         self.assertEqual({k: stats[k] for k in self.expected()}, self.expected())
 
