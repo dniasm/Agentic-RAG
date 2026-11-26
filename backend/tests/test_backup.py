@@ -21,50 +21,60 @@ def site(tmp_path):
     (data / "library" / "u1" / "Resume.pdf").write_bytes(b"%PDF-1.4 resume")
     (data / "versions" / "d1").mkdir(parents=True)
     (data / "versions" / "d1" / "001.pdf").write_bytes(b"%PDF-1.4 before")
-    qdrant = tmp_path / "qdrant_data"
+    services = tmp_path / "services"
+    services.mkdir()
+    for name in ("user", "document"):
+        with sqlite3.connect(services / f"{name}.db") as c:
+            c.execute("CREATE TABLE t (v TEXT)")
+            c.execute("INSERT INTO t VALUES (?)", (name,))
+    qdrant = services / "document_qdrant"
     (qdrant / "collection").mkdir(parents=True)
     (qdrant / "collection" / "segment.bin").write_bytes(b"vectors")
     (qdrant / ".lock").write_text("tmp lock file")
-    return tmp_path, db, data, qdrant
+    return tmp_path, db, data, services
 
 
 def test_a_full_backup_while_the_backend_is_stopped(site):
-    root, db, data, qdrant = site
-    out = backup.backup(root / "backups", db, data, qdrant, now=NOW)
+    root, db, data, services = site
+    out = backup.backup(root / "backups", db, data, services, now=NOW)
     folder = out["folder"]
     assert out["mode"] == "FULL" and folder.name == "day7-2026-11-17_030000"
     with sqlite3.connect(folder / "app.db") as c:
         assert c.execute("SELECT title FROM documents").fetchall() == [("Resume",)]
     assert (folder / "library" / "u1" / "Resume.pdf").read_bytes() == b"%PDF-1.4 resume"
     assert (folder / "versions" / "d1" / "001.pdf").exists()
-    assert (folder / "qdrant_data" / "collection" / "segment.bin").read_bytes() == b"vectors"
-    assert not (folder / "qdrant_data" / ".lock").exists()          # the lock isn't copied
-    assert (qdrant / ".lock").exists()                              # nor removed from the live folder
+    assert (folder / "services" / "document_qdrant" / "collection" / "segment.bin").read_bytes() == b"vectors"
+    for name in ("user", "document"):                               # every service's database, not just the index
+        with sqlite3.connect(folder / "services" / f"{name}.db") as c:
+            assert c.execute("SELECT v FROM t").fetchall() == [(name,)]
+    assert not (folder / "services" / "document_qdrant" / ".lock").exists()   # the lock isn't copied
+    assert (services / "document_qdrant" / ".lock").exists()                              # nor removed from the live folder
     assert "FULL" in (folder / "BACKUP.txt").read_text(encoding="utf-8")
 
 
 def test_a_running_backend_gets_a_partial_backup_without_the_index(site):
     import portalocker
-    root, db, data, qdrant = site
-    with open(qdrant / ".lock", "r+") as held:   # what a running backend does
+    root, db, data, services = site
+    with open(services / "document_qdrant" / ".lock", "r+") as held:   # what a running backend does
         portalocker.lock(held, portalocker.LockFlags.EXCLUSIVE | portalocker.LockFlags.NON_BLOCKING)
         try:
-            out = backup.backup(root / "backups", db, data, qdrant, now=NOW)
+            out = backup.backup(root / "backups", db, data, services, now=NOW)
         finally:
             portalocker.unlock(held)
-    assert out["mode"].startswith("PARTIAL") and "qdrant_data" not in out["copied"]
-    assert not (out["folder"] / "qdrant_data").exists()
-    assert any("backend is running" in s for s in out["skipped"])
+    assert out["mode"].startswith("PARTIAL") and "services/document_qdrant" not in out["copied"]
+    assert not (out["folder"] / "services" / "document_qdrant").exists()
+    assert (out["folder"] / "services" / "user.db").exists()          # the databases are still copied
+    assert any("service is running" in s for s in out["skipped"])
     assert (out["folder"] / "app.db").exists() and (out["folder"] / "library").exists()
 
 
 def test_the_database_copy_is_consistent_while_it_is_being_written(site):
-    root, db, data, qdrant = site
+    root, db, data, services = site
     writer = sqlite3.connect(db)
     writer.execute("BEGIN")
     writer.execute("INSERT INTO documents VALUES ('d2', 'Uncommitted')")   # a write in progress
     try:
-        out = backup.backup(root / "backups", db, data, qdrant, now=NOW)
+        out = backup.backup(root / "backups", db, data, services, now=NOW)
     finally:
         writer.rollback()
         writer.close()
@@ -73,7 +83,7 @@ def test_the_database_copy_is_consistent_while_it_is_being_written(site):
 
 
 def test_a_backup_never_overwrites_another(site):
-    root, db, data, qdrant = site
-    backup.backup(root / "backups", db, data, qdrant, now=NOW)
+    root, db, data, services = site
+    backup.backup(root / "backups", db, data, services, now=NOW)
     with pytest.raises(FileExistsError):
-        backup.backup(root / "backups", db, data, qdrant, now=NOW)
+        backup.backup(root / "backups", db, data, services, now=NOW)

@@ -6,7 +6,8 @@ The old collection is left untouched, so this is safe to re-run and easy to roll
 (set COLLECTION_NAME back to the old name).
 
     python -m backend.scripts.migrate_hybrid [--source agentic_rag_docs]
-Run with the backend STOPPED (single-process embedded Qdrant).
+One-off tool: it opens the Document service's embedded store (services.document.vectorstore) directly, so run it with
+the backend AND the Document service STOPPED (the embedded store allows one process).
 """
 import argparse
 

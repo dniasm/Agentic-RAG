@@ -208,15 +208,16 @@ To reset everything: stop the backend and delete those paths.
 ### Backups
 `python -m backend.scripts.backup` copies the data to a new folder `D:\onboarding_tasks\backups\day7-<date>_<time>`
 (`--dest` for another place): `app.db` through SQLite's backup API (consistent even while the backend runs), the
-stored documents (`library/`) and their edit history (`versions/`), and, **only while the backend is stopped**, the
-search index (`qdrant_data/`). Each backup says FULL or PARTIAL in its `BACKUP.txt`. It never overwrites a folder or
+stored documents (`library/`) and their edit history (`versions/`), each service's database (`services/*.db`, through
+the same API) and, **only while the services are stopped**, their Qdrant folders (`services/document_qdrant/`, the
+search index, and `services/memory_qdrant/`). Each backup says FULL or PARTIAL in its `BACKUP.txt`. It never overwrites a folder or
 deletes old backups. It holds documents and password hashes: keep it private, and keep a copy off this disk too.
 
 Restoring is manual, since it overwrites live data:
 1. Stop the backend.
 2. Copy `app.db`, `library/` and `versions/` from the backup into `backend/data/`, replacing what is there (move the
    current ones aside first if in doubt).
-3. From a FULL backup, copy `qdrant_data/` into `backend/vector_db/`. From a PARTIAL one, the search index no longer
+3. Copy `services/` into `backend/data/services/` (or your `SERVICES_DATA_DIR`). From a PARTIAL backup (no Qdrant folders), the search index no longer
    matches the documents: re-index them (it costs embedding quota).
 4. Start the backend.
 
@@ -442,7 +443,7 @@ Most backend folders contain an empty `__init__.py`; it only lets Python import 
 | `migrate_hybrid.py` | One-off migration that copied the old dense-only collection into the hybrid (dense + BM25) collection without re-embedding. |
 | `merge_library.py` | One-off merge of the renaming pipeline's data into this app (users, documents with their vectors, chats). |
 | `recount_pages.py` | Recounts the pages of Word, text and Markdown documents. |
-| `backup.py` | Copies the data to a timestamped folder (the search index only while the backend is stopped); see §4, Backups. |
+| `backup.py` | Copies the data to a timestamped folder (the services' databases always, their Qdrant folders only while the services are stopped); see §4, Backups. |
 | `build_font_manifest.py` | Writes `backend/library/fonts/manifest.json` from hand-checked font downloads. |
 
 #### `backend/tests/` — unit tests and reasoning cases
