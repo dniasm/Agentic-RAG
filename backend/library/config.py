@@ -1,7 +1,7 @@
 """The document library's settings.
 
 Values that differ per deployment are fields on day7's Settings (library_*, signup_code), set in the one .env.
-The rest are constants. Storage: the vector store and its collection are day7's (settings.qdrant_path,
+The rest are constants. Storage: the vector store and its collection are day7's (the Document service owns the store,
 settings.collection_name); files, versions and logs live under settings.library_data_dir; the catalog's tables are in day7's app.db.
 """
 from pathlib import Path
