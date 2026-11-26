@@ -65,7 +65,7 @@ What makes it *agentic* rather than a fixed pipeline:
 
 ```
 ┌──────────────────────── Browser (React, Vite :5173) ──────────────────────────┐
-│  Login ─ Chat (SSE stream) ─ Documents ─ Overview        hash routes, themes  │
+│  Login ─ Chat (WebSocket) ─ Documents ─ Overview        hash routes, themes  │
 └───────────────┬───────────────────────────────────────────────────────────────┘
                 │  /api/*  (Vite dev proxy → 127.0.0.1:8000, login cookie)
 ┌───────────────▼──────────────────── FastAPI (:8000) ──────────────────────────┐
@@ -90,8 +90,10 @@ What makes it *agentic* rather than a fixed pipeline:
 2. `get_current_user` looks the token up (§13). `_prepare` loads or creates the conversation, the last 6 messages, the
    user's remembered facts, up to 3 relevant past-conversation summaries and the user's indexed document names, and
    saves the user message.
-3. The agent runs in its own thread (`stream_agent`), with a `UsageTracker` counting tokens. Its events (`status`,
-   `step`, `draft`) are relayed to the browser as Server-Sent Events.
+3. The route returns `202 {conversation_id, title, turn_id}` at once. The agent runs in its own thread
+   (`stream_agent`), with a `UsageTracker` counting tokens. Its events (`meta`, `status`, `step`, `draft`) are
+   published to the account's WebSocket (`/api/ws`, §15) through the event hub, tagged with the conversation and
+   the `turn_id`.
 4. The final state is saved as an assistant message (sources, notices, trace, evaluation, latency, token usage) and
    sent as the `final` event. Because the agent runs in its own thread, the answer is saved even if the browser
    disconnects.
@@ -105,7 +107,7 @@ What makes it *agentic* rather than a fixed pipeline:
 | Layer | Technology | Notes |
 |---|---|---|
 | Frontend | React 18, Vite 5, Tailwind 3, lucide-react, react-markdown + remark-gfm | Hash routes, light/dark/system theme, Geist font |
-| API | FastAPI, Uvicorn, Starlette `StreamingResponse` (SSE) | Sync routes run in a threadpool |
+| API | FastAPI, Uvicorn, Starlette WebSockets (`/api/ws`) | Sync routes run in a threadpool |
 | Agent | LangGraph `StateGraph` | Conditional edges implement the loops and fallback |
 | LLMs | Groq (see below) | Strict `json_schema` output for gpt-oss decisions |
 | Document embeddings | Google Gemini `models/gemini-embedding-001`, 768 dims | Question embeddings cached on disk |
@@ -333,7 +335,7 @@ Most backend folders contain an empty `__init__.py`; it only lets Python import 
 | File | What it does |
 |---|---|
 | `app.py` | The FastAPI application: checks required keys at startup, creates the database and Qdrant collections, starts the library's indexing queue and batch worker, sets CORS, mounts the routers and, when `frontend/dist` exists, the front end. |
-| `compression.py` | Gzip for scripts, styles, pages and JSON; never for the chat's stream, a ranged request, PDFs, Word files, images or fonts, or bodies under 1 KB. |
+| `compression.py` | Gzip for scripts, styles, pages and JSON; never for a ranged request (the WebSocket isn't an HTTP response, so it is untouched), PDFs, Word files, images or fonts, or bodies under 1 KB. |
 | `security.py` | Host and cross-site checks and security headers on every response (§13). |
 | `web.py` | Serves `frontend/dist`: `index.html` with `no-cache` (also for the app's own routes such as `/documents`), hashed `assets/` cached for a year, a JSON 404 for unknown `/api` paths, nothing outside the folder. |
 
@@ -343,7 +345,7 @@ Most backend folders contain an empty `__init__.py`; it only lets Python import 
 |---|---|
 | `dependencies.py` | `get_current_user`: reads the login cookie on each request and returns the user, or a 401. |
 | `routes/auth.py` | `GET /auth/state`, `POST /auth/signup`, `/auth/login`, `/auth/logout`, `GET /auth/me`, on `backend/library/auth.py`. |
-| `routes/chat.py` | `POST /chat` and `POST /chat/stream` (SSE): loads history, facts, past-conversation summaries and document names, runs the agent in its own thread, saves the answer, and queues memory work and token logging in the background. Document requests go to the `manage` node (the document agent). Also lists, renames and deletes conversations, lists the documents a conversation changed and its queued tasks, and serves `/stats`. |
+| `routes/chat.py` | `POST /chat` and `POST /chat/stream` (starts the answer, `202`; its events go to the WebSocket): loads history, facts, past-conversation summaries and document names, runs the agent in its own thread, saves the answer, and queues memory work and token logging in the background. Document requests go to the `manage` node (the document agent). Also lists, renames and deletes conversations, lists the documents a conversation changed and its queued tasks, and serves `/stats`. |
 | `routes/documents.py` | Lists (with the edit Undo and Redo apply to), uploads (size check, dedup by hash; indexing on the library's queue) and deletes documents. |
 | `routes/health.py` | `GET /health`: reports the configured models and web-search providers. |
 
@@ -453,7 +455,8 @@ Most backend folders contain an empty `__init__.py`; it only lets Python import 
 | `test_rerank.py` | Reranker zones and the fallback when Voyage can't score. |
 | `test_conversations.py` | Renaming chats; `/stats` from the message columns and the one-time backfill; a fresh database has no old `user_memory` table. |
 | `test_documents.py` | Uploads are titled, stored in the user's folder and indexed in the background; failed / removed-while-waiting / uploaded-twice outcomes; indexing cut off by a restart is resumed. |
-| `test_stream.py` | The SSE stream ends with `final`, and the answer is saved even if the client disconnects. |
+| `test_stream.py` | A chat turn's events reach the WebSocket in order and end with `final`; the answer is saved with nobody connected. |
+| `test_websocket.py` | The WebSocket and the hub: login and origin checks, two tabs, replay and resync, threads publishing, queue and indexing pushes. |
 | `library/` | The document library: accounts, the agent and its guard, routing to it, renames, edits, undo / redo, the queue, PDF editing (layout, growth onto a new page, fonts), the API and the Documents page's routes. |
 
 #### Runtime folders (created automatically, not committed)
@@ -481,7 +484,7 @@ Most backend folders contain an empty `__init__.py`; it only lets Python import 
 | `main.jsx` | Mounts `App` into the page. |
 | `App.jsx` | Top-level shell: session restore, health polling, routing between pages, sidebar layout (top bar on phones). |
 | `index.css` | Colour tokens for light and dark themes, component classes and Markdown styles. |
-| `services/api.jsx` | HTTP client: requests with the login cookie, error handling (401 → login), the SSE stream reader, document actions (rename, undo, redo, queue). |
+| `services/api.jsx` | HTTP client: requests with the login cookie, error handling (401 → login), the turn follower for chat answers (`lib/turn.js`), document actions (rename, undo, redo, queue). |
 | `state/chatDocuments.js` | The documents a conversation changed, re-read after each answer and while its queued tasks run. |
 | `state/previewStore.js` | The one open document preview, holding one browser-history entry so a phone's Back closes it (an open editor first) instead of leaving the site. |
 | `lib/chatActions.js` | What a chat's document actions allow (which edits Undo / Redo apply to) and their descriptions. |
@@ -911,7 +914,7 @@ placeholders and filter by `user_id`.
 ### `api/routes/chat.py`
 `_prepare` (conversation, history, facts + episodes, document names, save user message), `_persist` (save the answer
 with meta and usage, queue memory work), `_remember` (background: facts, episode, token log), `_error_state`
-(rate-limit-aware failure answer), `chat`, `chat_stream` (agent thread + relay; `_STREAM_END` ends the stream).
+(rate-limit-aware failure answer), `chat`, `chat_stream` (starts the agent thread, which publishes to the hub; returns 202).
 
 ---
 
@@ -1032,7 +1035,7 @@ need the login cookie. Errors have the shape `{"detail": "message"}` (a rename's
 | `POST /documents/upload` | multipart `file` | `{"status": "processing" \| "duplicate", "filename", "chunks_indexed", "document"}` — `400`, `413`; indexing errors appear on the document (`status: "failed"`, `error`) |
 | `DELETE /documents/{id}` | — | `204` |
 | `POST /chat` | `{"message", "conversation_id"?}` | `ChatResponse` (below) |
-| `POST /chat/stream` | same | SSE (below) |
+| `POST /chat/stream` | `{"message", "conversation_id"?, "turn_id"?}` | `202 {conversation_id, title, turn_id}`; events on the WebSocket (below) |
 | `GET /conversations` | — | `[{id, title, created_at, updated_at}]` |
 | `GET /conversations/{id}/messages` | — | `[{id, role, content, tool, meta, created_at}]` oldest first |
 | `PATCH /conversations/{id}` | `{"title"}` (1–60 characters) | the conversation; `updated_at` unchanged, so it keeps its place in the list — `404`, `422` |
@@ -1053,17 +1056,35 @@ need the login cookie. Errors have the shape `{"detail": "message"}` (a rename's
 | `GET /library/limits` | — | Groq tokens used in the last minute and the user's queue |
 
 `ChatResponse`: `{conversation_id, message_id, answer, tool, intent, sources, notices, rewritten_queries, evaluation,
-trace, latency_ms}` (the stream's `final` event also carries `usage`); `tool` is `rag | web_search | direct | greeting | no_results`.
+trace, latency_ms}` (the WebSocket's `final` event also carries `usage` and `turn_id`); `tool` is `rag | web_search | direct | greeting | no_results`.
 
-**Stream events** (`POST /chat/stream`):
+**The WebSocket** (`GET /api/ws`, `backend/api/routes/ws.py`; messages in `backend/realtime/schema.py`; hub in
+`backend/realtime/hub.py`). One per browser tab; everything the server pushes goes through it, the browser's requests
+go over REST. Auth is the HttpOnly login cookie on the handshake; another site's Origin is refused (1008), no login is
+closed with 4401. Every message is `{seq, channel, type, request_id, data, ts}`; `seq` rises per account and
+`request_id` is the REST request that started the work. `?after=<seq>` replays what the hub kept (500 events or an
+hour per account, only the newest draft of a turn) or answers `system/resync`. `system/heartbeat` every 20 s; the
+client may send `{"type":"ping"}` and gets `system/pong`. `publish()` is thread-safe: the chat thread, the batch worker
+and the indexing queue publish from their own threads and the event loop does the sending.
 
-| Event | Payload | Meaning |
+| Channel / type | Data | Meaning |
 |---|---|---|
-| `meta` | `{conversation_id, title}` | Sent first, so a new chat appears immediately |
-| `status` | `{node, label}` | A step started, e.g. "Searching your documents…" |
-| `step` | `{id, node, detail, data}` | A trace entry, as soon as it exists |
-| `draft` | `{node, text}` | The answer so far (throttled to ~30 chars / 0.15 s) |
-| `final` | `ChatResponse` | The saved answer |
+| `system/hello` | `{user, seq}` | First message: who, and the account's latest seq |
+| `system/resync` | `{}` | The cursor can't be served: read state over REST |
+| `chat/meta` | `{conversation_id, turn_id, title}` | Sent first, so a new chat appears immediately |
+| `chat/status` | `{…, node, label}` | A step started, e.g. "Searching your documents…" |
+| `chat/step` | `{…, id, node, detail, data}` | A trace entry, as soon as it exists |
+| `chat/draft` | `{…, node, text}` | The answer so far (throttled to ~30 chars / 0.15 s) |
+| `chat/final` | `ChatResponse` + `turn_id` | The saved answer |
+| `chat/error` | `{…, message, fatal}` | The agent failed (a `final` with the error answer follows) or the answer couldn't be saved (`fatal`) |
+| `queue/task` | `{batch_id, task_id, status, reply}` | A queued task changed state |
+| `queue/changed` | `{}` | A batch was added or cancelled: read `GET /library/queue` again |
+| `library/document` | `{doc_id, stage, title?, error?}` | A file's indexing: `reading` (includes OCR), `indexed`, `failed` |
+
+Missed events: a tab that was offline or dropped reconnects with its last seq and gets the replay; when it can't (older
+than the log, or the server restarted) it gets `resync` and the page reads the saved answer from
+`GET /conversations/{id}/messages` (`meta.turn_id`), so the answer is never lost. The front end follows a turn with
+`lib/turn.js` over the tab's one `RealtimeSocket` (`lib/realtimeSocket.js`: reconnect with backoff, cursor, ping).
 
 ---
 
@@ -1091,7 +1112,7 @@ App.jsx ── session, health polling, conversations, documents, routing
 | `state/chatStore.js` | Conversations and in-flight answers live outside the pages (`useSyncExternalStore`), so an answer keeps streaming when you switch pages or chats. A new chat is stored under `NEW_KEY` until the `meta` event gives its id. |
 | `lib/theme.js` | `useTheme()`: System / Light / Dark, saved in `localStorage` (`agentic_rag_theme`) and applied as `<html data-theme>`. `index.html` applies it before the first paint. |
 | `lib/format.js` | Counts, sizes, seconds, percentages, recency groups, source labels. |
-| `services/api.jsx` | `request()` sends the login cookie (`credentials: 'include'`) and handles errors (401 → login; an object `detail` is kept on `err.data`); `streamMessage()` reads the SSE stream (`onMeta`, `onStatus`, `onStep`, `onDraft`, `onFinal`). |
+| `services/api.jsx` | `request()` sends the login cookie (`credentials: 'include'`) and handles errors (401 → login; an object `detail` is kept on `err.data`); `streamMessage()` POSTs, then follows the turn on the WebSocket (`onMeta`, `onStatus`, `onStep`, `onDraft`, `onFinal`). |
 | `pages/Login.jsx` | Sign-in / sign-up with the backend's rules, offline notice, and an example answer. |
 | `pages/Chat.jsx` | New chat with suggestions based on your documents; otherwise the conversation and composer. |
 | `pages/Documents.jsx` | Drop zone + picker, type/size checks, upload progress, status list (re-checked every 2 s while a file is indexing). Each document's name opens the preview (where it can be edited); its "⋯" menu has Rename (inline), Undo latest edit and Redo, Download, Download as PDF and Remove, each change asking first in the row. The queue panel above the list. |
@@ -1119,11 +1140,11 @@ then `python -m pytest` from the project root. `conftest.py` blocks font downloa
 |---|---|
 | `test_routing.py` | Source orders, documents skipped without uploads, single fallback, auto → model knowledge, retry budgets, partial RAG answers, unchecked answers kept, web recency rules, knowledge-gate rules, memory pre-check |
 | `test_memory.py` | Key normalisation, merge rules (replace / collect / forget / corrections), storage, one-time migration |
-| `test_stream.py` | The stream ends with `final`; the answer is saved after the client disconnects |
+| `test_stream.py`, `test_websocket.py` | A turn's events reach the socket in order and end with `final`, the answer is saved with nobody connected; login/origin, tabs, replay, threads, queue pushes |
 | `test_citations.py` | The code citation check: uncited claims, invalid `[n]`, unsupported claims, numbers, lists under a cited lead-in |
 | `test_rerank.py` | Reranker zones; fallback to the LLM check when Voyage can't score |
 | `test_conversations.py` | Renaming chats (title trimmed, empty or too long rejected, other users' chats not found); fresh databases skip the old memory table |
-| `test_security.py`, `test_compression.py` | Host / cross-site checks, headers, the page's policy, the login cookie; gzip and what it leaves alone (the chat's stream checked over a real server) |
+| `test_security.py`, `test_compression.py` | Host / cross-site checks, headers, the page's policy, the login cookie; gzip and what it leaves alone (the WebSocket passes through the compression middleware untouched) |
 | `test_frontend_logic.py` | Through node: what the chat's Undo / Redo apply to, the preview's history entry |
 | `library/` | The document library: accounts and privacy, the agent's guard, routing to it and follow-ups, renames, edits (TXT, DOCX, PDF in place, growth onto a new page, fonts, size), undo / redo, the queue, the API, the Documents page's routes and the served build |
 | `test_documents.py` | Background indexing: upload returns `processing`, then indexed or failed; no second job for the same file; vectors removed if the document was deleted meanwhile; indexing cut off by a restart is resumed |

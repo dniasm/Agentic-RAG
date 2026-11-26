@@ -1,5 +1,8 @@
-// Dev: Vite proxies /api to the backend (see vite.config.js). Set VITE_API_URL to call it directly.
-export const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
+import { followTurn, newTurnId } from '../lib/turn';
+import { API_BASE_URL } from './config';
+import { realtime } from './realtime';
+
+export { API_BASE_URL };
 
 // Logins used to keep a token in localStorage; the cookie replaced it. Drop the old one once.
 try { localStorage.removeItem('agentic_rag_token'); } catch { /* storage unavailable */ }
@@ -8,7 +11,7 @@ try { localStorage.removeItem('agentic_rag_token'); } catch { /* storage unavail
 let onUnauthorized = () => {};
 export const setUnauthorizedHandler = (fn) => { onUnauthorized = fn; };
 
-async function request(path, { method = 'GET', body, headers = {}, raw = false } = {}) {
+async function request(path, { method = 'GET', body, headers = {} } = {}) {
   const isForm = body instanceof FormData;
   let res;
   try {
@@ -46,7 +49,6 @@ async function request(path, { method = 'GET', body, headers = {}, raw = false }
     err.data = data;         // e.g. a rename's name conflict: { conflicts, title }
     throw err;
   }
-  if (raw) return res;
   return res.status === 204 ? null : res.json();
 }
 
@@ -84,50 +86,29 @@ export const apiService = {
   },
 
   /**
-   * Stream the agent run over SSE. Handlers:
+   * Start an answer (POST, 202) and follow it over the WebSocket (lib/turn.js). Handlers:
    *   onMeta({conversation_id, title})  conversation registered
    *   onStatus({node, label})           a step of the agent has started
    *   onStep({node, detail, data})      a trace step, as soon as it happens
    *   onDraft({node, text})             the answer so far, while it is being written
    *   onFinal(response)                 the finished answer
    */
-  async streamMessage(message, conversationId, { onMeta, onStatus, onStep, onDraft, onFinal }) {
-    const res = await request('/chat/stream', {
-      method: 'POST',
-      body: { message, conversation_id: conversationId },
-      raw: true,
-    });
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    const dispatch = (chunk) => {
-      let event = 'message';
-      let data = '';
-      for (const line of chunk.split('\n')) {
-        if (line.startsWith('event:')) event = line.slice(6).trim();
-        else if (line.startsWith('data:')) data += line.slice(5).trim();
-      }
-      if (!data) return;
-      const payload = JSON.parse(data);
-      if (event === 'meta') onMeta?.(payload);
-      else if (event === 'status') onStatus?.(payload);
-      else if (event === 'step') onStep?.(payload);
-      else if (event === 'draft') onDraft?.(payload);
-      else if (event === 'final') onFinal?.(payload);
-    };
-
-    for (;;) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      let idx;
-      while ((idx = buffer.indexOf('\n\n')) !== -1) {
-        dispatch(buffer.slice(0, idx));
-        buffer = buffer.slice(idx + 2);
-      }
+  async streamMessage(message, conversationId, handlers) {
+    // The answer's events come over the WebSocket, tagged with this turn's id; the POST only starts it (202).
+    // Wait briefly for the socket first so no early event is missed (a replay on reconnect covers the rest).
+    const turnId = newTurnId();
+    await realtime.ready();
+    const turn = followTurn(realtime, turnId, handlers, (id) => request(`/conversations/${id}/messages`));
+    try {
+      const started = await request('/chat/stream', {
+        method: 'POST',
+        body: { message, conversation_id: conversationId, turn_id: turnId },
+      });
+      handlers.onMeta?.({ conversation_id: started.conversation_id, title: started.title });
+      await turn.follow(started.conversation_id);
+    } finally {
+      turn.stop();
     }
-    if (buffer.trim()) dispatch(buffer);
   },
 
   // ---------- conversations

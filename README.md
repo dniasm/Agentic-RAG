@@ -15,7 +15,7 @@ The **Documents** page does the same with buttons. See [Document library](#docum
 | Layer | Tech |
 |---|---|
 | Frontend | React 18 + Vite + Tailwind, `react-markdown` |
-| API | FastAPI, SSE streaming, cookie login (PBKDF2, server-side tokens), SQLite |
+| API | FastAPI, one WebSocket for everything pushed to the browser, cookie login (PBKDF2, server-side tokens), SQLite |
 | Agent | LangGraph state machine |
 | LLMs (Groq) | `openai/gpt-oss-120b`: every reply (answers and small talk), the knowledge gate, answer evaluation, decision reviews. `openai/gpt-oss-20b`: routing and query rewrites. `qwen/qwen3.8-27b`: memory extraction and conversation summaries (own rate limit, no hidden reasoning) |
 | Embeddings | Gemini `gemini-embedding-001` (768-d) for documents; Voyage `voyage-4-lite` for conversation memory |
@@ -130,7 +130,7 @@ Old vs current, from the benchmarks and the token log (details: [`docs/DOCUMENTA
 
 | Folder | Holds |
 |---|---|
-| `backend/api/` | HTTP routes (auth, chat + SSE streaming, documents, health) and the login dependency |
+| `backend/api/` | HTTP routes (auth, chat, the WebSocket, documents, health) and the login dependency |
 | `backend/library/` | The document library: catalog, files, indexing queue, document agent, rename/edit/undo, PDF editing, accounts, batch queue, its own API at `/api/library/*` |
 | `backend/config/` | Settings, model clients per role, token accounting |
 | `backend/models/` | SQLite data access and API schemas |
@@ -201,6 +201,25 @@ e.g. `python -m scripts.experiments.test_gate`.
 
 > The embedded Qdrant store allows only one process at a time. `--reload` is fine, but don't run
 > several workers against the same `backend/vector_db/qdrant_data`. Set `QDRANT_URL` to use a Qdrant server instead.
+
+## WebSocket
+
+Everything the server pushes to the browser goes over **one WebSocket per tab**, `GET /api/ws`; the browser asks for
+things over REST. A chat answer is started with `POST /api/chat/stream` (returns `202` at once), and its events arrive
+on the socket tagged with the `turn_id` the browser put on the POST.
+
+- **Auth**: the HttpOnly login cookie, sent by the browser on the handshake (same origin through the Vite proxy,
+  `ws: true`). A page on another site is refused (close 1008); no valid login is closed with 4401 and the page stops
+  retrying.
+- **Messages** (`backend/realtime/schema.py`), each `{seq, channel, type, request_id, data, ts}`: `system`
+  `hello | resync | heartbeat | pong`; `chat` `meta | status | step | draft | final | error`; `queue`
+  `task | changed`; `library` `document`. The client sends only `{"type":"ping"}`.
+- **Reconnect**: the page reconnects with a growing delay and asks for `?after=<last seq>`; the server replays what
+  it kept (500 events or an hour per account; only the newest draft of a turn) or says `resync`. If the socket is
+  down or can't replay, the page reads the saved answer from `GET /api/conversations/{id}/messages` (the message's
+  `meta.turn_id`), so an answer is never lost to a dropped socket.
+- **Several tabs** of one account all receive every event. `request_id` on an event is the id of the REST request that
+  started the work, so `python scripts/logs.py --request <id>` follows it.
 
 ## Services
 
@@ -288,7 +307,8 @@ and `claude_wiki.docx` are committed. `python benchmark/build_wiki_corpus.py` re
 | GET | `/api/auth/me` | |
 | GET / POST / DELETE | `/api/documents`, `/api/documents/upload`, `/api/documents/{id}` | PDF, DOCX, TXT, MD; deduplicated by SHA-256; indexed in the background (`status: "processing"`) |
 | POST | `/api/chat` | full JSON response (answer, tool, sources, trace, evaluation) |
-| POST | `/api/chat/stream` | SSE stream: `meta` → `step`… → `final` |
+| POST | `/api/chat/stream` | starts an answer, `202 {conversation_id, title, turn_id}`; its events (`meta` → `status`/`step`/`draft`… → `final`) arrive on the WebSocket |
+| WS | `/api/ws` | the one socket per tab: chat events, queue progress, indexing stages (see *WebSocket* below) |
 | GET / PATCH / DELETE | `/api/conversations`, `/api/conversations/{id}/messages`, `/api/conversations/{id}` | PATCH `{"title"}` renames a chat |
 | GET | `/api/conversations/{id}/documents`, `/api/conversations/{id}/pending` | documents a chat changed (with the edit Undo / Redo apply to); its queued tasks still to run |
 | GET | `/api/stats` | Overview page metrics |
