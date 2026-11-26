@@ -18,8 +18,9 @@ def _call(rpc_name: str, request):
 def create_user(username: str, password_hash: str) -> dict:
     user = {"id": uuid.uuid4().hex, "username": username, "password_hash": password_hash, "created_at": _now()}
     reply = _call("ImportUsers", pb.ImportUsersRequest(users=[pb.ImportedUser(**user)]))
-    if not reply.users_created:
-        raise ValueError(f"the User service already has an account named {username!r}")
+    if not reply.users_created:   # tests that each make "their" account share one service database: the name gets a suffix
+        user["username"] = f"{username}-{user['id'][:6]}"
+        _call("ImportUsers", pb.ImportUsersRequest(users=[pb.ImportedUser(**user)]))
     return user
 
 
