@@ -1,4 +1,5 @@
 """The stage 3 merge script on two tiny source sets (no network: vectors are made up)."""
+import contextlib
 import hashlib
 import json
 import sqlite3
@@ -71,14 +72,8 @@ def sources(tmp_path, monkeypatch):
     (renamer / "library" / "u2").mkdir(parents=True)
     text = b"Measles fact sheet"
     (renamer / "library" / "u2" / "Measles Fact Sheet.txt").write_bytes(text)
-    monkeypatch.setattr(settings, "database_path", str(renamer / "catalog.db"))
-    from backend.library import catalog
-    catalog.reset_connection()
-    with catalog.tx() as c:
-        c.executescript("CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE COLLATE NOCASE, "
-                        "password_hash TEXT NOT NULL, created_at TEXT NOT NULL); "   # the renamer's own catalog had them
-                        "CREATE TABLE IF NOT EXISTS auth_tokens (token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, "
-                        "created_at TEXT NOT NULL, expires_at TEXT NOT NULL);")
+    with contextlib.closing(sqlite3.connect(renamer / "catalog.db")) as c:   # the renamer's own file, as it had it
+        c.executescript(merge_library.LEGACY_CATALOG_SCHEMA + merge_library.LEGACY_USER_TABLES)
         c.execute("INSERT INTO users VALUES ('u2', 'bob', 'pbkdf2_sha256$1$aa$bb', ?)", (T0,))
         c.execute("INSERT INTO documents (id, title, original_name, file_name, ext, sha256, original_sha256, "
                   "size_bytes, pages, chunks, owner, status, created_at, updated_at) VALUES "
@@ -88,8 +83,7 @@ def sources(tmp_path, monkeypatch):
                   "VALUES ('s1', '[]', ?, '{}', 'u2', ?, ?)",
                   (json.dumps([{"role": "user", "text": "rename who to Measles Fact Sheet"},
                                {"role": "assistant", "text": "Renamed.", "actions": [{"type": "rename"}]}]), T0, T1))
-    catalog.reset_connection()
-    monkeypatch.undo()
+        c.commit()
     _store(renamer / "qdrant", [_point(3, "u2", "r1", "measles fact sheet")])
     # the renamer's collection has its own name
     client = QdrantClient(path=str(renamer / "qdrant"))

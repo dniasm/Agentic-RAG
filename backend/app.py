@@ -24,7 +24,6 @@ from backend.config import redact
 from backend.config.settings import settings
 from backend.library import api as library_api
 from backend.library.auth import UserServiceDown
-from backend.models.database import init_db
 from backend import version
 from backend.compression import Compression
 from backend.request_log import RequestLogMiddleware
@@ -45,7 +44,6 @@ async def lifespan(_: FastAPI):
     missing = [k for k in ("groq_api_key", "gemini_api_key") if not getattr(settings, k)]
     if missing:
         raise RuntimeError(f"Missing required settings in .env: {', '.join(k.upper() for k in missing)}")
-    init_db()
     library_api.startup()  # the document library: logs, unfinished files, the batch queue worker
     version.log_startup()  # the commit it runs, so an old backend left running can be told apart
     try:

@@ -265,7 +265,6 @@ def test_orchestrator_calls_carry_the_request_id_to_the_service():
 
 def test_user_stats_split_keeps_the_documents_part_local():
     from backend.models import database as db
-    db.init_db()   # the documents table is the catalog's: this test must not rely on another test having made it
     uid = db.create_user("stats_split", "x")["id"]
     conv = db.create_conversation(uid, "c")
     db.add_message(conv["id"], "assistant", "a", "rag", {"latency_ms": 10})

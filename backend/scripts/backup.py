@@ -4,11 +4,12 @@
     python -m backend.scripts.backup --dest <folder>    # into <folder>\\day7-<time>
 
 What is copied:
-  * app.db (users, documents, chats, edits): through SQLite's backup API, so a consistent copy even while the backend
-    is running;
-  * the stored documents (data/library) and their edit history (data/versions);
+  * app.db, only while an old one is still there (the orchestrator holds no database now; its old tables are what the
+    migrate_* scripts copy into the services): through SQLite's backup API;
+  * the stored documents (data/library) and their edit history files (data/versions);
   * the services' data (SERVICES_DATA_DIR, backend/data/services by default): each service's SQLite file (user,
-    conversation, memory, document .db) through the same backup API, and their Qdrant folders (document_qdrant,
+    conversation, memory, document .db: the library catalog, with its rename and edit records, is in document.db)
+    through the same backup API, and their Qdrant folders (document_qdrant,
     the search index; memory_qdrant), but only while the owning service is stopped. Their files change under a running
     service, so a copy then could be torn; the backup says it has no search index instead (FULL vs PARTIAL).
 
@@ -19,7 +20,7 @@ The copy holds documents and password hashes: keep it on this machine or a drive
 anywhere without their say. A copy on the same disk doesn't survive that disk failing.
 
 Restoring is manual, because it overwrites live data (docs/DOCUMENTATION.md, "Backups"): stop the backend, copy
-app.db, library/ and versions/ back into backend/data/ and services/ back into backend/data/services/ (or
+library/ and versions/ (and app.db, if the backup has one) back into backend/data/ and services/ back into backend/data/services/ (or
 SERVICES_DATA_DIR); then start the backend and the services. From a PARTIAL backup, re-index afterwards (it costs embedding quota).
 """
 import argparse
@@ -74,8 +75,9 @@ def backup(dest_root: Path, db_path: Path, data_dir: Path, services_dir: Path, n
     folder.mkdir(parents=True)
     copied, skipped = [], []
 
-    _copy_database(db_path, folder / "app.db")
-    copied.append("app.db")
+    if db_path.exists():   # an old app.db (not made any more): kept until its tables are migrated and it is deleted
+        _copy_database(db_path, folder / "app.db")
+        copied.append("app.db")
 
     for name in ("library", "versions"):
         if (data_dir / name).exists():

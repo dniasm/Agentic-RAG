@@ -2,7 +2,7 @@
 
 They live in the Conversation service (services/conversation/, its own conversation.db); these functions call it
 over gRPC (backend/clients.py) and return the same dicts the old SQL did, so every caller is unchanged. The
-documents part of user_stats is still counted here, from the catalog.
+documents part of user_stats is counted here, from the catalog (also the Document service's).
 """
 import json
 
@@ -10,7 +10,7 @@ import grpc
 
 from agentic_rag_proto import conversation_pb2 as pb
 from backend.clients import get_clients
-from backend.models.connection import _one, tx
+from backend.library import catalog
 
 
 def _call(rpc_name: str, request):
@@ -100,15 +100,11 @@ def list_messages(conv_id: str, limit: int | None = None) -> list[dict]:
 
 # ---------------------------------------------------------------- stats
 def user_stats(user_id: str) -> dict:
-    with tx() as c:
-        docs = _one(c.execute(
-            "SELECT COUNT(*) n, COALESCE(SUM(chunks), 0) chunks FROM documents WHERE owner = ? AND status = 'indexed'",
-            (user_id,),
-        ))
+    indexed = catalog.list_documents(status="indexed", owner=user_id)
     s = _call("GetStats", pb.GetStatsRequest(user_id=user_id))
     return {
-        "documents": docs["n"],
-        "chunks": docs["chunks"],
+        "documents": len(indexed),
+        "chunks": sum(d["chunks"] or 0 for d in indexed),
         "conversations": s.conversations,
         "queries": s.queries,
         "by_tool": dict(s.by_tool),

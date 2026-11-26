@@ -12,9 +12,7 @@ import pytest
 
 from backend.library import catalog, config, library, titles
 from services.document import ingestion, rerank, retrieval, sparse, vectorstore  # noqa: F401
-from backend.models import database as db
-
-db.init_db()   # day7's tables too (the app's startup does this; TestClient without `with` skips it)
+from services.document import db as document_db
 
 
 def fake_vector(text: str) -> list[float]:
@@ -53,11 +51,9 @@ def fakes(monkeypatch, user_db):
     yield
     for d in catalog.list_documents():
         library.delete(d["id"])
-    with catalog.tx() as c:
-        c.execute("DELETE FROM sessions")
-        c.execute("DELETE FROM renames")
-        c.execute("DELETE FROM batches")
-        c.execute("DELETE FROM batch_tasks")
+    with document_db.shared().tx() as c:   # the Document service's catalog, in this process: nothing carries over
+        for table in ("documents", "renames", "edits", "undone_edits", "sessions", "batches", "batch_tasks"):
+            c.execute(f"DELETE FROM {table}")
     for folder in config.LIBRARY_DIR.iterdir() if config.LIBRARY_DIR.exists() else []:
         if folder.is_dir():   # users' own folders
             shutil.rmtree(folder, ignore_errors=True)

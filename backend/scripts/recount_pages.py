@@ -6,7 +6,6 @@ from backend.library import catalog, export, library
 
 
 def main() -> None:
-    catalog.init()
     changed = 0
     for doc in catalog.list_documents():
         if doc["ext"] == ".pdf" or doc["status"] != "indexed":

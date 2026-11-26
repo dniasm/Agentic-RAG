@@ -435,10 +435,10 @@ def test_list_and_active_or_recent_batches_respect_owner_and_limit(stub):
 # ---------------------------------------------------------------- migration
 def make_source(path: Path) -> dict:
     """An app.db as the orchestrator made it, with a bit of everything (and a pre-accounts row)."""
-    from backend.library import catalog as old
+    from backend.scripts.merge_library import LEGACY_CATALOG_SCHEMA   # the tables as the orchestrator's app.db had them
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
-    conn.executescript(old.SCHEMA)
+    conn.executescript(LEGACY_CATALOG_SCHEMA)
     conn.executemany(
         "INSERT INTO documents (id, title, original_name, file_name, ext, sha256, original_sha256, size_bytes, pages, "
         "chunks, summary, keywords, owner, status, error, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",

@@ -516,23 +516,26 @@ def undo_refresh_expected(doc: dict) -> bool:
         >= config.SUMMARY_REFRESH_SHARE
 
 
-def _finish(doc: dict, reloaded: dict, before: str | None = None) -> bool:
+def _finish(doc: dict, reloaded: dict, before: str | None = None, commit=None) -> bool:
     """After the file and index have changed: update the catalog row. The summary and keywords (which drive search
     by content) are written again by the model, about 2,200 Groq tokens, unless the change is small: under
     SUMMARY_REFRESH_SHARE of the text, the old summary still holds. That model call is only scheduled here, to run
-    after the library lock is released (backend/library/summaries.py). Returns whether a refresh was queued."""
+    after the library lock is released (backend/library/summaries.py). `commit(fields)` stores the new fields in place
+    of a plain update, so an undo, redo or edit can write them with its history record in one transaction. Returns
+    whether a refresh was queued."""
     path = config.LIBRARY_DIR / doc["file_name"]
     data = path.read_bytes()
     from backend.library import export   # imported here: export imports this module
     fields = dict(sha256=rag.file_sha256(data), size_bytes=len(data),
-                  pages=export.page_count(catalog.get_document(doc["id"]) or doc, reloaded["pages"]),
+                  pages=export.page_count({**(catalog.get_document(doc["id"]) or doc), "ext": doc["ext"],
+                                          "file_name": doc["file_name"]}, reloaded["pages"]),
                   chunks=reloaded["chunks"])
     queue = False
     try:
         queue = before is None or changed_share(before, _plain_text(path)) >= config.SUMMARY_REFRESH_SHARE
     except Exception:
         log.warning("Couldn't compare the text of %s", doc["title"], exc_info=True)
-    catalog.update_document(doc["id"], **fields)
+    (commit or (lambda f: catalog.update_document(doc["id"], **f)))(fields)
     if queue:   # after the new hash is stored: the refresh is written only if the document is still this one
         summaries.schedule(doc["id"], fields["sha256"])
     return queue
@@ -580,9 +583,10 @@ def undo(doc_id: str, edit_id: int | None = None) -> dict:
         current.unlink(missing_ok=True)
     if target != path:
         path.unlink(missing_ok=True)
-    catalog.update_document(doc_id, ext=doc["ext"], file_name=doc["file_name"])
-    refreshed = _finish(doc, reloaded, before)
-    catalog.move_edit_to_undone({**last, "doc_id": doc_id}, redo.name, path.suffix)   # the backup stays for a redo
+    # the backup stays for a redo; the document's new file and the undo are stored together
+    refreshed = _finish(doc, reloaded, before, commit=lambda f: catalog.move_edit_to_undone(
+        {**last, "doc_id": doc_id}, redo.name, path.suffix,
+        document_fields={"ext": doc["ext"], "file_name": doc["file_name"], **f}))
     event("undo", doc=doc_id, title=doc["title"], undid=last["detail"], chunks=reloaded["chunks"],
           embedded=reloaded["embedded"],
           summary_refresh_queued=refreshed)
@@ -629,9 +633,8 @@ def redo(doc_id: str, edit_id: int | None = None) -> dict:
         current.unlink(missing_ok=True)
     if target != path:
         path.unlink(missing_ok=True)
-    catalog.update_document(doc_id, ext=doc["ext"], file_name=doc["file_name"])
-    refreshed = _finish(doc, reloaded, before)
-    catalog.restore_undone(undone["id"])
+    refreshed = _finish(doc, reloaded, before, commit=lambda f: catalog.restore_undone(
+        undone["id"], document_fields={"ext": doc["ext"], "file_name": doc["file_name"], **f}))
     saved.unlink(missing_ok=True)
     event("redo", doc=doc_id, title=doc["title"], redid=undone["detail"], chunks=reloaded["chunks"],
           embedded=reloaded["embedded"], summary_refresh_queued=refreshed)
@@ -838,16 +841,17 @@ def _edit(source: dict, doc: dict, op: str, find: str, text: str, replace_all: b
         raise EditError(_why_unchanged("edit", e)) from e
 
     if converted:   # from now on the document is the Markdown copy; the PDF lives on in versions/
-        catalog.update_document(doc_id, ext=doc["ext"], file_name=doc["file_name"])
-        (config.LIBRARY_DIR / source["file_name"]).unlink(missing_ok=True)
         reloaded = {**reloaded, "pages": source["pages"] or reloaded["pages"]}
-    refreshed = _finish(doc, reloaded, before)
     written = info.get("written_text", text)
     detail = (f'replaced "{find}" with "{written}"' if op == "replace" else
               "edited the text in the editor" if op == "rewrite" else f'appended "{text[:80]}"')[:300]
     if converted:
         detail = ("converted the PDF to Markdown; " + detail)[:300]
-    catalog.record_edit(doc_id, op, detail, backup.name)
+    now_markdown = {"ext": doc["ext"], "file_name": doc["file_name"]} if converted else {}
+    refreshed = _finish(doc, reloaded, before, commit=lambda f: catalog.record_edit(
+        doc_id, op, detail, backup.name, document_fields={**now_markdown, **f}))   # the edit and the document, together
+    if converted:
+        (config.LIBRARY_DIR / source["file_name"]).unlink(missing_ok=True)
     _drop_redo_history(doc_id)
     event("edit", doc=doc_id, title=doc["title"], op=op, changes=changed, chunks=reloaded["chunks"],
           embedded=reloaded["embedded"], detail=detail,

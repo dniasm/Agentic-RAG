@@ -180,9 +180,8 @@ def process(doc_id: str, ask_title=None) -> dict:
         with WRITE_LOCK:   # choosing the title and the file name, and taking them, is one step for renames too
             title = _unique_title(profile.title, exclude=doc_id, owner=doc["owner"])
             file_name = _move_file(catalog.get_document(doc_id), title)
-            catalog.update_document(doc_id, title=title, file_name=file_name, summary=profile.summary,
-                                    keywords=profile.keywords)
-            catalog.record_rename(doc_id, doc["original_name"], title, "titled")
+            catalog.update_document(doc_id, rename=(doc["original_name"], title, "titled"), title=title,
+                                    file_name=file_name, summary=profile.summary, keywords=profile.keywords)
 
         result = rag.ingest(config.LIBRARY_DIR / file_name, user_id=doc["owner"], doc_id=doc_id, filename=title,
                             file_name=file_name,
@@ -248,8 +247,7 @@ def rename(doc_id: str, new_title: str) -> dict:
         if file_name != doc["file_name"]:  # put the file back so the catalog and disk still agree
             os.replace(config.LIBRARY_DIR / file_name, _path(doc))
         raise
-    catalog.update_document(doc_id, title=title, file_name=file_name)
-    catalog.record_rename(doc_id, doc["title"], title, "user")
+    catalog.update_document(doc_id, rename=(doc["title"], title, "user"), title=title, file_name=file_name)
     event("rename", doc=doc_id, old=doc["title"], new=title, file=file_name)
     return {"old_title": doc["title"], "new_title": title, "file_name": file_name}
 

@@ -46,7 +46,6 @@ def test_indexing_stops_at_the_sites_share(monkeypatch):
 
 def test_the_counts_survive_a_restart():
     embed_budget.charge("u1", 7)
-    catalog.reset_connection()           # what a new process does: a fresh connection to the same file
     assert embed_budget.used("u1") == 7 and embed_budget.used() == 7
 
 

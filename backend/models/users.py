@@ -2,12 +2,15 @@
 accounts with backend/library/auth.py. These add or read an account with a password hash given by the caller, which a
 real sign-up never does, so they go through the service's bulk-import call (and are for tests and scripts only)."""
 import uuid
+from datetime import datetime, timezone
 
 from agentic_rag_proto import user_pb2 as pb
 from backend.clients import get_clients
-from backend.models.connection import _now
 
-SCHEMA = ""   # no users table in app.db any more
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 def _call(rpc_name: str, request):

@@ -36,7 +36,6 @@ from qdrant_client import QdrantClient, models
 
 from backend.config.settings import BACKEND_DIR, PROJECT_ROOT, settings
 from backend.library import catalog, config, library
-from backend.models import database as db
 from services.conversation import db as conv_store
 from services.document import sparse, vectorstore
 from services.common import config as service_config
@@ -50,6 +49,92 @@ CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, username TEXT NOT NULL UN
 CREATE TABLE IF NOT EXISTS auth_tokens (token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, created_at TEXT NOT NULL,
     expires_at TEXT NOT NULL);
 """
+LEGACY_CATALOG_SCHEMA = """
+CREATE TABLE IF NOT EXISTS documents (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    original_name TEXT NOT NULL,
+    file_name TEXT NOT NULL,          -- name of the stored file in data/library (follows the title)
+    ext TEXT NOT NULL,
+    sha256 TEXT NOT NULL,             -- the stored file now (changes with every edit)
+    original_sha256 TEXT,             -- the file as uploaded: re-uploading it is a duplicate, edited or not
+    size_bytes INTEGER NOT NULL,
+    pages INTEGER,
+    chunks INTEGER,
+    summary TEXT NOT NULL DEFAULT '',
+    keywords TEXT NOT NULL DEFAULT '[]',
+    owner TEXT NOT NULL DEFAULT 'library',   -- the user whose library it is ("library": before accounts existed)
+    status TEXT NOT NULL,             -- processing | indexed | failed
+    error TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS renames (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    doc_id TEXT NOT NULL,
+    old_title TEXT NOT NULL,
+    new_title TEXT NOT NULL,
+    reason TEXT NOT NULL,             -- titled (on ingest) | user (through the agent)
+    at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS edits (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    doc_id TEXT NOT NULL,
+    operation TEXT NOT NULL,          -- replace | append
+    detail TEXT NOT NULL,
+    backup TEXT NOT NULL,             -- the file as it was before, in data/versions/<doc_id>/
+    at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS batches (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,         -- the chat that queued it
+    owner TEXT NOT NULL DEFAULT 'library',
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS batch_tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    batch_id TEXT NOT NULL,
+    position INTEGER NOT NULL,
+    instruction TEXT NOT NULL,
+    payload TEXT,                     -- a structured change (run in code, no model), or NULL for free text
+    checkpoint TEXT,                  -- the document as it was when a structured change began (doc_id, sha256, title)
+    status TEXT NOT NULL,             -- queued | running | done | not_done | failed | cancelled
+    reply TEXT NOT NULL DEFAULT '',
+    actions TEXT NOT NULL DEFAULT '[]',
+    tokens INTEGER NOT NULL DEFAULT 0,
+    started_at TEXT,
+    finished_at TEXT
+);
+CREATE TABLE IF NOT EXISTS sessions (
+    id TEXT PRIMARY KEY,
+    turn INTEGER NOT NULL DEFAULT 0,
+    llm_messages TEXT NOT NULL DEFAULT '[]',   -- the model's conversation, tool calls included
+    display TEXT NOT NULL DEFAULT '[]',        -- what the chat window shows
+    guard TEXT NOT NULL DEFAULT '{}',          -- what the rename guard remembers (see agent.Guard)
+    owner TEXT NOT NULL DEFAULT 'library',     -- the user the chat belongs to
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS undone_edits (
+    id INTEGER PRIMARY KEY,           -- the edit's own id: a redo brings the edit back as it was
+    doc_id TEXT NOT NULL,
+    operation TEXT NOT NULL,
+    detail TEXT NOT NULL,
+    backup TEXT NOT NULL,             -- the file before the edit (what the undo put back), in data/versions/<doc_id>/
+    redo TEXT NOT NULL,               -- the file with the edit (what a redo puts back), same folder
+    ext TEXT NOT NULL,                -- the edited file's type (a PDF edit may have made it Markdown)
+    at TEXT NOT NULL,                 -- when the edit was made
+    undone_at TEXT NOT NULL,
+    undo_order INTEGER NOT NULL DEFAULT 0   -- counts up with each undo: undone_at has whole seconds, and id is the
+                                            -- edit's own (an older edit undone after a newer one has the lower id)
+);
+CREATE INDEX IF NOT EXISTS renames_doc ON renames (doc_id);
+CREATE INDEX IF NOT EXISTS edits_doc ON edits (doc_id);
+CREATE INDEX IF NOT EXISTS tasks_status ON batch_tasks (status);
+CREATE INDEX IF NOT EXISTS tasks_batch ON batch_tasks (batch_id, position);
+CREATE INDEX IF NOT EXISTS documents_owner ON documents (owner);
+CREATE TABLE IF NOT EXISTS migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL);
+"""   # the catalog as app.db had it: the merged app.db is the source scripts/migrate_library_catalog.py reads
 DATA_FOLDERS =("library", "versions", "font-index", "logs")
 
 
@@ -86,20 +171,37 @@ def _rows(conn: sqlite3.Connection, sql: str, args=()) -> list[dict]:
     return [dict(r) for r in conn.execute(sql, args)]
 
 
+def _staged_reader(staging: Path):
+    """The catalog reads the library's file helpers need (titles and file names taken), from the staged app.db: the
+    live catalog is the Document service's, which a merge into a staging folder must not touch."""
+    def query(sql: str, args=()) -> list[dict]:
+        with contextlib.closing(sqlite3.connect(f"file:{staging / 'app.db'}?mode=ro", uri=True)) as c:
+            return _rows(c, sql, args)
+
+    def list_documents(status: str | None = None, owner: str | None = None) -> list[dict]:
+        return query("SELECT * FROM documents WHERE (? IS NULL OR status = ?) AND (? IS NULL OR owner = ?) "
+                     "ORDER BY created_at, id", (status, status, owner, owner))
+
+    def get_document(doc_id: str) -> dict | None:
+        return next(iter(query("SELECT * FROM documents WHERE id = ?", (doc_id,))), None)
+
+    def used_file_names(exclude_doc: str | None = None) -> set[str]:
+        return {r["file_name"].replace("\\", "/").lower() for r in query("SELECT id, file_name FROM documents")
+                if r["id"] != exclude_doc}
+    return list_documents, get_document, used_file_names
+
+
 @contextlib.contextmanager
 def _pointed_at(staging: Path):
-    """The catalog and the library's file helpers work on the staging copy while the merge runs."""
-    saved = settings.database_path, config.DATA_DIR, config.LIBRARY_DIR, db._conn
-    catalog.reset_connection()
-    settings.database_path, config.DATA_DIR, config.LIBRARY_DIR, db._conn = (
-        str(staging / "app.db"), staging, staging / "library", None)
+    """The library's file helpers work on the staging copy while the merge runs (their catalog reads come from the
+    staged app.db, see _staged_reader)."""
+    saved = config.DATA_DIR, config.LIBRARY_DIR, catalog.list_documents, catalog.get_document, catalog.used_file_names
+    config.DATA_DIR, config.LIBRARY_DIR = staging, staging / "library"
+    catalog.list_documents, catalog.get_document, catalog.used_file_names = _staged_reader(staging)
     try:
         yield
     finally:
-        catalog.reset_connection()
-        if db._conn is not None:
-            db._conn.close()
-        settings.database_path, config.DATA_DIR, config.LIBRARY_DIR, db._conn = saved
+        config.DATA_DIR, config.LIBRARY_DIR, catalog.list_documents, catalog.get_document, catalog.used_file_names = saved
 
 
 def _source_files(day7_root: Path) -> dict[str, Path]:
@@ -195,11 +297,10 @@ def merge(day7_root: Path, renamer_data: Path, staging: Path, conversation_db: P
     stage.close()
 
     with _pointed_at(staging):
-        db.init_db()   # day7's schema (no documents table) and the catalog's
-        # Accounts live in the User service now; the merged app.db still gets them as the source that
-        # scripts/migrate_users.py copies into user.db.
+        # The merged app.db is a source for the migrate_* scripts: the catalog's tables (no documents table of day7's
+        # is left) and the accounts that scripts/migrate_users.py copies into user.db.
         stage = sqlite3.connect(staging / "app.db")
-        stage.executescript(LEGACY_USER_TABLES)
+        stage.executescript(LEGACY_CATALOG_SCHEMA + LEGACY_USER_TABLES)
         stage.commit()
         stage.close()
         conn = sqlite3.connect(f"file:{staging / 'app.db'}", uri=True)   # uri: ATTACH below opens read-only

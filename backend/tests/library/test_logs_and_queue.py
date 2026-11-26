@@ -5,6 +5,7 @@ from datetime import date
 import pytest
 
 from backend.library import batch, catalog, library
+from services.document import db as document_db
 from test_agent import turn
 from services.common.log import setup_logging
 from test_editing import stored
@@ -161,7 +162,7 @@ def test_the_queue_panel_gets_only_active_and_recent_batches(library_docs):
     recent = catalog.add_batch("s", ["c"])
     catalog.update_task(old_done["tasks"][0]["id"], status="done")
     catalog.update_task(recent["tasks"][0]["id"], status="done")
-    with catalog.tx() as c:                                   # two of them were queued two hours ago
+    with document_db.shared().tx() as c:                      # two of them were queued two hours ago (in the service's file)
         c.execute("UPDATE batches SET created_at = '2000-01-01T00:00:00+00:00' WHERE id IN (?, ?)",
                   (old_done["id"], old_waiting["id"]))
     shown = {b["id"] for b in batch.status()["batches"]}
@@ -169,6 +170,6 @@ def test_the_queue_panel_gets_only_active_and_recent_batches(library_docs):
 
 
 def test_the_searched_columns_are_indexed():
-    with catalog.tx() as c:
+    with document_db.shared().tx() as c:   # the Document service's file
         names = {r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type = 'index'")}
     assert {"renames_doc", "edits_doc", "tasks_status", "tasks_batch"} <= names

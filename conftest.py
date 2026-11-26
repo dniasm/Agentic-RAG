@@ -7,7 +7,7 @@ import tempfile
 TEST_DATA = tempfile.mkdtemp(prefix="day7_test_")
 os.environ.update({
     "QDRANT_URL": "",
-        "DATABASE_PATH": os.path.join(TEST_DATA, "app.db"),
+    "DATABASE_PATH": os.path.join(TEST_DATA, "app.db"),   # the orchestrator opens none: a test that finds this file made fails
     "LIBRARY_DATA_DIR": os.path.join(TEST_DATA, "library-data"),
     "LOG_DIR": os.path.join(TEST_DATA, "logs"),   # importing backend.app starts the log files: never in the repo's logs/
     "SERVICES_DATA_DIR": os.path.join(TEST_DATA, "services"),   # each service's own SQLite file
@@ -83,8 +83,6 @@ def pytest_sessionfinish(session, exitstatus):
     DOCUMENT.stop()   # (closes its Qdrant folder and document.db)
     MEMORY.stop()
     USER.stop()
-    from backend.library import catalog
-    catalog.reset_connection()
     shutil.rmtree(TEST_DATA, ignore_errors=True)
 
 

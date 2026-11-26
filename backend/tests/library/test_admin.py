@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 
 from backend.config import api_meter, gemini, llm
 from backend.config.settings import settings
-from backend.library import catalog, config, embed_budget
+from backend.library import config, embed_budget
 
 INVITE = "let-me-in-42"
 SECRET = "gsk_test_secret_key_never_shown"
@@ -159,7 +159,6 @@ def test_counts_survive_a_restart():
     api_meter.count("gemini", 0, "questions", calls=2)
     api_meter.count("voyage", 0, "rerank", calls=1)
     api_meter.flush()
-    catalog.reset_connection()
     got = {(r["provider"], r["model"]): r["calls"] for r in api_meter.rows_since(24)}
     assert got == {("gemini", "questions"): 2, ("voyage", "rerank"): 1}
 

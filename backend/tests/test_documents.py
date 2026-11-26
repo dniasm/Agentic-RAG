@@ -14,19 +14,18 @@ from fastapi.testclient import TestClient
 
 from backend.api.dependencies import get_current_user
 from backend.api.routes import documents
-from backend.config.settings import settings
 from backend.library import api as library_api, catalog, config, library, titles
 from backend.models import database as db
 from backend.documents.rag import IngestionError
+from services.document import db as document_db
 
 
 class LibraryBackedDocuments(unittest.TestCase):
     def setUp(self):
-        self._old = settings.database_path, db._conn, config.DATA_DIR, config.LIBRARY_DIR
+        self._old = config.DATA_DIR, config.LIBRARY_DIR
         tmp = Path(tempfile.mkdtemp())
-        settings.database_path, db._conn = str(tmp / "t.db"), None
         config.DATA_DIR, config.LIBRARY_DIR = tmp, tmp / "library"
-        db.init_db()
+        self._empty_catalog()
         self.user = db.create_user("docs_test", "x")
         self.other = db.create_user("someone_else", "x")
 
@@ -49,9 +48,14 @@ class LibraryBackedDocuments(unittest.TestCase):
             self.addCleanup(patcher.stop)
 
     def tearDown(self):
-        catalog.reset_connection()
-        db._conn.close()
-        settings.database_path, db._conn, config.DATA_DIR, config.LIBRARY_DIR = self._old
+        self._empty_catalog()
+        config.DATA_DIR, config.LIBRARY_DIR = self._old
+
+    @staticmethod
+    def _empty_catalog():   # the Document service's catalog is one for the whole test session
+        with document_db.shared().tx() as c:
+            for table in ("documents", "renames", "edits", "undone_edits", "sessions", "batches", "batch_tasks"):
+                c.execute(f"DELETE FROM {table}")
 
     def upload(self, text=b"Some text about BM25."):
         return self.client.post("/documents/upload", files={"file": ("notes.txt", text, "text/plain")})

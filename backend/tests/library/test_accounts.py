@@ -33,8 +33,7 @@ def two_users(library_docs, signed_in, invite, tmp_path, user_db):
     path.write_text("Mallory's secret plan\nThe plan is to rename everything about kernels.", encoding="utf-8")
     doc, _ = library.ingest_path(path)          # made as the legacy owner, then given to her: row and chunks both
     library._set_chunk_fields(doc["id"], config.OWNER, user_id=mallory["id"])
-    with catalog.tx() as c:
-        c.execute("UPDATE documents SET owner = ? WHERE id = ?", (mallory["id"], doc["id"]))
+    catalog.update_document(doc["id"], owner=mallory["id"])
     return signed_in, other, dict(user_db.connection().execute("SELECT * FROM users WHERE id = ?", (signed_in.user["id"],)).fetchone()), mallory
 
 
