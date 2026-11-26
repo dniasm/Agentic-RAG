@@ -17,6 +17,7 @@ from qdrant_client import models
 
 from backend.library import catalog, config, limits, naming, titles
 from backend.library.logs import event
+from services.common.log import in_context
 from backend.config import voyage
 from backend.rag import ingestion, rerank, retrieval, vectorstore
 from backend.config.settings import settings as day7_settings
@@ -35,7 +36,7 @@ class LibraryError(Exception):
 WRITE_LOCK = threading.RLock()
 
 
-LOCK_SLOW_SECONDS = 2.0   # held longer than this: one "lock_held" line in events.log (everyone else waited)
+LOCK_SLOW_SECONDS = 2.0   # held longer than this: one "lock_held" line in the audit log (everyone else waited)
 _held = threading.local()   # how deep this thread is in the (re-entrant) lock: only the outermost hold is timed
 
 
@@ -151,7 +152,7 @@ _queue = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ingest")
 
 def queue(doc_id: str) -> None:
     """Index the document in the background (process())."""
-    _queue.submit(process, doc_id)
+    _queue.submit(in_context(process), doc_id)
 
 
 def stop_queue() -> None:

@@ -15,6 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from backend.library import catalog, config, library, titles
 from backend.library.logs import event
+from services.common.log import in_context
 
 log = logging.getLogger(__name__)
 
@@ -36,7 +37,7 @@ def schedule(doc_id: str, sha256: str) -> None:
             return                     # its job is already waiting: it will use the newest hash
         _running += 1
         _idle.clear()
-    _worker.submit(_run, doc_id)
+    _worker.submit(in_context(_run), doc_id)
 
 
 def _run(doc_id: str) -> None:

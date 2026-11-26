@@ -17,17 +17,24 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.api.routes import admin, auth, chat, documents, health
+from backend.config import redact
 from backend.config.settings import settings
 from backend.library import api as library_api
 from backend.memory.store import ensure_memory_collection
 from backend.models.database import init_db
 from backend import version
 from backend.compression import Compression
+from backend.request_log import RequestLogMiddleware
 from backend.security import SecurityMiddleware
+from services.common.log import setup_logging
 from backend.web import mount_frontend
 from backend.rag.vectorstore import get_client, close_client
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+setup_logging("orchestrator")   # logs/orchestrator/<date>.log, logs/audit/, the console (services/common/log.py)
+redact.guard_handlers()          # the configured API keys, exactly, on top of the pattern masks
+logging.getLogger("backend.library").setLevel(logging.DEBUG)   # the library's tool calls and waits reach the files
+for _noisy in ("httpcore", "google_genai.models", "google_genai._api_client", "urllib3"):
+    logging.getLogger(_noisy).setLevel(logging.WARNING)
 logging.getLogger("httpx").setLevel(logging.INFO)  # one line per HTTP call drowns out the useful logs
 
 
@@ -80,6 +87,9 @@ app.add_middleware(Compression)
 
 # Host and cross-site checks, security headers (backend/security.py). Added last, so it runs first.
 app.add_middleware(SecurityMiddleware)
+
+# The request id and the access line. Added last, so outermost: even a refused request gets both.
+app.add_middleware(RequestLogMiddleware)
 
 #ROUTES
 for module in (health, auth, chat, documents, admin):

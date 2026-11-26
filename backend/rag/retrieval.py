@@ -18,6 +18,7 @@ import numpy as np
 
 from backend.config.settings import settings
 from backend.rag import embedding_cache, sparse, vectorstore
+from services.common.log import in_context
 
 log = logging.getLogger(__name__)
 
@@ -55,7 +56,7 @@ def retrieve(queries: list[str], user_id: str, k: int | None = None,
     hybrid = mode == "hybrid"
     try:
         with ThreadPoolExecutor(max_workers=min(4, len(queries))) as pool:
-            vectors = list(pool.map(embedding_cache.embed_query, queries))  # each distinct question embedded once
+            vectors = list(pool.map(in_context(embedding_cache.embed_query), queries))  # each distinct question embedded once
     except Exception as e:
         if not hybrid:
             raise

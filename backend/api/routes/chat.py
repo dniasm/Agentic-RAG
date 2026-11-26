@@ -30,6 +30,7 @@ from backend.models.schemas import (
     MessageOut,
 )
 from backend.memory.batching import MemoryBatcher
+from services.common.log import in_context
 from backend.tools.memory import extract_and_save_batch, summarize_exchange
 
 log = logging.getLogger(__name__)
@@ -66,7 +67,7 @@ _memory_batcher = MemoryBatcher(
     # The answer writer sees the last history_turns messages; flush before a waiting fact leaves that window
     # (one exchange early, since memory work runs after the reply).
     max_age=max(1, settings.history_turns // 2 - 1),
-    schedule=lambda flush, user_id: _memory_worker.submit(flush, user_id),
+    schedule=lambda flush, user_id: _memory_worker.submit(in_context(flush), user_id),
 )
 
 # user_id -> conversation ids whose memory work is still queued or running on the worker
@@ -224,7 +225,7 @@ def _persist(
     )
     with _queued_lock:
         _queued_memory.setdefault(user_id, []).append(conv["id"])
-    _memory_worker.submit(_remember, user_id, conv["id"], user_message, history, dict(state), tracker,
+    _memory_worker.submit(in_context(_remember), user_id, conv["id"], user_message, history, dict(state), tracker,
                           usage_context)
 
     return {
@@ -274,7 +275,7 @@ def _remember_exchange(user_id: str, conv_id: str, user_message: str, history: l
             short = len(question) + len(answer) <= EPISODE_RAW_MAX_CHARS
             summary = None if short else summarize_exchange(question, answer, callbacks=[tracker])
             episode = summary or raw
-            _episode_worker.submit(_save_episode, user_id, episode, conv_id)
+            _episode_worker.submit(in_context(_save_episode), user_id, episode, conv_id)
         except Exception:
             log.exception("Semantic memory persistence failed")
 
@@ -518,7 +519,7 @@ def chat_stream(req: ChatRequest, user: dict = Depends(get_current_user)):
             lock.release()
             events_q.put(_STREAM_END)
 
-    threading.Thread(target=produce, name=f"chat-{conv['id'][:8]}", daemon=True).start()
+    threading.Thread(target=in_context(produce), name=f"chat-{conv['id'][:8]}", daemon=True).start()
 
     def events():
         yield sse(

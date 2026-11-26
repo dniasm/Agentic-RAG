@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
 from backend.api.dependencies import get_current_user
-from backend.library import batch, catalog, config, export, library, logs, naming
+from backend.library import batch, catalog, config, export, library, naming
 from backend.library.logs import event
 
 router = APIRouter(prefix="/library", tags=["Library"])
@@ -33,8 +33,7 @@ def _resume_unfinished() -> None:
 
 
 def startup() -> None:
-    """Called from day7's lifespan: logs, unfinished files, the queue worker."""
-    logs.setup()   # data/logs/events.log (major events) and data/logs/all.log (everything)
+    """Called from day7's lifespan: unfinished files, the queue worker."""
     _resume_unfinished()
     batch.start()
     event("server_started", documents=len(catalog.list_documents()), users=catalog.count_users())

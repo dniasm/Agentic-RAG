@@ -22,6 +22,7 @@ from lxml import html as lxml_html
 from backend.config.llm import invoke_answer
 from backend.config.settings import settings
 from backend.tools import FORMAT_RULES, clean_answer, history_to_messages, today
+from services.common.log import in_context
 
 log = logging.getLogger(__name__)
 
@@ -318,7 +319,7 @@ def _duckduckgo(query: str, n: int) -> list[dict]:
     with ThreadPoolExecutor(max_workers=4) as pool:
         pages = list(
             pool.map(
-                _fetch_text,
+                in_context(_fetch_text),
                 [item["url"] for item in results[:4]],
             )
         )
