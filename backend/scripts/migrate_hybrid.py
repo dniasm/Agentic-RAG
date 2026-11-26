@@ -13,7 +13,7 @@ import argparse
 from qdrant_client import models
 
 from backend.config.settings import settings
-from backend.rag import sparse, vectorstore
+from services.document import sparse, vectorstore
 
 
 def main():

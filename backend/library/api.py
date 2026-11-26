@@ -83,7 +83,7 @@ def upload(files: list[UploadFile] = File(...), user: dict = Depends(current_use
         if not duplicate:
             library.queue(doc["id"])
         # a duplicate of the file as it was uploaded, though the document has been edited since
-        edited_since = duplicate and doc["sha256"] != library.ingestion.file_sha256(data)
+        edited_since = duplicate and doc["sha256"] != library.rag.file_sha256(data)
         results.append({"file": f.filename, "status": "duplicate" if duplicate else "queued", "document": _public(doc),
                         "edited_since": edited_since})
     return results

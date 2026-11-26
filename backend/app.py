@@ -31,7 +31,6 @@ from backend.request_log import RequestLogMiddleware
 from backend.security import SecurityMiddleware
 from services.common.log import setup_logging
 from backend.web import mount_frontend
-from backend.rag.vectorstore import get_client, close_client
 
 setup_logging("orchestrator")   # logs/orchestrator/<date>.log, logs/audit/, the console (services/common/log.py)
 redact.guard_handlers()          # the configured API keys, exactly, on top of the pattern masks
@@ -47,7 +46,6 @@ async def lifespan(_: FastAPI):
     if missing:
         raise RuntimeError(f"Missing required settings in .env: {', '.join(k.upper() for k in missing)}")
     init_db()
-    get_client()  # open / create the Qdrant collection up front
     library_api.startup()  # the document library: logs, unfinished files, the batch queue worker
     version.log_startup()  # the commit it runs, so an old backend left running can be told apart
     try:
@@ -57,7 +55,6 @@ async def lifespan(_: FastAPI):
         hub.close_all()  # open WebSockets end with a normal close
         flush_pending_memory()  # facts still waiting for a batched extraction
         library_api.shutdown()
-        close_client()
 
 
 app = FastAPI(

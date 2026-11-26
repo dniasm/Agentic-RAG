@@ -126,14 +126,14 @@ def _hit(p: pb.Passage) -> dict:
     if p.HasField("relevance"):
         hit["relevance"], hit["scorer"] = p.relevance, opt("scorer")
     if p.selected:
-        hit["selected"] = True
+        hit["selected"] = p.selected
     return hit
 
 
 def search(queries: list[str], user_id: str, *, k: int | None = None, min_score: float | None = None,
            doc_id: str | None = None, rerank_query: str | None = None, mmr: bool = False) -> dict:
     """{"passages": [hit dicts], "reranked": bool, "zone": "high" | "mid" | "low" | "", "best_relevance": float | None}.
-    With rerank_query the passages come back best first by the reranker, those MMR chose marked "selected";
+    With rerank_query the passages come back best first by the reranker, those MMR chose marked "selected" (1 = the first MMR pick);
     reranked=False means the caller must judge the passages' relevance itself."""
     request = pb.SearchRequest(queries=queries, user_id=user_id, mmr=mmr)
     if k is not None:

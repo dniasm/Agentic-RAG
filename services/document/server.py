@@ -34,7 +34,7 @@ def _opt(msg, name: str):
 
 def _passage(h: dict) -> pb.Passage:
     p = pb.Passage(id=h["id"], content=h["content"], ocr=bool(h.get("ocr")), matched_query=h.get("matched_query") or "",
-                   score=h.get("score") or 0.0, rrf=h.get("rrf") or 0.0, selected=bool(h.get("selected")))
+                   score=h.get("score") or 0.0, rrf=h.get("rrf") or 0.0, selected=h.get("selected") or 0)
     for name in ("source", "page", "doc_id", "chunk_index", "dense_rank", "bm25_rank", "bm25", "relevance", "scorer"):
         if h.get(name) is not None:
             setattr(p, name, h[name])

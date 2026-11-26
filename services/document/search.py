@@ -24,6 +24,6 @@ def search(queries: list[str], user_id: str, *, k: int | None = None, min_score:
     best = ranked[0]["relevance"] if ranked else None
     zone = rerank.zone(best)
     if mmr and ranked and zone != "low":
-        for h in rerank.mmr_select(ranked):
-            h["selected"] = True
+        for order, h in enumerate(rerank.mmr_select(ranked), start=1):
+            h["selected"] = order
     return {"passages": ranked, "reranked": True, "zone": zone, "best_relevance": best}

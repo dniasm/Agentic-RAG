@@ -177,8 +177,8 @@ class Passage(_message.Message):
     bm25: float
     relevance: float
     scorer: str
-    selected: bool
-    def __init__(self, id: _Optional[str] = ..., content: _Optional[str] = ..., source: _Optional[str] = ..., page: _Optional[int] = ..., ocr: _Optional[bool] = ..., doc_id: _Optional[str] = ..., chunk_index: _Optional[int] = ..., matched_query: _Optional[str] = ..., score: _Optional[float] = ..., rrf: _Optional[float] = ..., dense_rank: _Optional[int] = ..., bm25_rank: _Optional[int] = ..., bm25: _Optional[float] = ..., relevance: _Optional[float] = ..., scorer: _Optional[str] = ..., selected: _Optional[bool] = ...) -> None: ...
+    selected: int
+    def __init__(self, id: _Optional[str] = ..., content: _Optional[str] = ..., source: _Optional[str] = ..., page: _Optional[int] = ..., ocr: _Optional[bool] = ..., doc_id: _Optional[str] = ..., chunk_index: _Optional[int] = ..., matched_query: _Optional[str] = ..., score: _Optional[float] = ..., rrf: _Optional[float] = ..., dense_rank: _Optional[int] = ..., bm25_rank: _Optional[int] = ..., bm25: _Optional[float] = ..., relevance: _Optional[float] = ..., scorer: _Optional[str] = ..., selected: _Optional[int] = ...) -> None: ...
 
 class SearchReply(_message.Message):
     __slots__ = ("passages", "reranked", "zone", "best_relevance")

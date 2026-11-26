@@ -149,7 +149,7 @@ message Passage {
   optional double bm25 = 13;
   optional double relevance = 14;     // reranker score (0-1), when reranked
   optional string scorer = 15;
-  bool selected = 16;                 // chosen by MMR
+  int64 selected = 16;                // MMR pick order (1 = first); 0: not chosen
 }
 message SearchReply {
   repeated Passage passages = 1;      // reranked best first when reranked, else best RRF/cosine first

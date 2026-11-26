@@ -7,8 +7,7 @@ import tempfile
 TEST_DATA = tempfile.mkdtemp(prefix="day7_test_")
 os.environ.update({
     "QDRANT_URL": "",
-    "QDRANT_PATH": os.path.join(TEST_DATA, "qdrant"),
-    "DATABASE_PATH": os.path.join(TEST_DATA, "app.db"),
+        "DATABASE_PATH": os.path.join(TEST_DATA, "app.db"),
     "LIBRARY_DATA_DIR": os.path.join(TEST_DATA, "library-data"),
     "LOG_DIR": os.path.join(TEST_DATA, "logs"),   # importing backend.app starts the log files: never in the repo's logs/
     "SERVICES_DATA_DIR": os.path.join(TEST_DATA, "services"),   # each service's own SQLite file
@@ -52,6 +51,7 @@ from services.user.server import build_service as _build_user  # noqa: E402
 from services.memory import db as _memory_store  # noqa: E402
 from services.memory.server import build_service as _build_memory  # noqa: E402
 from services.memory.vectors import EpisodeStore as _EpisodeStore  # noqa: E402
+from services.document.server import build_service as _build_document  # noqa: E402
 from services.conversation import db as _conversation_store  # noqa: E402
 from services.conversation.server import build_service as _build_conversation  # noqa: E402
 
@@ -62,11 +62,13 @@ USER = RunningService(lambda: _build_user(USER_DB)).start()
 MEMORY_DB = _memory_store.open_db()   # facts; the episodes are in <services dir>/memory_qdrant
 MEMORY_EPISODES = _EpisodeStore()
 MEMORY = RunningService(lambda: _build_memory(MEMORY_DB, MEMORY_EPISODES)).start()
+DOCUMENT = RunningService(_build_document).start()   # passages in <services dir>/document_qdrant, caches in document.db
 from backend.config.settings import settings as _settings  # noqa: E402
 
 _settings.conversation_service_addr = CONVERSATION.address   # not the environment: config tests read that
 _settings.user_service_addr = USER.address
 _settings.memory_service_addr = MEMORY.address
+_settings.document_service_addr = DOCUMENT.address
 
 
 def pytest_sessionfinish(session, exitstatus):
@@ -78,10 +80,9 @@ def pytest_sessionfinish(session, exitstatus):
     api_meter.flush()   # counts still in memory go to the User service while it is running (not at interpreter exit)
     clients.reset_clients()
     CONVERSATION.stop()
+    DOCUMENT.stop()   # (closes its Qdrant folder and document.db)
     MEMORY.stop()
     USER.stop()
-    from services.document import vectorstore
-    vectorstore.close_client()
     from backend.library import catalog
     catalog.reset_connection()
     shutil.rmtree(TEST_DATA, ignore_errors=True)

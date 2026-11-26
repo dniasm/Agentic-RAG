@@ -14,8 +14,7 @@ from backend.evaluation import citations
 from backend.evaluation.evaluator import evaluate_answer, grade_documents
 from backend.evaluation.reviewer import verified_decision
 from backend.graph.state import AgentState
-from backend.rag import rerank
-from backend.rag.retrieval import retrieve
+from backend.documents import rag as doc_rag
 from backend.tools import direct_answer, greeting, rag, web_search
 from backend.tools import history_to_text, memories_for_decision, memory_lines, today
 
@@ -848,7 +847,7 @@ def retrieve_node(state: AgentState) -> dict:
         state["standalone_query"]
     ]
     attempt = state.get("attempts", 0) + 1
-    use_rerank = rerank.available()
+    use_rerank = doc_rag.available()
 
     k = settings.rerank_candidates - 2 if use_rerank else None
 
@@ -859,12 +858,15 @@ def retrieve_node(state: AgentState) -> dict:
             time.sleep(wait)
 
         try:
-            hits = retrieve(
+            found = doc_rag.search(
                 queries,
                 state["user_id"],
                 k=k,
                 min_score=0.0 if use_rerank else None,
+                rerank_query=state["standalone_query"] if use_rerank else None,
+                mmr=True,
             )
+            hits = found["passages"]
             break
         except Exception as exc:
             failure = exc
@@ -969,11 +971,21 @@ _ZONE_TEXT = {
 }
 
 
+def _zone(best_relevance: float | None) -> str:
+    """The confidence zone of the best rerank score (thresholds calibrated on the benchmark; the service uses the same)."""
+    high, low = settings.voyage_relevance_high, settings.voyage_relevance_low
+    if best_relevance is None or best_relevance < low:
+        return "low"
+    return "high" if best_relevance >= high else "mid"
+
+
 def grade_node(state: AgentState) -> dict:
     candidates = state.get("documents", [])
+    # The Document service already reranked the candidates (and chose the diverse passages with MMR) when it could;
+    # candidates without a "relevance" mean it could not score, and the LLM checks them below.
     ranked = (
-        rerank.score(state["standalone_query"], candidates)
-        if rerank.available() and candidates
+        candidates
+        if candidates and all("relevance" in h for h in candidates)
         else None
     )
 
@@ -993,8 +1005,8 @@ def grade_node(state: AgentState) -> dict:
 
         best = ranked[0]["relevance"]
         scorer = ranked[0].get("scorer")
-        zone = rerank.zone(best)
-        chosen = rerank.mmr_select(ranked) if zone != "low" else []
+        zone = _zone(best)
+        chosen = sorted((h for h in ranked if h.get("selected")), key=lambda h: h["selected"]) if zone != "low" else []
 
         detail = (
             f"Reranked {len(ranked)} candidates with Voyage: "
@@ -1032,7 +1044,7 @@ def grade_node(state: AgentState) -> dict:
 
     # No reranker could score (disabled, or Voyage failed with no local backup): the LLM checks the
     # passages instead. The search fetched extra candidates for the reranker; the LLM gets the top few.
-    if rerank.available():
+    if doc_rag.available():
         candidates = candidates[: settings.retrieval_k + 2]
 
     relevant, review_steps = grade_documents(

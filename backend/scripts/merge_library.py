@@ -38,7 +38,7 @@ from backend.config.settings import BACKEND_DIR, PROJECT_ROOT, settings
 from backend.library import catalog, config, library
 from backend.models import database as db
 from services.conversation import db as conv_store
-from backend.rag import sparse, vectorstore
+from services.document import sparse, vectorstore
 from services.common import config as service_config
 
 MIGRATION = "library_merge_v1"

@@ -61,12 +61,7 @@ def _path(doc: dict) -> Path:
 def _set_chunk_fields(doc_id: str, owner: str, **fields) -> None:
     """Update metadata fields on every chunk of a document (no re-embedding). Chunks are found under their owner:
     each user's chunks carry their own user_id, which every search filters on."""
-    client = vectorstore.get_client()
-    with vectorstore._lock:
-        client.set_payload(
-            day7_settings.collection_name, payload=fields, key="metadata", wait=True,
-            points=models.FilterSelector(filter=vectorstore.user_filter(owner, doc_id)),
-        )
+    rag.set_chunk_fields(owner, doc_id, **fields)
 
 
 def folder_of(owner: str) -> str:
@@ -162,6 +157,12 @@ def _push_doc(doc: dict, stage: str, **extra) -> None:
     hub.publish(doc["owner"], "library", "document", {"doc_id": doc["id"], "stage": stage, **extra})
 
 
+def _progress(doc: dict, stage: str, done: int, total: int) -> None:
+    """The service's Ingest / ReadPages progress, republished to the owner's open tabs: OCR page n of N, passages embedded."""
+    if stage in ("ocr", "embedding"):
+        _push_doc(doc, stage, done=done, total=total)
+
+
 def process(doc_id: str, ask_title=None) -> dict:
     """Title the document, then index it with day7's ingestion pipeline (load, clean, chunk, embed, store)."""
     doc = catalog.get_document(doc_id)
@@ -169,10 +170,10 @@ def process(doc_id: str, ask_title=None) -> dict:
         return None
     _push_doc(doc, "reading")   # the read includes OCR of scanned pages
     try:
-        pages, _ = ingestion.load_file(_path(doc))
+        pages, _ = rag.read_pages(_path(doc), on_progress=lambda stage, done, total: _progress(doc, stage, done, total))
         if not pages:
-            raise ingestion.IngestionError("No extractable text found (the file may be scanned images).")
-        opening = "\n\n".join(p.page_content for p in pages)[: config.TITLE_SOURCE_CHARS]
+            raise rag.IngestionError("No extractable text found (the file may be scanned images).")
+        opening = "\n\n".join(p["text"] for p in pages)[: config.TITLE_SOURCE_CHARS]
         others = [d["title"] for d in catalog.list_documents(owner=doc["owner"])
                   if d["id"] != doc_id and d["status"] != "failed"]
         profile, _ = titles.profile_document(doc["original_name"], opening, others, ask=ask_title)
@@ -183,12 +184,12 @@ def process(doc_id: str, ask_title=None) -> dict:
                                     keywords=profile.keywords)
             catalog.record_rename(doc_id, doc["original_name"], title, "titled")
 
-        result = ingestion.ingest_file(config.LIBRARY_DIR / file_name, user_id=doc["owner"], doc_id=doc_id,
-                                       filename=title)
+        result = rag.ingest(config.LIBRARY_DIR / file_name, user_id=doc["owner"], doc_id=doc_id, filename=title,
+                            file_name=file_name,
+                            on_progress=lambda stage, done, total: _progress(doc, stage, done, total))
         if catalog.get_document(doc_id) is None:   # deleted while it was being indexed
             rag.delete_document_vectors(doc["owner"], doc_id)
             return None
-        _set_chunk_fields(doc_id, doc["owner"], title=title, file_name=file_name)
         from backend.library import export   # imported here: export imports editing, which imports this module
         pages = export.page_count(catalog.get_document(doc_id), result["pages"])
         catalog.update_document(doc_id, status="indexed", pages=pages, chunks=result["chunks"], error=None)
@@ -273,7 +274,7 @@ def _content_scores(description: str, docs: list[dict], owner: str) -> tuple[dic
     """Best relevance per document from its chunks and its profile. Returns (scores, evidence, scorer).
     Only the owner's chunks are searched."""
     try:
-        hits = retrieval.retrieve([description], owner, k=12, min_score=0.0)
+        hits = rag.search([description], owner, k=12, min_score=0.0)["passages"]
     except Exception as e:
         log.warning("Content search failed: %s", str(e)[:200])
         hits = []
@@ -282,11 +283,20 @@ def _content_scores(description: str, docs: list[dict], owner: str) -> tuple[dic
     items = hits + [{"content": profile_text(d), "doc_id": d["id"], "profile": True} for d in docs]
 
     # day7's Voyage limiter, below answer reranking: when no slot is free, None at once and cosine scores below
-    scored = rerank.score(description, items, priority=voyage.FIND)
+    try:
+        relevance = rag.rerank_texts(description, [i["content"] for i in items], priority="find")
+    except Exception as e:
+        log.warning("Reranking failed: %s", str(e)[:200])
+        relevance = None
+    scored = None
+    if relevance is not None:
+        for item, r in zip(items, relevance):
+            item["relevance"] = r
+        scored = sorted(items, key=lambda i: i["relevance"], reverse=True)
     scores: dict[str, float] = {}
     evidence: dict[str, str] = {}
     if scored is not None:
-        scorer = scored[0]["scorer"] if scored else "voyage"
+        scorer = "voyage"
         for item in scored:  # best first
             doc_id = item["doc_id"]
             if doc_id not in scores:
@@ -306,8 +316,7 @@ def _thresholds(scorer: str) -> tuple[float, float, float]:
         return config.COSINE_HIGH, config.COSINE_LOW, config.COSINE_MARGIN
     if scorer == "voyage":
         return config.MATCH_HIGH, config.MATCH_LOW, config.MATCH_MARGIN
-    high, low = rerank.thresholds(scorer)
-    return high, low, config.MATCH_MARGIN
+    return config.MATCH_HIGH, config.MATCH_LOW, config.MATCH_MARGIN
 
 
 def snippet(text: str, limit: int = 180) -> str:

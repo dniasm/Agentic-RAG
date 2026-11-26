@@ -17,16 +17,13 @@ import logging
 import os
 import re
 import shutil
-import uuid
 from pathlib import Path
 
 import pymupdf
-from qdrant_client import models
 
 from backend.library import catalog, config, embed_budget, library, pdf_edit, summaries, titles
 from backend.library.logs import event
-from backend.rag import ingestion, sparse, vectorstore
-from backend.config.settings import settings as day7_settings
+from backend.documents import rag
 
 log = logging.getLogger(__name__)
 
@@ -138,8 +135,7 @@ def document_text(doc: dict) -> str:
         return "\n".join(p.text for p in _docx_paragraphs(docx.Document(str(path))))
     if doc["ext"] in (".txt", ".md"):
         return path.read_text(encoding="utf-8", errors="ignore")
-    pages, _ = ingestion.load_file(path)
-    return "\n\n".join(p.page_content for p in pages)
+    return rag.page_text(path)
 
 
 OUTLINE_MAX = 40   # headings sent to the agent
@@ -414,24 +410,6 @@ def _apply(doc: dict, op: str, pattern: re.Pattern | None, text: str, replace_al
 
 
 # ---------------------------------------------------------------- re-index
-def _stored_vectors(doc_id: str, owner: str) -> dict[str, list[float]]:
-    """The dense vector of each chunk the document has in the index now, by the chunk's text."""
-    client = vectorstore.get_client()
-    vectors, offset = {}, None
-    with vectorstore._lock:
-        while True:
-            points, offset = client.scroll(day7_settings.collection_name,
-                                           scroll_filter=vectorstore.user_filter(owner, doc_id),
-                                           limit=256, offset=offset, with_payload=["page_content"],
-                                           with_vectors=[vectorstore.DENSE])
-            for p in points:
-                vector = p.vector.get(vectorstore.DENSE) if isinstance(p.vector, dict) else p.vector
-                if vector is not None:
-                    vectors[p.payload["page_content"]] = vector
-            if offset is None:
-                return vectors
-
-
 def _why_unchanged(what: str, e: Exception) -> str:
     """The message for a change that was put back: the embedding allowance says so itself (a limit, not a fault)."""
     if isinstance(e, embed_budget.EmbedBudgetExceeded):
@@ -440,45 +418,19 @@ def _why_unchanged(what: str, e: Exception) -> str:
 
 
 def _reindex(doc: dict, safety: bool = False) -> dict:
-    """day7's ingest_file, but a chunk whose text the index already holds keeps its vector: an edit changes a few
-    chunks, and every embedded chunk is one Gemini request of the 1,000 a day. Loading, cleaning and splitting are
-    day7's own functions and the points are built the same way (ids doc_id:index, the same metadata), so the index
-    is what a full ingest would give. New chunks are embedded before anything is written, so a failed embedding
-    leaves the index untouched."""
+    """Index the stored file again through the Document service: a chunk whose text the index already holds keeps its
+    vector, so an edit embeds only the changed chunks (every embedded chunk is one Gemini request of the day). The new
+    chunks are embedded before anything is written, so a failed embedding leaves the index untouched. The allowance is
+    checked before the call (and refuses the whole change if the new chunks don't fit) and charged after it."""
     path = config.LIBRARY_DIR / doc["file_name"]
-    pages, page_count = ingestion.load_file(path)
-    if not pages:
-        raise ingestion.IngestionError("No extractable text found.")
-    chunks = ingestion.split_documents(pages)
-    vectors = _stored_vectors(doc["id"], doc["owner"])
-    new_texts = list(dict.fromkeys(c.page_content for c in chunks if c.page_content not in vectors))
-    if new_texts:   # the passages that really need embedding: refused whole if they don't fit today's allowance
-        embed_budget.check(doc["owner"], len(new_texts), safety=safety)   # (safety: an undo or redo)
-        vectors.update(zip(new_texts, ingestion.embed_paced(new_texts, doc["title"])))
-        embed_budget.charge(doc["owner"], len(new_texts))
-
-    points = [models.PointStruct(
-        id=str(uuid.uuid5(uuid.NAMESPACE_URL, f"{doc['id']}:{idx}")),
-        vector={vectorstore.DENSE: vectors[c.page_content], vectorstore.SPARSE: sparse.document_vector(c.page_content)},
-        payload={"page_content": c.page_content, "metadata": {
-            "user_id": doc["owner"], "doc_id": doc["id"], "source": doc["title"], "page": c.metadata.get("page"),
-            "chunk_index": idx, "start_index": c.metadata.get("start_index"),
-            **({"ocr": True} if c.metadata.get("ocr") else {})}},
-    ) for idx, c in enumerate(chunks)]
-    vectorstore.upsert(points)
-    client = vectorstore.get_client()
-    with vectorstore._lock:  # drop old chunks beyond the new end (chunk ids are doc_id:index, so the rest were overwritten)
-        stale = vectorstore.user_filter(doc["owner"], doc["id"])
-        stale.must.append(models.FieldCondition(key="metadata.chunk_index", range=models.Range(gte=len(points))))
-        client.delete(day7_settings.collection_name, points_selector=models.FilterSelector(filter=stale), wait=True)
-    library._set_chunk_fields(doc["id"], doc["owner"], title=doc["title"], file_name=doc["file_name"])
-    return {"pages": page_count, "chunks": len(points), "embedded": len(new_texts)}
+    result = rag.ingest(path, user_id=doc["owner"], doc_id=doc["id"], filename=doc["title"], file_name=doc["file_name"],
+                        safety=safety)   # (safety: an undo or redo)
+    return {"pages": result["pages"], "chunks": result["chunks"], "embedded": result["embedded"]}
 
 
 def _plain_text(path: Path) -> str:
     """The text day7 reads from a file (what the summary is written from)."""
-    pages, _ = ingestion.load_file(path)
-    return "\n\n".join(p.page_content for p in pages)
+    return rag.page_text(path)
 
 
 def _without_line_ends(text: str) -> str:
@@ -494,7 +446,7 @@ def file_text(doc_id: str) -> dict:
     if doc["ext"] not in (".txt", ".md"):
         raise EditError("Only a text or Markdown file can be edited as a whole.")
     data = (config.LIBRARY_DIR / doc["file_name"]).read_bytes()
-    return {"text": _without_line_ends(_strict_text(data)), "sha256": ingestion.file_sha256(data)}
+    return {"text": _without_line_ends(_strict_text(data)), "sha256": rag.file_sha256(data)}
 
 
 def _strict_text(data: bytes) -> str:
@@ -517,7 +469,7 @@ def rewrite(doc_id: str, text: str, sha256: str) -> dict:
 def _rewrite_locked(doc_id: str, text: str, sha256: str) -> dict:
     doc = catalog.get_document(doc_id)
     if doc and doc["ext"] in (".txt", ".md"):
-        now = ingestion.file_sha256((config.LIBRARY_DIR / doc["file_name"]).read_bytes())
+        now = rag.file_sha256((config.LIBRARY_DIR / doc["file_name"]).read_bytes())
         if now != sha256:
             raise EditConflict("The document was changed since it was opened. Reopen it to see the change, then edit again.")
     return _edit_locked(doc_id, "rewrite", text=text)   # the same lock (re-entrant): the check and the save are one step
@@ -572,7 +524,7 @@ def _finish(doc: dict, reloaded: dict, before: str | None = None) -> bool:
     path = config.LIBRARY_DIR / doc["file_name"]
     data = path.read_bytes()
     from backend.library import export   # imported here: export imports this module
-    fields = dict(sha256=ingestion.file_sha256(data), size_bytes=len(data),
+    fields = dict(sha256=rag.file_sha256(data), size_bytes=len(data),
                   pages=export.page_count(catalog.get_document(doc["id"]) or doc, reloaded["pages"]),
                   chunks=reloaded["chunks"])
     queue = False
@@ -719,8 +671,7 @@ def _conversion_text(doc: dict) -> str:
     except Exception:
         editor = ""
     try:
-        pages, _ = ingestion.load_file(path)
-        indexed = "\n\n".join(p.page_content for p in pages)
+        indexed = rag.page_text(path)
     except Exception:
         indexed = ""
     if editor.strip() and (not indexed.strip() or _damage(editor) <= _damage(indexed)):
@@ -801,16 +752,12 @@ def _edit_locked(doc_id: str, op: str, *, find: str = "", text: str = "", replac
 def _scanned_page_with(doc: dict, find: str) -> int | None:
     """The scanned page that holds `find`, if any: from the OCR cache only (this runs under the library lock, so it
     never starts an OCR run)."""
-    from backend.rag import ocr
     path = config.LIBRARY_DIR / doc["file_name"]
-    with pymupdf.open(str(path)) as pdf:
-        scanned = [n for n in range(1, len(pdf) + 1) if ocr.needs_ocr(pdf[n - 1])]
-    if not scanned:
-        return None
     pattern = _pattern(find, ignore_case=True)
-    for n, text in ocr.read_pages(path, scanned, cached_only=True).items():
-        if pattern.search(text):
-            return n
+    pages, _ = rag.read_pages(path, scanned_cached_only=True)
+    for page in pages:
+        if pattern.search(page["text"]):
+            return page["page"]
     return None
 
 
