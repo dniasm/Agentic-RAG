@@ -1,5 +1,6 @@
 """SQLite catalog: documents, their rename history, and chat sessions."""
 import json
+import logging
 import sqlite3
 import threading
 import uuid
@@ -9,6 +10,9 @@ from pathlib import Path
 
 from backend.config.settings import settings
 from backend.library import config
+from backend.realtime.hub import hub
+
+log = logging.getLogger(__name__)
 
 _lock = threading.RLock()
 _conn: sqlite3.Connection | None = None
@@ -430,6 +434,7 @@ def add_batch(session_id: str, items: list, owner: str = config.OWNER) -> dict:
             c.execute("INSERT INTO batch_tasks (batch_id, position, instruction, payload, status) "
                       "VALUES (?, ?, ?, ?, 'queued')",
                       (batch_id, i, text, json.dumps(change, ensure_ascii=False) if change else None))
+    hub.publish(owner, "queue", "changed", {})
     return get_batch(batch_id)
 
 
@@ -499,12 +504,30 @@ def update_task(task_id: int, **fields) -> None:
     cols = ", ".join(f"{k} = ?" for k in fields)
     with tx() as c:
         c.execute(f"UPDATE batch_tasks SET {cols} WHERE id = ?", (*fields.values(), task_id))
+    if "status" in fields:
+        _push_task(task_id, fields["status"], fields.get("reply"))
+
+
+def _push_task(task_id: int, status: str, reply: str | None) -> None:
+    """Tell the task's owner's open tabs (the queue panel) that it changed state."""
+    try:
+        with _lock:
+            row = _db().execute("SELECT t.batch_id, b.owner FROM batch_tasks t JOIN batches b ON b.id = t.batch_id "
+                                "WHERE t.id = ?", (task_id,)).fetchone()
+        if row:
+            hub.publish(row["owner"], "queue", "task",
+                        {"batch_id": row["batch_id"], "task_id": task_id, "status": status, "reply": reply})
+    except Exception:
+        log.warning("Couldn't push task %s", task_id, exc_info=True)
 
 
 def cancel_batch(batch_id: str) -> int:
     with tx() as c:
-        return c.execute("UPDATE batch_tasks SET status = 'cancelled', finished_at = ? "
-                         "WHERE batch_id = ? AND status = 'queued'", (now(), batch_id)).rowcount
+        n = c.execute("UPDATE batch_tasks SET status = 'cancelled', finished_at = ? "
+                      "WHERE batch_id = ? AND status = 'queued'", (now(), batch_id)).rowcount
+    if (batch := get_batch(batch_id)):
+        hub.publish(batch["owner"], "queue", "changed", {})
+    return n
 
 
 def count_queued_tasks(owner: str | None = None) -> int:

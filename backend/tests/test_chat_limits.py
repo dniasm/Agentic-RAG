@@ -69,13 +69,13 @@ def client(monkeypatch):
 
 def test_over_the_limit_is_refused_before_the_stream_or_the_lock(client, monkeypatch):
     assert client.post("/chat", json={"message": "one"}).status_code == 200
-    assert client.post("/chat/stream", json={"message": "two"}).status_code == 200
+    assert client.post("/chat/stream", json={"message": "two"}).status_code == 202
     taken = []
     monkeypatch.setattr(chat, "_conversation_lock", lambda conv_id: taken.append(conv_id) or threading.Lock())
     for path in ("/chat", "/chat/stream"):
         r = client.post(path, json={"message": "three"})
         assert r.status_code == 429 and int(r.headers["retry-after"]) >= 1
-        assert "wait" in r.json()["detail"] and not r.headers["content-type"].startswith("text/event-stream")
+        assert "wait" in r.json()["detail"] and "turn_id" not in r.json()
     assert taken == []                                # no lock was taken for a refused message
 
 

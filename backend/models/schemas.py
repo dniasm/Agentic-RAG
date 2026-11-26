@@ -39,6 +39,7 @@ class UploadOut(BaseModel):
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=4000)
     conversation_id: str | None = None
+    turn_id: str | None = None   # the browser's id for this answer on the WebSocket (POST /api/chat/stream)
 
 
 class ChatResponse(BaseModel):

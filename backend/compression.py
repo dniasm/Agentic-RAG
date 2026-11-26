@@ -2,7 +2,8 @@
 data), the pages and the API's JSON.
 
 Never compressed:
-  * the chat's stream (text/event-stream): every word must arrive as it is written, not in one block at the end;
+  * the WebSocket (not an HTTP response at all: the middleware passes it by), where the chat's answer arrives as it
+    is written; compressing a streamed response would hold it back until the end;
   * a request with a Range header (the PDF viewer may fetch parts of a file): gzip over a byte range breaks the range;
   * files that are compressed already or gain nothing: PDF, Word, images, fonts, archives, audio, video;
   * small bodies (under MIN_SIZE), where the header costs more than it saves.

@@ -17,6 +17,7 @@ from qdrant_client import models
 
 from backend.library import catalog, config, limits, naming, titles
 from backend.library.logs import event
+from backend.realtime.hub import hub
 from services.common.log import in_context
 from backend.config import voyage
 from backend.rag import ingestion, rerank, retrieval, vectorstore
@@ -160,11 +161,17 @@ def stop_queue() -> None:
     _queue.shutdown(wait=False, cancel_futures=True)
 
 
+def _push_doc(doc: dict, stage: str, **extra) -> None:
+    """Tell the owner's open tabs where this file's indexing is (backend/realtime/schema.py library/document)."""
+    hub.publish(doc["owner"], "library", "document", {"doc_id": doc["id"], "stage": stage, **extra})
+
+
 def process(doc_id: str, ask_title=None) -> dict:
     """Title the document, then index it with day7's ingestion pipeline (load, clean, chunk, embed, store)."""
     doc = catalog.get_document(doc_id)
     if doc is None:   # deleted while it waited in the queue
         return None
+    _push_doc(doc, "reading")   # the read includes OCR of scanned pages
     try:
         pages, _ = ingestion.load_file(_path(doc))
         if not pages:
@@ -190,6 +197,7 @@ def process(doc_id: str, ask_title=None) -> dict:
         pages = export.page_count(catalog.get_document(doc_id), result["pages"])
         catalog.update_document(doc_id, status="indexed", pages=pages, chunks=result["chunks"], error=None)
         event("indexed", doc=doc_id, title=title, chunks=result["chunks"], pages=pages)
+        _push_doc(doc, "indexed", title=title)
     except Exception as e:
         log.exception("Ingesting %s failed", doc["original_name"])
         try:
@@ -198,6 +206,7 @@ def process(doc_id: str, ask_title=None) -> dict:
             pass
         catalog.update_document(doc_id, status="failed", error=str(e)[:300])
         event("index_failed", doc=doc_id, file=doc["original_name"], error=str(e)[:200])
+        _push_doc(doc, "failed", error=str(e)[:200])
     return catalog.get_document(doc_id)
 
 

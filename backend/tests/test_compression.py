@@ -1,17 +1,12 @@
-"""Gzip (backend/compression.py): the site's scripts and pages compressed; the chat's stream, ranged requests, PDFs
+"""Gzip (backend/compression.py): the site's scripts and pages compressed; the WebSocket, ranged requests, PDFs
 and small bodies left alone (no API calls).
 
     python -m pytest backend/tests/test_compression.py
 """
-import time
-from unittest import mock
-
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.testclient import TestClient
 
-from backend.api.dependencies import get_current_user
-from backend.api.routes import chat
 from backend.compression import MIN_SIZE, Compression
 from backend.web import mount_frontend
 
@@ -76,50 +71,23 @@ def test_a_ranged_request_gets_exact_bytes(tmp_path):
     assert r.content == text.read_bytes()[100:200]
 
 
-def slow_agent(*args, **kwargs):
-    yield "status", {"node": "router", "label": "Reading your message…"}
-    time.sleep(0.5)   # the answer is still being written
-    yield "final", {"answer": "The answer.", "tool": "direct", "intent": "direct", "trace": []}
-
-
-def test_the_chat_stream_is_not_compressed_and_arrives_as_it_is_written():
-    """Over a real local server: TestClient collects a whole response before handing it over, so it can't show
-    whether events arrive as they are written."""
-    import socket
-    import threading
-
-    import httpx
-    import uvicorn
-
+def test_the_websocket_passes_through_compression_untouched():
+    """The chat's answer arrives over the WebSocket as it is written: the gzip middleware must leave the socket's
+    frames alone (it only handles HTTP responses), while the same app still compresses a big JSON body."""
     app = FastAPI()
-    app.include_router(chat.router)
+
+    @app.websocket("/ws")
+    async def ws(websocket: WebSocket):
+        await websocket.accept()
+        await websocket.send_json({"type": "draft", "text": "x" * 5000})
+        await websocket.close()
+
+    @app.get("/api/big")
+    def big():
+        return JSONResponse({"items": ["item"] * 2000})
+
     app.add_middleware(Compression)
-    app.dependency_overrides[get_current_user] = lambda: {"id": "u1", "username": "tester"}
-    with socket.socket() as sock:
-        sock.bind(("127.0.0.1", 0))
-        port = sock.getsockname()[1]
-    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))
-    conv = {"id": "c1", "title": "t"}
-    with mock.patch.object(chat, "_prepare", return_value=(conv, [], [], [], {"conversation_id": "c1"})),          mock.patch.object(chat, "stream_agent", side_effect=slow_agent),          mock.patch.object(chat, "_persist", return_value={"conversation_id": "c1", "message_id": "m1",
-                                                            "answer": "The answer."}):
-        thread = threading.Thread(target=server.run, daemon=True)
-        thread.start()
-        try:
-            for _ in range(100):
-                if server.started:
-                    break
-                time.sleep(0.05)
-            start = time.monotonic()
-            with httpx.stream("POST", f"http://127.0.0.1:{port}/chat/stream", json={"message": "hi"},
-                              headers=GZ, timeout=10) as r:
-                assert r.headers["content-type"].startswith("text/event-stream")
-                assert "content-encoding" not in r.headers
-                arrivals = [(time.monotonic() - start, chunk) for chunk in r.iter_raw()]
-        finally:
-            server.should_exit = True
-            thread.join(timeout=5)
-    first_at, first = arrivals[0]
-    final_at = next(t for t, c in arrivals if b"event: final" in c)
-    assert b"event: meta" in first or b"event: status" in first
-    assert b"event: final" not in first                      # not one block at the end
-    assert final_at - first_at >= 0.4                        # the final event came the agent's pause after the first
+    client = TestClient(app)
+    with client.websocket_connect("/ws") as sock:
+        assert sock.receive_json() == {"type": "draft", "text": "x" * 5000}
+    assert client.get("/api/big", headers=GZ).headers.get("content-encoding") == "gzip"

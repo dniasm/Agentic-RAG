@@ -16,7 +16,8 @@ if _PROJECT_ROOT not in sys.path:
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.api.routes import admin, auth, chat, documents, health
+from backend.api.routes import admin, auth, chat, documents, health, ws
+from backend.realtime.hub import hub
 from backend.config import redact
 from backend.config.settings import settings
 from backend.library import api as library_api
@@ -56,6 +57,7 @@ async def lifespan(_: FastAPI):
         yield
     finally:
         from backend.api.routes.chat import flush_pending_memory
+        hub.close_all()  # open WebSockets end with a normal close
         flush_pending_memory()  # facts still waiting for a batched extraction
         library_api.shutdown()
         close_client()
@@ -92,7 +94,7 @@ app.add_middleware(SecurityMiddleware)
 app.add_middleware(RequestLogMiddleware)
 
 #ROUTES
-for module in (health, auth, chat, documents, admin):
+for module in (health, auth, chat, documents, admin, ws):
     app.include_router(module.router, prefix = "/api")
 app.include_router(library_api.router, prefix = "/api")  # /api/library/*
 
