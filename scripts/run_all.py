@@ -10,8 +10,7 @@ the orchestrator, which must answer GET /api/health. Child output is prefixed wi
 any child exiting, stops every child this script started (graceful, then terminate, then kill); exit 1 if one
 crashed. Only processes this script started are ever signalled.
 
-SERVICES is the registry: phase 0 has no services yet, so only the orchestrator runs. Add an entry per service
-when its package `services/<name>/__main__.py` exists.
+SERVICES is the registry: add an entry per service once its package `services/<name>/__main__.py` exists.
 """
 from __future__ import annotations
 
@@ -51,8 +50,8 @@ class Proc:
     env: dict = field(default_factory=dict, hash=False, compare=False)
 
 
-# Names of the services to start, each run as `python -m services.<name>`. Empty until a service exists.
-SERVICES: list[str] = []
+# Names of the services to start, in order, each run as `python -m services.<name>`.
+SERVICES: list[str] = ["conversation"]
 
 
 def service_proc(name: str) -> Proc:

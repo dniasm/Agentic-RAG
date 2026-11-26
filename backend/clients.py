@@ -1,14 +1,16 @@
 """gRPC clients for the orchestrator: one shared sync channel per service (thread-safe), a deadline on every unary call.
 
-No service owns data yet (phase 0), so there are no stubs: `SERVICES` maps each service to its address setting and
-its gRPC name, and later phases add the stub class to each entry. The orchestrator then calls
-`clients.call(clients.user.GetUser, request)`, from sync routes and worker threads alike.
+`SERVICES` maps each service to its address setting and its gRPC name. A service that owns data has a stub attribute
+here (`clients.conversation`), and the orchestrator calls `clients.call(clients.conversation.GetConversation,
+request)`, from sync routes and worker threads alike. `get_clients()` is the process-wide instance.
 """
+import threading
 import time
 
 import grpc
 from grpc_health.v1 import health_pb2, health_pb2_grpc
 
+from agentic_rag_proto import conversation_pb2_grpc
 from backend.config.settings import Settings, settings as default_settings
 from services.common.config import SERVICE_ADDRESSES
 from services.common.log import REQUEST_ID_HEADER, get_request_id
@@ -25,6 +27,7 @@ class Clients:
         self.addresses = {name: getattr(settings, attr) for name, (_, attr) in SERVICES.items()}
         # channels connect lazily, so building Clients needs no running service
         self._channels = {name: grpc.insecure_channel(addr) for name, addr in self.addresses.items()}
+        self.conversation = conversation_pb2_grpc.ConversationServiceStub(self._channels["conversation"])
 
     def channel(self, name: str) -> grpc.Channel:
         return self._channels[name]
@@ -57,3 +60,25 @@ class Clients:
     def close(self) -> None:
         for channel in self._channels.values():
             channel.close()
+
+
+_shared: Clients | None = None
+_shared_lock = threading.Lock()
+
+
+def get_clients() -> Clients:
+    """The process-wide clients, built on first use from the settings (so a service address set before that applies)."""
+    global _shared
+    with _shared_lock:
+        if _shared is None:
+            _shared = Clients()
+        return _shared
+
+
+def reset_clients() -> None:
+    """Close the shared clients; the next get_clients() dials the addresses in the settings again."""
+    global _shared
+    with _shared_lock:
+        if _shared is not None:
+            _shared.close()
+        _shared = None

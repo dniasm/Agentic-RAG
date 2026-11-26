@@ -1,0 +1,122 @@
+syntax = "proto3";
+
+// Saved chats: conversations and their messages. Every call that today takes a user id takes it here too, and a
+// conversation that belongs to someone else is NOT_FOUND, exactly like one that does not exist. Ids are strings
+// owned by this service's database; user ids are the User service's, kept here as plain values (no foreign key).
+package agentic_rag.v1;
+
+service ConversationService {
+  rpc CreateConversation(CreateConversationRequest) returns (Conversation);
+  rpc GetConversation(ConversationRef) returns (Conversation);
+  rpc ListConversations(ListConversationsRequest) returns (ListConversationsReply);
+  // Changes the title only: updated_at stays, so a renamed chat keeps its place in the list.
+  rpc RenameConversation(RenameConversationRequest) returns (Conversation);
+  // Deletes the conversation and its messages. NOT_FOUND when it is not the user's.
+  rpc DeleteConversation(ConversationRef) returns (DeleteConversationReply);
+  // The conversation id is the caller's proof of ownership (it was read with GetConversation first); NOT_FOUND when
+  // no such conversation exists.
+  rpc AddMessage(AddMessageRequest) returns (Message);
+  // Oldest first. limit > 0: only the last `limit` messages (still oldest first); 0: all.
+  rpc ListMessages(ListMessagesRequest) returns (ListMessagesReply);
+  // One conversation's answers from one tool, oldest first (id, meta, created_at only).
+  rpc ListToolMessages(ListToolMessagesRequest) returns (ListMessagesReply);
+  // The user's chat counts and answer statistics (the documents part of /stats stays with the orchestrator).
+  rpc GetStats(GetStatsRequest) returns (Stats);
+  // Idempotent bulk copy for scripts/migrate_conversations.py: rows keep their ids and timestamps; ones already
+  // there are left alone.
+  rpc ImportConversation(ImportConversationRequest) returns (ImportConversationReply);
+}
+
+message Conversation {
+  string id = 1;
+  string user_id = 2;
+  string title = 3;
+  string created_at = 4;  // ISO 8601, UTC
+  string updated_at = 5;
+}
+
+message Message {
+  string id = 1;
+  string conversation_id = 2;
+  string role = 3;        // user | assistant
+  string content = 4;
+  optional string tool = 5;
+  string meta_json = 6;   // free-form JSON object, stored and returned as text
+  string created_at = 7;
+  // Stat columns, copied out of meta when an answer is saved (see GetStats).
+  optional int32 latency_ms = 8;
+  bool rewritten = 9;
+  optional bool sufficient = 10;
+}
+
+message CreateConversationRequest {
+  string user_id = 1;
+  string title = 2;
+}
+
+message ConversationRef {
+  string user_id = 1;
+  string conversation_id = 2;
+}
+
+message ListConversationsRequest {
+  string user_id = 1;
+}
+
+message ListConversationsReply {
+  repeated Conversation conversations = 1;  // newest activity first
+}
+
+message RenameConversationRequest {
+  string user_id = 1;
+  string conversation_id = 2;
+  string title = 3;
+}
+
+message DeleteConversationReply {}
+
+message AddMessageRequest {
+  string conversation_id = 1;
+  string role = 2;
+  string content = 3;
+  optional string tool = 4;
+  string meta_json = 5;   // empty = {}
+}
+
+message ListMessagesRequest {
+  string conversation_id = 1;
+  int32 limit = 2;
+}
+
+message ListToolMessagesRequest {
+  string conversation_id = 1;
+  string tool = 2;
+}
+
+message ListMessagesReply {
+  repeated Message messages = 1;
+}
+
+message GetStatsRequest {
+  string user_id = 1;
+}
+
+message Stats {
+  int32 conversations = 1;
+  int32 queries = 2;                  // assistant answers
+  map<string, int32> by_tool = 3;
+  int32 queries_rewritten = 4;
+  int32 answers_evaluated = 5;
+  int32 answers_sufficient = 6;
+  int32 avg_latency_ms = 7;
+}
+
+message ImportConversationRequest {
+  Conversation conversation = 1;
+  repeated Message messages = 2;
+}
+
+message ImportConversationReply {
+  bool conversation_created = 1;
+  int32 messages_created = 2;
+}

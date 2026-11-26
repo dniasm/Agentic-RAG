@@ -154,8 +154,14 @@ class Service:
             await asyncio.shield(self.stop())
 
 
-def serve(service: Service, address: str | None = None) -> None:
-    """Entry point for `python -m services.<name>`: bind (the service's configured address by default) and run until stopped."""
-    setup_logging(service.name)   # logs/<service>/<date>.log, logs/audit/, the console (services/common/log.py)
-    service.bind(address or config.listen_address(service.name))
-    asyncio.run(service.serve_forever())
+def serve(name: str, build: Callable[[], Service], address: str | None = None) -> None:
+    """Entry point for `python -m services.<name>`: bind (the service's configured address by default) and run until stopped.
+    `build` makes the Service; it is called inside the event loop, because grpc.aio ties a server to the loop it is created on."""
+    setup_logging(name)   # logs/<service>/<date>.log, logs/audit/, the console (services/common/log.py)
+
+    async def run() -> None:
+        service = build()
+        service.bind(address or config.listen_address(name))
+        await service.serve_forever()
+
+    asyncio.run(run())
