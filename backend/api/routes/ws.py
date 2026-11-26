@@ -20,7 +20,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from backend import security
 from backend.library import auth
 from backend.realtime import schema
-from backend.realtime.hub import CLOSE, hub
+from backend.realtime.hub import CLOSE, SIGNED_OUT, hub
 from services.common.log import REQUEST_ID_HEADER, set_request_id, valid_request_id
 
 router = APIRouter()
@@ -66,7 +66,7 @@ async def session_socket(websocket: WebSocket, after: int | None = None):
         await websocket.close(code=UNAUTHENTICATED_CLOSE, reason="Please log in.")
         return
     uid = user["id"]
-    queue, backlog, resync, latest = hub.attach(uid, after)
+    queue, backlog, resync, latest = hub.attach(uid, after, websocket.cookies.get(auth.COOKIE))
     started = time.perf_counter()
     log.info("WS open user=%s after=%s replay=%d resync=%s", uid, after, len(backlog), resync)
     sent = len(backlog)
@@ -94,6 +94,9 @@ async def session_socket(websocket: WebSocket, after: int | None = None):
                     recv = asyncio.ensure_future(websocket.receive())
                 if get in done:
                     item = get.result()
+                    if item is SIGNED_OUT:
+                        await websocket.close(code=UNAUTHENTICATED_CLOSE, reason="Please log in.")
+                        return
                     if item is CLOSE:
                         await websocket.close(code=GOING_AWAY_CLOSE)
                         return

@@ -8,6 +8,7 @@ from backend.api.dependencies import get_current_user
 from backend import security
 from backend.library import auth
 from backend.models.schemas import UserOut
+from backend.realtime.hub import hub
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
@@ -62,7 +63,11 @@ def log_in(body: LogInIn, request: Request):
 
 @router.post("/logout")
 def log_out(request: Request):
-    auth.log_out(request.cookies.get(auth.COOKIE))
+    token = request.cookies.get(auth.COOKIE)
+    user = auth.user_for(token)   # who it was, so this login's open sockets can be closed
+    auth.log_out(token)
+    if user:
+        hub.close_session(user["id"], token)
     response = JSONResponse({"ok": True})
     response.delete_cookie(auth.COOKIE, path="/", httponly=True, samesite="lax",
                            secure=security.secure_cookie(request.headers.get("host", "")))

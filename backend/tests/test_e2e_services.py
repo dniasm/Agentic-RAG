@@ -98,8 +98,19 @@ def test_sign_up_upload_chat_and_log_out_through_the_four_services(clean_account
         # the Conversation service kept the chat
         assert [c["id"] for c in client.get("/api/conversations").json()] == [conversation_id]
 
-        # log out: the User service forgets the login
-        assert client.post("/api/auth/logout").status_code == 200
+        # a second login of the same account (another browser) with its own socket
+        other = TestClient(app)
+        assert other.post("/api/auth/login", json={"username": "e2e_user", "password": "correct horse"}).status_code == 200
+        with other.websocket_connect("/api/ws") as other_sock:
+            assert other_sock.receive_json()["type"] == "hello"
+
+            # log out of the first login: its open socket is closed with 4401, the other login's stays open
+            assert client.post("/api/auth/logout").status_code == 200
+            with pytest.raises(WebSocketDisconnect) as closed:
+                sock.receive_json()
+            assert closed.value.code == ws.UNAUTHENTICATED_CLOSE
+            other_sock.send_text('{"type":"ping"}')
+            assert other_sock.receive_json()["type"] == "pong"
 
     # a new socket with the old cookie, as a stale tab would send it, is refused
     stale = TestClient(app)

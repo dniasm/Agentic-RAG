@@ -63,28 +63,23 @@ What makes it *agentic* rather than a fixed pipeline:
 
 ## 2. Architecture
 
-```
-┌──────────────────────── Browser (React, Vite :5173) ──────────────────────────┐
-│  Login ─ Chat (WebSocket) ─ Documents ─ Overview        hash routes, themes  │
-└───────────────┬───────────────────────────────────────────────────────────────┘
-                │  /api/*  (Vite dev proxy → 127.0.0.1:8000, login cookie)
-┌───────────────▼──────────────────── FastAPI (:8000) ──────────────────────────┐
-│  routes/auth ─ routes/chat ─ routes/documents ─ routes/health ─ library/api   │
-│        │            │   └── memory worker (background) ── tools/memory        │
-│  library/auth  graph/workflow.py (LangGraph agent)      rag/ingestion.py      │
-│        │            │   │   │                                │                │
-│        ▼            │   │   └── tools/web_search ──► Tavily / DuckDuckGo / Wikipedia
-│  no database of its │   └────── rag/retrieval + rerank ──┐                    │
-│  own: users, chats, │                                    ▼                    │
-│  facts, documents:  │                    Qdrant: documents (dense + BM25)     │
-│  the services' own  │                            user_memories (Voyage)       │
-│  SQLite files       ├── Groq: gpt-oss-120b, gpt-oss-20b, qwen3.8-27b          │
-│                     ├── Gemini embeddings (documents) · Voyage (memory)       │
-│                     └── Voyage rerank-2.5                                     │
-└───────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    B["Browser (React)"] -- "REST /api/*" --> O["Orchestrator :8000<br/>FastAPI + LangGraph, no database"]
+    O -- "WebSocket /api/ws" --> B
+    O <-- "gRPC" --> U["User :50061"]
+    O <-- "gRPC" --> V["Conversation :50062"]
+    O <-- "gRPC" --> M["Memory :50063"]
+    O <-- "gRPC" --> D["Document :50064"]
+    U --- UD[("user.db")]
+    V --- VD[("conversation.db")]
+    M --- MD[("memory.db + Qdrant")]
+    D --- DD[("document.db + Qdrant")]
+    O -. files .-> F[("LIBRARY_DATA_DIR")]
+    O --> L["Groq, Gemini, Voyage, web search"]
 ```
 
-**Final design (the diagram above predates the split; the services own the data).** The browser sends REST requests to
+**The design.** The browser sends REST requests to
 the orchestrator (`backend/`, FastAPI + LangGraph, no database) and receives everything pushed back over one WebSocket
 (`/api/ws`). The orchestrator calls four gRPC services over `agentic_rag.v1` (`protos/`): User :50061 (13 RPCs, `user.db`),
 Conversation :50062 (10, `conversation.db`), Memory :50063 (10, `memory.db` + its own Qdrant folder) and Document :50064
@@ -92,7 +87,7 @@ Conversation :50062 (10, `conversation.db`), Memory :50063 (10, `memory.db` + it
 disk in `LIBRARY_DATA_DIR`. A gRPC call costs about 0.75 ms median on loopback (`python scripts/grpc_overhead.py`).
 `python scripts/run_all.py` starts everything; `docker compose up -d --build` runs the same stack in containers (one image,
 a volume per service); `GET /api/health/services` reports each service's health. The README has the protocol table,
-the migration order and the CI workflows.
+the migration order and the CI workflows. Logging out closes (code 4401) the sockets opened with that login; another login of the same account keeps its own.
 
 **Request lifecycle (chat):**
 

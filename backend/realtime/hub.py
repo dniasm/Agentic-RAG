@@ -12,6 +12,7 @@ recent events per account so a tab that reconnects gets what it missed.
     can't push its own start (or the final) out of the log.
 """
 import asyncio
+import hashlib
 import logging
 import threading
 import time
@@ -28,12 +29,19 @@ MAX_EVENTS = 500          # kept per account
 KEEP_SECONDS = 3600       # an account with no open socket is forgotten this long after its last event
 MAX_BACKLOG = 2000        # events waiting for one socket that isn't reading: past this it is dropped, and reconnects
 CLOSE = object()          # put on a socket's queue to end it (shutdown, or a socket too far behind)
+SIGNED_OUT = object()     # the login this socket was opened with ended: the socket is closed with 4401
+
+
+def token_key(token: str | None) -> str | None:
+    """What the hub remembers of a login token (never the token itself)."""
+    return hashlib.sha256(token.encode()).hexdigest() if token else None
 
 
 @dataclass
 class _Socket:
     loop: asyncio.AbstractEventLoop
     queue: asyncio.Queue
+    token: str | None = None   # token_key() of the login it was opened with
 
 
 @dataclass
@@ -46,7 +54,7 @@ class _Account:
 
 
 def _deliver(sock: _Socket, item) -> None:   # runs on the socket's loop
-    if sock.queue.qsize() >= MAX_BACKLOG and item is not CLOSE:
+    if sock.queue.qsize() >= MAX_BACKLOG and item not in (CLOSE, SIGNED_OUT):
         item = CLOSE
     sock.queue.put_nowait(item)
 
@@ -110,10 +118,10 @@ class Hub:
                     acct.sockets.remove(sock)
         return env
 
-    def attach(self, user_id: str, after: int | None) -> tuple[asyncio.Queue, list[dict], bool, int]:
+    def attach(self, user_id: str, after: int | None, token: str | None = None) -> tuple[asyncio.Queue, list[dict], bool, int]:
         """Add a socket (call from its event loop). Returns (queue of events from now on, events with seq > after,
         resync, latest seq). `after=None` asks for no replay."""
-        sock = _Socket(asyncio.get_running_loop(), asyncio.Queue())
+        sock = _Socket(asyncio.get_running_loop(), asyncio.Queue(), token_key(token))
         with self._lock:
             self._purge()
             acct = self._account(user_id)
@@ -132,6 +140,24 @@ class Hub:
             if acct:
                 acct.sockets = [s for s in acct.sockets if s.queue is not queue]
                 acct.touched = self._clock()
+
+    def close_session(self, user_id: str, token: str | None) -> int:
+        """Logout: close (4401) the account's sockets opened with this login token. Sockets opened with another still
+        valid login stay. Thread-safe. Returns how many were told to close."""
+        key = token_key(token)
+        if key is None:
+            return 0
+        with self._lock:
+            acct = self._accounts.get(user_id)
+            socks = [s for s in acct.sockets if s.token == key] if acct else []
+        closed = 0
+        for sock in socks:
+            try:
+                sock.loop.call_soon_threadsafe(_deliver, sock, SIGNED_OUT)
+                closed += 1
+            except RuntimeError:
+                pass
+        return closed
 
     def close_all(self) -> None:
         """Server shutdown: end every socket's loop with a normal close."""
