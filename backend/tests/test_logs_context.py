@@ -199,8 +199,8 @@ def test_the_chat_answer_thread_logs_with_the_requests_id(log_dir):
     with mock.patch.object(chat, "_prepare", return_value=(conv, [], [], [], {"conversation_id": "c1"})), \
             mock.patch.object(chat, "stream_agent", side_effect=agent), \
             mock.patch.object(chat, "_persist", side_effect=persist):
-        body = TestClient(app).post("/chat/stream", json={"message": "hi"}, headers={"X-Request-Id": "chat-77"}).text
-    assert "event: final" in body and done.wait(5)
+        r = TestClient(app).post("/chat/stream", json={"message": "hi"}, headers={"X-Request-Id": "chat-77"})
+    assert r.status_code == 202 and r.json()["turn_id"] and done.wait(5)
     assert thread_ids and thread_ids[0].startswith("chat-")   # it did run in its own thread
     lines = read(log_dir)
     assert any("[chat-77] backend.graph: agent running" in line for line in lines)
