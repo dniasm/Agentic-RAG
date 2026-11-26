@@ -11,6 +11,7 @@ from grpc_health.v1 import health_pb2, health_pb2_grpc
 
 from backend.config.settings import Settings, settings as default_settings
 from services.common.config import SERVICE_ADDRESSES
+from services.common.log import REQUEST_ID_HEADER, get_request_id
 
 # name -> (fully-qualified gRPC service, Settings attribute holding its address)
 SERVICES = {name: (grpc_name, f"{name}_service_addr") for name, (_, _, grpc_name) in SERVICE_ADDRESSES.items()}
@@ -29,7 +30,11 @@ class Clients:
         return self._channels[name]
 
     def call(self, rpc, request, metadata: tuple | None = None):
-        """Run one unary RPC with the standard deadline. gRPC errors propagate as grpc.RpcError."""
+        """Run one unary RPC with the standard deadline, carrying the current request id so the service's log lines
+        join the request's trace. gRPC errors propagate as grpc.RpcError."""
+        rid = get_request_id()
+        if rid != "-":   # "-" is "no request" (a background job): the service then starts its own trace
+            metadata = (*(metadata or ()), (REQUEST_ID_HEADER, rid))
         return rpc(request, timeout=self._timeout, metadata=metadata)
 
     def probe(self, name: str) -> dict:

@@ -7,6 +7,7 @@ import asyncio
 import contextlib
 import logging
 import signal
+import time
 from collections.abc import Callable, Coroutine
 from typing import Any
 
@@ -14,15 +15,76 @@ import grpc
 from grpc_health.v1 import health, health_pb2, health_pb2_grpc
 
 from services.common import config
+from services.common.log import REQUEST_ID_HEADER, set_request_id, setup_logging, valid_request_id
 
 log = logging.getLogger(__name__)
 STOP_PATIENCE_SECONDS = 5.0  # how long past the grace period we wait for gRPC to finish stopping
 
 
+HEALTH_CHECK_METHOD = "/grpc.health.v1.Health/Check"
+
+
+class RequestIdInterceptor(grpc.aio.ServerInterceptor):
+    """Continue the caller's request id (x-request-id metadata) inside each call and log one access line per call:
+    method, status, time. The id is set inside the wrapped handler, which runs in the call's own task, so it cannot
+    leak into another call. Calls the client streams to are passed through untouched."""
+
+    async def intercept_service(self, continuation, handler_call_details):
+        handler = await continuation(handler_call_details)
+        if handler is None or handler.request_streaming:
+            return handler
+        md = {k: v for k, v in (handler_call_details.invocation_metadata or ()) if isinstance(v, str)}
+        method = handler_call_details.method
+        name = method.rsplit(".", 1)[-1]  # "UserService/GetUser"
+        ok_level = logging.DEBUG if method == HEALTH_CHECK_METHOD else logging.INFO
+        incoming = md.get(REQUEST_ID_HEADER)
+
+        def line(started: float, code: grpc.StatusCode) -> None:
+            ms = int((time.perf_counter() - started) * 1000)
+            normal = (grpc.StatusCode.OK, grpc.StatusCode.NOT_FOUND, grpc.StatusCode.ALREADY_EXISTS)  # outcomes, not trouble
+            log.log(ok_level if code in normal else logging.WARNING, "%s -> %s %dms", name, code.name, ms)
+
+        def failed(started: float, context, error: BaseException) -> None:
+            if isinstance(error, grpc.aio.AbortError):  # the servicer ended the call with a status on purpose
+                line(started, context.code() or grpc.StatusCode.UNKNOWN)
+            elif isinstance(error, asyncio.CancelledError):  # the client went away
+                log.info("%s -> CANCELLED %dms", name, int((time.perf_counter() - started) * 1000))
+            else:
+                # grpc itself logs this error's traceback (with this call's request id): one traceback, not two
+                log.error("%s failed: %s: %s", name, type(error).__name__, str(error)[:300])
+
+        if handler.response_streaming:
+            async def stream(request, context):
+                set_request_id(valid_request_id(incoming))
+                started = time.perf_counter()
+                try:
+                    async for item in handler.unary_stream(request, context):
+                        yield item
+                except (Exception, asyncio.CancelledError) as e:
+                    failed(started, context, e)
+                    raise
+                line(started, context.code() or grpc.StatusCode.OK)
+
+            return grpc.unary_stream_rpc_method_handler(stream, handler.request_deserializer, handler.response_serializer)
+
+        async def unary(request, context):
+            set_request_id(valid_request_id(incoming))
+            started = time.perf_counter()
+            try:
+                result = await handler.unary_unary(request, context)
+            except (Exception, asyncio.CancelledError) as e:
+                failed(started, context, e)
+                raise
+            line(started, context.code() or grpc.StatusCode.OK)
+            return result
+
+        return grpc.unary_unary_rpc_method_handler(unary, handler.request_deserializer, handler.response_serializer)
+
+
 class Service:
     def __init__(self, name: str):
         self.name = name
-        self.server = grpc.aio.server()
+        self.server = grpc.aio.server(interceptors=[RequestIdInterceptor()])
         self._health = health.aio.HealthServicer()
         health_pb2_grpc.add_HealthServicer_to_server(self._health, self.server)
         self._grpc_names: list[str] = [""]  # "" is the whole-server health entry
@@ -94,6 +156,6 @@ class Service:
 
 def serve(service: Service, address: str | None = None) -> None:
     """Entry point for `python -m services.<name>`: bind (the service's configured address by default) and run until stopped."""
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    setup_logging(service.name)   # logs/<service>/<date>.log, logs/audit/, the console (services/common/log.py)
     service.bind(address or config.listen_address(service.name))
     asyncio.run(service.serve_forever())
