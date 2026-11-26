@@ -301,7 +301,7 @@ and episodes, short summaries of past exchanges found by meaning (its own embedd
 `backend/data/services/memory_qdrant/`, created when the service starts). The service embeds the text itself with Voyage, so
 it needs `VOYAGE_API_KEY`; the orchestrator keeps the language-model work (reading messages for facts, summarising exchanges)
 and calls the service to store and read. `backend/models/memory.py` and `backend/memory/store.py` keep their functions and
-result shapes. The Voyage rate limit is now counted separately in the service and in the orchestrator (the reranker).
+result shapes. The account's Voyage budget (`VOYAGE_REQUESTS_PER_MINUTE`) is split between the two processes that use it: the orchestrator's reranker gets `VOYAGE_RERANK_RESERVE` requests a minute and the service gets the rest (at least 1), so together they never exceed the total.
 
 ```bash
 python -m services.memory            # on its own; `python scripts/run_all.py` starts it before the orchestrator

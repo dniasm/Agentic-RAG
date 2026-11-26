@@ -12,6 +12,7 @@ import grpc
 
 from agentic_rag_proto import memory_pb2 as pb
 from agentic_rag_proto import memory_pb2_grpc as pb_grpc
+from backend.config import voyage
 from backend.config.voyage import VoyageBusy
 from services.common.server import Service, serve
 from services.common.sqlite_db import ServiceDB
@@ -102,4 +103,5 @@ def build_service(db: ServiceDB | None = None, episodes: EpisodeStore | None = N
 
 
 def main() -> None:
+    voyage.use_memory_share()   # this process may use only the memory part of the account's Voyage budget
     serve(NAME, build_service)
