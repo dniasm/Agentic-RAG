@@ -5,16 +5,26 @@ calls are stubbed (no API calls).
 
     python -m pytest backend/tests/test_e2e_services.py
 """
+import hashlib
+import math
+
 import pytest
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
 from backend.api.routes import chat, ws
-from conftest import fake_embedding
 from backend.library import auth, titles
 from services.document import ingestion
 
 NOTE = "Support vector machines\nA support vector machine finds the maximum margin hyperplane between two classes."
+
+
+def fake_embedding(text: str, dims: int) -> list[float]:
+    vec = [0.0] * dims
+    for word in text.lower().split():
+        vec[int(hashlib.sha256(word.encode()).hexdigest(), 16) % dims] += 1.0
+    norm = math.sqrt(sum(v * v for v in vec)) or 1.0
+    return [v / norm for v in vec]
 
 
 def _fake_profile(prompt: str) -> titles.DocProfile:
