@@ -84,6 +84,16 @@ What makes it *agentic* rather than a fixed pipeline:
 └───────────────────────────────────────────────────────────────────────────────┘
 ```
 
+**Final design (the diagram above predates the split; the services own the data).** The browser sends REST requests to
+the orchestrator (`backend/`, FastAPI + LangGraph, no database) and receives everything pushed back over one WebSocket
+(`/api/ws`). The orchestrator calls four gRPC services over `agentic_rag.v1` (`protos/`): User :50061 (13 RPCs, `user.db`),
+Conversation :50062 (10, `conversation.db`), Memory :50063 (10, `memory.db` + its own Qdrant folder) and Document :50064
+(49, `document.db` + its own Qdrant folder; RAG ingestion and retrieval and the library catalog). Document files stay on
+disk in `LIBRARY_DATA_DIR`. A gRPC call costs about 0.75 ms median on loopback (`python scripts/grpc_overhead.py`).
+`python scripts/run_all.py` starts everything; `docker compose up -d --build` runs the same stack in containers (one image,
+a volume per service); `GET /api/health/services` reports each service's health. The README has the protocol table,
+the migration order and the CI workflows.
+
 **Request lifecycle (chat):**
 
 1. The frontend POSTs the message to `/api/chat/stream`; the browser sends the HttpOnly login cookie.
@@ -305,6 +315,11 @@ day7/
 │   ├── scripts/          one-off maintenance scripts
 │   ├── tests/            unit tests (no API calls)
 │   └── data/ vector_db/  created at runtime (not committed)
+├── services/             the four gRPC services (user, conversation, memory, document) and common/
+├── protos/               .proto sources; agentic_rag_proto/ holds the generated Python (committed)
+├── scripts/              run_all, gen_protos, grpc_healthcheck, grpc_overhead, logs, migrate_*, ci_test_coverage
+├── Dockerfile, docker-compose.yml, .dockerignore   the container stack
+├── .github/workflows/    CI, one workflow per area plus docker.yml
 ├── frontend/             React + Vite + Tailwind single-page app
 ├── benchmark/            benchmark scripts, question sets, corpus and saved results
 └── scripts/experiments/  one-off model experiments (call the live APIs)
@@ -555,6 +570,43 @@ Data:
 | `reasoning_cases.py` / `run_reasoning_baseline.py` | 16 direct-answer reasoning cases (opinions, follow-ups, challenges) with the expected behaviour, and a script that runs them through `direct_answer.answer` (calls the API); saved answers in `results/reasoning_baseline_results*.json`. |
 | `corpus/wikipedia/*.md` | 18 Wikipedia articles on information retrieval and NLP (CC BY-SA 4.0, source URL in each file). The corpus PDFs are not committed (see the README). |
 | `results/` | Saved output of every benchmark run, named after its script: `retrieval_stage*`, `selection_*` (including the saved candidate pools `selection_pool.json` / `.npz`), `rerank_calibration`, `e2e_stage*`, `perf`, `router_eval*`, `direct_gate_*`, `gate_*`, `direct_prompt_*`, `memory_eval*`, `checker_eval*`, `web_prompt_*`. Files ending in `_before` or `_old` keep the run or prompt from before a change. |
+
+#### `services/` — the gRPC services (each `python -m services.<name>`)
+
+| File | What it does |
+|---|---|
+| `common/config.py` | Service addresses (`<NAME>_SERVICE_ADDR`), the listen-host override (`GRPC_LISTEN_HOST`) and the data folder (`SERVICES_DATA_DIR`). |
+| `common/server.py` | The gRPC server base: health service, request-id and logging interceptors, graceful shutdown. |
+| `common/inprocess.py` | Runs a real service inside a test process on an ephemeral port. |
+| `common/sqlite_db.py`, `log.py`, `tokens.py` | One SQLite file per service; the shared log format; the keyword tokenizer. |
+| `user/` | `server.py` (13 RPCs), `db.py` (users, auth_tokens, embed_usage, api_usage), `accounts.py` (hashing, tokens). |
+| `conversation/` | `server.py` (10 RPCs), `db.py` (conversations, messages). |
+| `memory/` | `server.py` (10 RPCs), `db.py` (user_facts), `vectors.py` (episodes in Qdrant). |
+| `document/` | `server.py` (ingest, read-pages, search), `catalog.py` and `catalog_server.py` (the library catalog), `ingestion.py`, `ocr.py`, `retrieval.py`, `rerank.py`, `vectorstore.py`, `sparse.py`, `embedding_cache.py`, `db.py` (document.db). |
+
+#### `protos/` and `agentic_rag_proto/`
+
+`protos/agentic_rag_proto/{common,user,conversation,memory,document}.proto` are the contracts; `agentic_rag_proto/` is the generated Python
+(never edited by hand; `python scripts/gen_protos.py` regenerates it, `--check` fails when it is stale).
+
+#### `scripts/`
+
+| File | What it does |
+|---|---|
+| `run_all.py` | Starts the four services (each ready on `grpc.health.v1`) and then the orchestrator; Ctrl+C stops them. |
+| `grpc_healthcheck.py` | Exit 0 when a port answers SERVING; the containers' health check. |
+| `grpc_overhead.py` | Times gRPC round-trips in one process (median and p95). |
+| `gen_protos.py` | Generates or checks `agentic_rag_proto/`. |
+| `logs.py` | Reads `logs/` across services by time, level, request id or user. |
+| `migrate_users.py`, `migrate_conversations.py`, `migrate_memory.py`, `migrate_documents_rag.py`, `migrate_library_catalog.py` | Copy an old `app.db` and Qdrant folder into the services, in this order, with the backend stopped and a backup first (README, "Migrating an older install"). |
+| `ci_test_coverage.py` | Fails when a test file is in no CI workflow, or in more than one. |
+| `fetch_test_corpus.py` | Downloads the third-party test documents. |
+
+#### Docker files
+
+`Dockerfile` (Node stage builds `frontend/dist`; `python:3.14-slim` runtime with tesseract and DejaVu fonts, non-root), `docker-compose.yml`
+(four services with a named volume each and a health check, the orchestrator on :8000 with a volume for `LIBRARY_DATA_DIR`, a shared `logs` volume,
+keys from an optional `.env`), `.dockerignore` (no `.env`, data, logs, `node_modules`, `.venv`).
 
 #### `scripts/experiments/` — one-off model experiments
 
