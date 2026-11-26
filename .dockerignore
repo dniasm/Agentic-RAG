@@ -11,7 +11,8 @@ frontend/dist
 logs
 backend/data
 backend/vector_db
-backend/documents
+backend/documents/*
+!backend/documents/*.py
 test_corpus
 benchmark
 docs/architecture.drawio
