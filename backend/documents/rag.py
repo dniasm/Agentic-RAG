@@ -40,10 +40,12 @@ def _call(rpc_name: str, request):
 
 
 def _file_messages(message_type, start, path: Path):
-    yield message_type(start=start)
-    with open(path, "rb") as f:
-        while chunk := f.read(CHUNK_BYTES):
-            yield message_type(chunk=chunk)
+    """The start message, then the file in chunks. The file is read here, in the caller's thread, and closed before the
+    call starts: gRPC pulls the requests from a thread of its own that can still be running after the service has
+    replied (or failed), and a handle it held open would block renaming or deleting the file on Windows."""
+    data = path.read_bytes()
+    return iter([message_type(start=start), *(message_type(chunk=data[i:i + CHUNK_BYTES])
+                                              for i in range(0, len(data), CHUNK_BYTES))])
 
 
 def _raise(failure: pb.Failure, user_id: str | None = None, safety: bool = False):

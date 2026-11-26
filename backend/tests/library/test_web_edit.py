@@ -185,12 +185,13 @@ def test_conversion_takes_the_cleaner_reading_and_offers_what_it_would_convert(m
     class Page:
         def __init__(self, text):
             self.page_content = text
+            self.metadata = {}
 
     doc = catalog.get_document(_ingest("readings.pdf", _pdf(["Batch normalization helps"]))["id"])
 
     def readings(editor, indexed):
         monkeypatch.setattr(pdf_edit, "document_text", lambda path: editor)
-        monkeypatch.setattr(ingestion, "load_file", lambda path: ([Page(indexed)], None))
+        monkeypatch.setattr(ingestion, "load_file", lambda path, progress=None: ([Page(indexed)], 1))
 
     # the editor's reading lost letters (U+FFFD, or private-use codes): indexing's is cleaner, and is what converts
     readings("Batch normaliza�on helps", "Batch normalization helps")
