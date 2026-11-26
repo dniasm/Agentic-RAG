@@ -224,14 +224,16 @@ on the socket tagged with the `turn_id` the browser put on the POST.
 ## Services
 
 Work in progress: the backend is becoming an orchestrator that talks gRPC to four services (user, conversation,
-memory, document), each owning its own SQLite database. Phase 0 (this) is groundwork only; no service holds data yet.
+memory, document), each owning its own SQLite database. The Conversation service is the first one live; the other
+three are still to come.
 
 | Path | Holds |
 |---|---|
 | `protos/agentic_rag_proto/` | The `.proto` sources |
 | `agentic_rag_proto/` | Generated Python code (committed; never edit by hand) |
 | `services/common/` | `config.py` (addresses, data dir), `server.py` (gRPC server with health and graceful shutdown), `sqlite_db.py` (one SQLite file per service) |
-| `backend/clients.py` | The orchestrator's gRPC clients: a channel per service, a deadline on every call |
+| `services/conversation/` | The Conversation service: `server.py` (gRPC), `db.py` (SQL and schema), `__main__.py` |
+| `backend/clients.py` | The orchestrator's gRPC clients: a channel per service, a deadline on every call, the request id sent along |
 
 Ports (override with the env variable, which both the service and the orchestrator read): user `50061`
 (`USER_SERVICE_ADDR`), conversation `50062` (`CONVERSATION_SERVICE_ADDR`), memory `50063` (`MEMORY_SERVICE_ADDR`),
@@ -242,8 +244,30 @@ document `50064` (`DOCUMENT_SERVICE_ADDR`). Each service's database is `backend/
 python scripts/gen_protos.py            # regenerate agentic_rag_proto/ after editing a .proto
 python scripts/gen_protos.py --check    # fails when the committed generated code is stale (CI runs it)
 python scripts/run_all.py               # starts the registered services, then uvicorn app:app; Ctrl+C stops all
-python scripts/grpc_healthcheck.py 50061   # exit 0 when that port answers grpc.health.v1 with SERVING
+python scripts/grpc_healthcheck.py 50062   # exit 0 when that port answers grpc.health.v1 with SERVING
 ```
+
+### Conversation service (port 50062)
+
+Saved chats: conversations and their messages (`protos/agentic_rag_proto/conversation.proto`). It owns
+`backend/data/services/conversation.db`; the orchestrator's `app.db` no longer creates or reads those tables, and
+`backend/models/conversations.py` calls the service (same functions, same results, so `db.add_message(...)` and the
+rest are unchanged). A conversation that belongs to another user is `NOT_FOUND`. `GET /stats` takes the chat counts
+from the service and the document counts from the catalog.
+
+```bash
+python -m services.conversation      # on its own; `python scripts/run_all.py` starts it before the orchestrator
+python scripts/migrate_conversations.py   # once, with the service running: copy the chats out of app.db
+```
+
+`scripts/migrate_conversations.py` first backs up `app.db` (into `--dest`, default `D:\onboarding_tasks\backups`), then
+copies every conversation and message with its id and timestamps, then checks the counts per conversation and in
+total. Run it again any time: rows already there are skipped. It never deletes anything: the old `conversations` and
+`messages` tables stay in `app.db`, unused, and are listed at the end as left behind; drop them yourself once the
+chats look right in the app. Without the service running, the orchestrator cannot read or save chats.
+
+The test suite starts this service in its own process thread (`conftest.py`, ephemeral port, temporary folder), so
+`pytest` needs nothing running.
 
 ## Logging
 

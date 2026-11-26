@@ -11,11 +11,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  tests:
+  service:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: "Service bootstrap tests"
+            tests: backend/tests/services/test_services_server.py backend/tests/services/test_services_tooling.py
+          - name: "conversation"
+            tests: backend/tests/services/test_conversation_service.py
     uses: ./.github/workflows/_python-tests.yml
     with:
-      name: "Service bootstrap tests"
-      tests: backend/tests/services/test_*.py
+      name: ${{ matrix.name }}
+      tests: ${{ matrix.tests }}
 
   generated-code:
     name: Generated protobuf code is current

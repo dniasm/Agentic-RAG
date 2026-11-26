@@ -387,7 +387,7 @@ Most backend folders contain an empty `__init__.py`; it only lets Python import 
 
 | File | What it does |
 |---|---|
-| `database.py` | SQLite schema, migrations and every query: users, facts, documents, conversations, messages and stats, all filtered by user. |
+| `database.py` | SQLite schema, migrations and every query: users, facts, documents and stats, all filtered by user; conversations and messages go through `conversations.py` to the Conversation service (gRPC; §14). |
 | `schemas.py` | Pydantic models for requests and responses (`Credentials`, `DocumentOut`, `ChatRequest`, `ChatResponse`, …). |
 
 #### `backend/graph/` — the agent
@@ -453,7 +453,8 @@ Most backend folders contain an empty `__init__.py`; it only lets Python import 
 | `test_memory.py` | Key normalisation, merge rules (replace / collect / forget / corrections), storage, the one-time migration (temporary database). |
 | `test_citations.py` | The code citation check. |
 | `test_rerank.py` | Reranker zones and the fallback when Voyage can't score. |
-| `test_conversations.py` | Renaming chats; `/stats` from the message columns and the one-time backfill; a fresh database has no old `user_memory` table. |
+| `test_conversations.py` | Renaming chats; `/stats` from the message columns; a fresh database has no old `user_memory` table and no chat tables (they are the Conversation service's). |
+| `services/test_conversation_service.py` | The Conversation service over real gRPC: every call, user isolation and `NOT_FOUND`, `meta` round trip, request id in the service's log lines, the orchestrator's functions, `scripts/migrate_conversations.py`. |
 | `test_documents.py` | Uploads are titled, stored in the user's folder and indexed in the background; failed / removed-while-waiting / uploaded-twice outcomes; indexing cut off by a restart is resumed. |
 | `test_stream.py` | A chat turn's events reach the WebSocket in order and end with `final`; the answer is saved with nobody connected. |
 | `test_websocket.py` | The WebSocket and the hub: login and origin checks, two tabs, replay and resync, threads publishing, queue and indexing pushes. |
@@ -970,7 +971,6 @@ failure returns `401 Please log in.`; the frontend then shows the login screen.
 ```
 users ──< documents ──< renames, edits, undone_edits
   ├──< user_facts
-  ├──< conversations ──< messages
   ├──< batches ──< batch_tasks
   ├──< sessions          (the document agent's state per conversation)
   └──< auth_tokens
@@ -989,8 +989,28 @@ users ──< documents ──< renames, edits, undone_edits
 | `batches`, `batch_tasks` | a batch's tasks: `instruction`, `payload`, `checkpoint`, `status`, `reply`, `actions`, `tokens` | The queue (§22) |
 | `sessions` | the document agent's messages and guard, per conversation | |
 | `auth_tokens` | the login token's hash, its user, when it expires | Logins (§13) |
-| `conversations` | `id`, `user_id`, `title`, `created_at`, `updated_at` | cascade on user delete |
-| `messages` | `id`, `conversation_id`, `role`, `content`, `tool`, `meta` (JSON), `created_at`, `latency_ms`, `rewritten`, `sufficient` | cascade on conversation delete; the last three are copied out of `meta` when an answer is saved, so `/stats` is plain SQL (filled from `meta` once in databases from before 14 November) |
+
+### Conversation service (`backend/data/services/conversation.db`)
+
+Chats live in the Conversation service's own database (gRPC `agentic_rag.v1.ConversationService`, port 50062;
+`python -m services.conversation`, started by `scripts/run_all.py`). `backend/models/conversations.py` calls it through
+`backend/clients.py`, so `database.add_message(...)` and the other functions return what they always did. `app.db` no
+longer creates or reads these tables; databases from before keep them, unused. Copy the old chats across once with
+`python scripts/migrate_conversations.py` (service running; backs up `app.db` first, is safe to repeat, verifies the
+counts, deletes nothing).
+
+```
+conversations ──< messages        (user_id is a plain id: users are in app.db, so there is no foreign key)
+```
+
+| Table | Columns | Constraints |
+|---|---|---|
+| `conversations` | `id`, `user_id`, `title`, `created_at`, `updated_at` | every query is scoped by `user_id`: another user's chat is `NOT_FOUND` |
+| `messages` | `id`, `conversation_id`, `role`, `content`, `tool`, `meta` (JSON text), `created_at`, `latency_ms`, `rewritten`, `sufficient` | cascade on conversation delete; the last three are copied out of `meta` when an answer is saved, so `/stats` is plain SQL |
+
+RPCs: `CreateConversation`, `GetConversation`, `ListConversations`, `RenameConversation`, `DeleteConversation`,
+`AddMessage`, `ListMessages` (with `limit`), `ListToolMessages`, `GetStats`, `ImportConversation` (for the migration
+script). Creating and deleting a chat each write an audit line; every call is logged with the caller's request id.
 
 `messages.meta` for assistant messages:
 
