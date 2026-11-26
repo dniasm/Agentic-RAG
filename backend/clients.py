@@ -1,8 +1,8 @@
-"""gRPC clients for the orchestrator: one channel per service, a deadline on every unary call.
+"""gRPC clients for the orchestrator: one shared sync channel per service (thread-safe), a deadline on every unary call.
 
 No service owns data yet (phase 0), so there are no stubs: `SERVICES` maps each service to its address setting and
 its gRPC name, and later phases add the stub class to each entry. The orchestrator then calls
-`await clients.call(clients.user.GetUser, request)`.
+`clients.call(clients.user.GetUser, request)`, from sync routes and worker threads alike.
 """
 import time
 
@@ -23,25 +23,25 @@ class Clients:
         self._health_timeout = settings.grpc_health_timeout_seconds
         self.addresses = {name: getattr(settings, attr) for name, (_, attr) in SERVICES.items()}
         # channels connect lazily, so building Clients needs no running service
-        self._channels = {name: grpc.aio.insecure_channel(addr) for name, addr in self.addresses.items()}
+        self._channels = {name: grpc.insecure_channel(addr) for name, addr in self.addresses.items()}
 
-    def channel(self, name: str) -> grpc.aio.Channel:
+    def channel(self, name: str) -> grpc.Channel:
         return self._channels[name]
 
-    async def call(self, rpc, request, metadata: tuple | None = None):
-        """Run one unary RPC with the standard deadline. gRPC errors propagate as grpc.aio.AioRpcError."""
-        return await rpc(request, timeout=self._timeout, metadata=metadata)
+    def call(self, rpc, request, metadata: tuple | None = None):
+        """Run one unary RPC with the standard deadline. gRPC errors propagate as grpc.RpcError."""
+        return rpc(request, timeout=self._timeout, metadata=metadata)
 
-    async def probe(self, name: str) -> dict:
+    def probe(self, name: str) -> dict:
         """Ask one service's standard grpc.health.v1 endpoint; down means no SERVING answer within the deadline."""
         stub = health_pb2_grpc.HealthStub(self._channels[name])
         started = time.perf_counter()
         error = None
         try:
-            reply = await stub.Check(health_pb2.HealthCheckRequest(), timeout=self._health_timeout)
+            reply = stub.Check(health_pb2.HealthCheckRequest(), timeout=self._health_timeout)
             if reply.status != health_pb2.HealthCheckResponse.SERVING:
                 error = f"reports {health_pb2.HealthCheckResponse.ServingStatus.Name(reply.status)}"
-        except grpc.aio.AioRpcError as e:
+        except grpc.RpcError as e:
             error = "no response (timed out)" if e.code() == grpc.StatusCode.DEADLINE_EXCEEDED else (e.details() or e.code().name)
         return {
             "name": name, "service": SERVICES[name][0], "address": self.addresses[name],
@@ -49,6 +49,6 @@ class Clients:
             "error": error,
         }
 
-    async def close(self) -> None:
+    def close(self) -> None:
         for channel in self._channels.values():
-            await channel.close()
+            channel.close()

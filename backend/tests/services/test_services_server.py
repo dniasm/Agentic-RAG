@@ -73,9 +73,9 @@ def test_clients_probe_reports_up_and_down():
         clients = Clients(Settings(user_service_addr=f"localhost:{port}", conversation_service_addr="localhost:1",
                                    grpc_health_timeout_seconds=1.0))
         try:
-            return await clients.probe("user"), await clients.probe("conversation")
+            return await asyncio.to_thread(lambda: (clients.probe("user"), clients.probe("conversation")))
         finally:
-            await clients.close()
+            clients.close()
             await service.stop(grace=0.1)
 
     up, down = asyncio.run(scenario())
