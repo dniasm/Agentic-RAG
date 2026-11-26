@@ -46,11 +46,18 @@ def test_gen_protos_check_notices_stale_extra_and_missing_files(tmp_path):
 
 
 def test_run_all_plan_with_no_services_is_the_orchestrator_alone():
-    plan = run_all.build_plan()
+    plan = run_all.build_plan([])
     assert [p.name for p in plan] == ["orchestrator"]
     assert plan[0].argv[1:] == ("-m", "uvicorn", "app:app", "--port", "8000")
     assert plan[0].kind == "http" and plan[0].ready_path == "/api/health"
     assert (ROOT / "app.py").exists()  # uvicorn app:app runs from the repo root
+
+
+def test_run_all_registry_starts_the_conversation_service_first():
+    assert run_all.SERVICES == ["conversation"]
+    plan = run_all.build_plan()
+    assert [p.name for p in plan] == ["conversation", "orchestrator"]
+    assert plan[0].argv[1:] == ("-m", "services.conversation") and plan[0].kind == "grpc"
 
 
 def test_run_all_plan_starts_services_first_on_their_reserved_ports():

@@ -7,6 +7,7 @@ import sqlite3
 import tempfile
 import unittest
 
+import conftest   # the session's Conversation service and its database (CONVERSATION_DB)
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -81,17 +82,8 @@ class Stats(unittest.TestCase):
 
     def test_stats_come_from_the_columns(self):
         self.answers()
-        with db.tx() as c:  # the JSON is no longer read
-            c.execute("UPDATE messages SET meta = 'not json'")
-        stats = db.user_stats(self.uid)
-        self.assertEqual({k: stats[k] for k in self.expected()}, self.expected())
-
-    def test_older_databases_are_backfilled_from_meta_once(self):
-        self.answers()
-        with db.tx() as c:  # as before 14 November: columns empty, migration not run
-            c.execute("UPDATE messages SET latency_ms = NULL, rewritten = 0, sufficient = NULL")
-            c.execute("DELETE FROM migrations WHERE name = 'message_stats_v1'")
-        db.init_db()
+        with conftest.CONVERSATION_DB.tx() as c:  # the JSON is no longer read
+            c.execute("UPDATE messages SET meta = 'not json' WHERE conversation_id = ?", (self.conv,))
         stats = db.user_stats(self.uid)
         self.assertEqual({k: stats[k] for k in self.expected()}, self.expected())
 
@@ -115,10 +107,11 @@ class FreshDatabase(unittest.TestCase):
             db._conn, settings.database_path = old_conn, old_path
         con = sqlite3.connect(path)
         tables = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+        self.assertFalse({"conversations", "messages"} & tables)   # they live in the Conversation service
         done = con.execute("SELECT name FROM migrations").fetchall()
         con.close()
         self.assertNotIn("user_memory", tables)
-        self.assertEqual(sorted(done), [("message_stats_v1",), ("user_facts_v1",)])
+        self.assertEqual(sorted(done), [("user_facts_v1",)])
 
 
 if __name__ == "__main__":

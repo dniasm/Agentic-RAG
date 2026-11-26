@@ -1,4 +1,5 @@
-"""SQLite persistence facade: users, conversations and messages, user facts (documents: backend/library/catalog.py, same file).
+"""SQLite persistence facade: users, user facts (documents: backend/library/catalog.py, same file) and, through the
+Conversation service (gRPC), conversations and messages.
 
 The code lives in connection.py (shared connection and transactions), users.py, conversations.py and memory.py;
 this module re-exports their names so `from backend.models import database as db` keeps working everywhere.
@@ -12,9 +13,8 @@ from backend.models import memory as _memory
 from backend.models import users as _users
 from backend.models.connection import _all, _get_conn, _lock, _now, _one, tx  # noqa: F401
 from backend.models.conversations import (  # noqa: F401
-    _STAT_COLUMNS, _add_message_stat_columns, _stats_from_meta, add_message, create_conversation,
-    delete_conversation, get_conversation, list_conversations, list_messages, list_tool_messages,
-    rename_conversation, user_stats,
+    add_message, create_conversation, delete_conversation, get_conversation, list_conversations, list_messages,
+    list_tool_messages, rename_conversation, user_stats,
 )
 from backend.models.memory import (  # noqa: F401
     _decode_values, _migrate_memory_to_facts, add_fact, delete_fact, list_memories, set_fact,
@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS migrations (
     applied_at TEXT NOT NULL
 );
 """
-SCHEMA = _users.SCHEMA + _memory.SCHEMA + _MIGRATIONS_SCHEMA + _conversations.SCHEMA
+SCHEMA = _users.SCHEMA + _memory.SCHEMA + _MIGRATIONS_SCHEMA
 
 
 class _Facade(types.ModuleType):
@@ -52,6 +52,5 @@ def init_db() -> None:
     with tx() as c:
         c.executescript(SCHEMA)
         _migrate_memory_to_facts(c)
-        _add_message_stat_columns(c)
     from backend.library import catalog
     catalog.init()

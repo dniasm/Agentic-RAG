@@ -4,7 +4,8 @@ docs/superpowers/specs/2026-11-14-merge-renamer-design.md).
     python -m backend.scripts.merge_library                 # dry run: build in staging, print the checks
     python -m backend.scripts.merge_library --apply         # the same, then swap in if every check passed
 
-Stop the server first: the embedded vector store allows one process per folder.
+Stop the server and the services first: the embedded vector store allows one process per folder, and the chats
+go into the Conversation service's own file (conversation.db), which is swapped like app.db.
 
 Everything is built in a staging folder from copies; nothing is re-embedded and no model is called. Every user,
 document, chunk and chat keeps its id. --apply keeps the originals beside the new files (app.db.before-merge,
@@ -15,7 +16,8 @@ qdrant_data.before-merge); RenamingPipeline/data and backend/documents are only 
     root or benchmark/corpus/wikipedia/ by SHA-256; a row with no file stops the run.
   * day7's chunks get title, file_name and source = title (a payload update).
   * The renamer's rows are copied as they are; its chunks are copied with their vectors.
-  * The renamer's chats become conversations (session id = conversation id) and keep their agent state.
+  * The renamer's chats become conversations (session id = conversation id) and keep their agent state; they are
+    added to a staged copy of conversation.db (day7's own chats are moved there by scripts/migrate_conversations.py).
   * RENAMER_SIGNUP_CODE is copied to SIGNUP_CODE in day7's .env (never printed).
 """
 import argparse
@@ -35,7 +37,9 @@ from qdrant_client import QdrantClient, models
 from backend.config.settings import BACKEND_DIR, PROJECT_ROOT, settings
 from backend.library import catalog, config, library
 from backend.models import database as db
+from services.conversation import db as conv_store
 from backend.rag import sparse, vectorstore
+from services.common import config as service_config
 
 MIGRATION = "library_merge_v1"
 RENAMER_COLLECTION = "renamer_docs"
@@ -132,8 +136,13 @@ def _readable_by_this_client(meta: Path) -> None:
     meta.write_text(json.dumps(data), encoding="utf-8")
 
 
-def merge(day7_root: Path, renamer_data: Path, staging: Path) -> Report:
+def _conversation_db_path(conversation_db: Path | None) -> Path:
+    return conversation_db or service_config.data_dir() / "conversation.db"
+
+
+def merge(day7_root: Path, renamer_data: Path, staging: Path, conversation_db: Path | None = None) -> Report:
     report = Report()
+    conversation_db = _conversation_db_path(conversation_db)
     day7_db = day7_root / "backend" / "data" / "app.db"
     day7_qdrant = day7_root / "backend" / "vector_db" / "qdrant_data"
     with contextlib.closing(sqlite3.connect(f"file:{day7_db}?mode=ro", uri=True)) as c:
@@ -156,10 +165,18 @@ def merge(day7_root: Path, renamer_data: Path, staging: Path) -> Report:
 
     src = sqlite3.connect(f"file:{renamer_data / 'catalog.db'}?mode=ro", uri=True)
     old = sqlite3.connect(f"file:{day7_db}?mode=ro", uri=True)
+    # the staged conversation.db starts as a copy of the live one (day7's chats, once migrated), plus the renamer's
+    staged_chats = staging / "conversation.db"
+    chats_before = 0
+    if conversation_db.exists():
+        with contextlib.closing(sqlite3.connect(f"file:{conversation_db}?mode=ro", uri=True)) as live, \
+                contextlib.closing(sqlite3.connect(staged_chats)) as copy:
+            live.backup(copy)
+            chats_before = copy.execute("SELECT COUNT(*) FROM conversations").fetchone()[0]
     expected = {
         "users": len(_rows(old, "SELECT id FROM users")) + len(_rows(src, "SELECT id FROM users")),
         "documents": len(_rows(old, "SELECT id FROM documents")) + len(_rows(src, "SELECT id FROM documents")),
-        "conversations": len(_rows(old, "SELECT id FROM conversations")) + len(_rows(src, "SELECT id FROM sessions")),
+        "conversations": chats_before + len(_rows(src, "SELECT id FROM sessions")),
     }
     day7_docs = _rows(old, "SELECT * FROM documents ORDER BY created_at")
     renamer_sessions = _rows(src, "SELECT * FROM sessions ORDER BY created_at")
@@ -204,19 +221,23 @@ def merge(day7_root: Path, renamer_data: Path, staging: Path) -> Report:
             conn.commit()   # stored_name and _unique_title read the catalog
         conn.execute("DROP TABLE documents_day7")
 
-        # ---- the renamer's chats, as conversations
-        for s in renamer_sessions:
-            display = json.loads(s["display"] or "[]")
-            conn.execute("INSERT INTO conversations (id, user_id, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-                         (s["id"], s["owner"], _first_user_text(display).strip()[:60], s["created_at"],
-                          s["updated_at"]))
-            for m, at in zip(display, _message_times(s["created_at"], s["updated_at"], len(display))):
-                assistant = m.get("role") == "assistant"
-                meta = json.dumps({"actions": m["actions"]}) if m.get("actions") else None
-                conn.execute("INSERT INTO messages (id, conversation_id, role, content, tool, meta, created_at) "
-                             "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                             (uuid.uuid4().hex, s["id"], "assistant" if assistant else "user", m.get("text", ""),
-                              "manage_documents" if assistant else None, meta, at))
+        # ---- the renamer's chats, as conversations (in the staged conversation.db)
+        chats_db = conv_store.open_db(staged_chats)
+        with chats_db.tx() as chats:
+            for s in renamer_sessions:
+                display = json.loads(s["display"] or "[]")
+                chats.execute("INSERT INTO conversations (id, user_id, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+                              (s["id"], s["owner"], _first_user_text(display).strip()[:60], s["created_at"],
+                               s["updated_at"]))
+                for m, at in zip(display, _message_times(s["created_at"], s["updated_at"], len(display))):
+                    assistant = m.get("role") == "assistant"
+                    meta = json.dumps({"actions": m["actions"]}) if m.get("actions") else None
+                    chats.execute("INSERT INTO messages (id, conversation_id, role, content, tool, meta, created_at) "
+                                  "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                                  (uuid.uuid4().hex, s["id"], "assistant" if assistant else "user", m.get("text", ""),
+                                   "manage_documents" if assistant else None, meta, at))
+        n_chats = chats_db.connection().execute("SELECT COUNT(*) FROM conversations").fetchone()[0]
+        chats_db.close()
         conn.execute("INSERT INTO migrations (name, applied_at) VALUES (?, ?)", (MIGRATION, datetime.now().isoformat()))
         conn.commit()
 
@@ -244,7 +265,7 @@ def merge(day7_root: Path, renamer_data: Path, staging: Path) -> Report:
                 if offset is None:
                     break
             report.notes.append(f"renamer chunks copied: {copied}")
-            _checks(report, conn, target, expected)
+            _checks(report, conn, target, expected, n_chats)
         finally:
             target.close()
             origin.close()
@@ -253,11 +274,12 @@ def merge(day7_root: Path, renamer_data: Path, staging: Path) -> Report:
     return report
 
 
-def _checks(report: Report, conn: sqlite3.Connection, client: QdrantClient, expected: dict) -> None:
+def _checks(report: Report, conn: sqlite3.Connection, client: QdrantClient, expected: dict, n_chats: int) -> None:
     name = settings.collection_name
-    for table in ("users", "documents", "conversations"):
+    for table in ("users", "documents"):
         n = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
         report.check(f"{table}: {n}", n == expected[table], f"expected {expected[table]}")
+    report.check(f"conversations: {n_chats}", n_chats == expected["conversations"], f"expected {expected['conversations']}")
     docs = _rows(conn, "SELECT * FROM documents")
     bad_files = [d["id"] for d in docs if not (config.LIBRARY_DIR / d["file_name"]).is_file()
                  or _sha256(config.LIBRARY_DIR / d["file_name"]) != d["sha256"]]
@@ -309,7 +331,7 @@ def _move_signup_code(renamer_env: Path, day7_env: Path) -> str:
     return "SIGNUP_CODE added to day7's .env"
 
 
-def apply(staging: Path, day7_root: Path, renamer_data: Path) -> None:
+def apply(staging: Path, day7_root: Path, renamer_data: Path, conversation_db: Path | None = None) -> None:
     """Swap the staged data in. Every move is undone if one fails; nothing after the swap can fail the run."""
     data = day7_root / "backend" / "data"
     qdrant = day7_root / "backend" / "vector_db" / "qdrant_data"
@@ -318,11 +340,22 @@ def apply(staging: Path, day7_root: Path, renamer_data: Path) -> None:
              (staging / "app.db", data / "app.db"),
              (staging / "qdrant_data", qdrant)]
     moves += [(staging / name, data / name) for name in DATA_FOLDERS if (staging / name).exists()]
+    chats = _conversation_db_path(conversation_db)
+    chats_moves = []
+    if (staging / "conversation.db").exists():
+        chats.parent.mkdir(parents=True, exist_ok=True)
+        with contextlib.closing(sqlite3.connect(staging / "conversation.db")) as c:   # fold the log in, as for app.db
+            c.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            c.execute("PRAGMA journal_mode = DELETE")
+        if chats.exists():
+            chats_moves.append((chats, chats.with_name("conversation.db.before-merge")))
+        chats_moves.append((staging / "conversation.db", chats))
     # sqlite's write-ahead log may still hold the last writes: fold it into app.db (its -wal/-shm go with it)
     with contextlib.closing(sqlite3.connect(staging / "app.db")) as c:
         c.execute("PRAGMA wal_checkpoint(TRUNCATE)")
         c.execute("PRAGMA journal_mode = DELETE")   # the app turns WAL back on when it connects
-    taken = [str(dst) for _, dst in [moves[0], moves[1], *moves[4:]] if dst.exists()]
+    taken = [str(dst) for _, dst in [moves[0], moves[1], *moves[4:], *chats_moves[:-1]] if dst.exists()]
+    moves += chats_moves
     if taken:
         raise MergeError(f"already there: {', '.join(taken)}")
     done = []
@@ -357,7 +390,7 @@ def main() -> None:
     if not report.ok:
         raise SystemExit("Not applied: a check failed.")
     apply(staging, PROJECT_ROOT, args.renamer_data)
-    print("Applied. Originals kept as app.db.before-merge and qdrant_data.before-merge.")
+    print("Applied. Originals kept as app.db.before-merge, qdrant_data.before-merge and conversation.db.before-merge.")
 
 
 if __name__ == "__main__":

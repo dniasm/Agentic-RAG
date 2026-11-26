@@ -11,10 +11,26 @@ os.environ.update({
     "DATABASE_PATH": os.path.join(TEST_DATA, "app.db"),
     "LIBRARY_DATA_DIR": os.path.join(TEST_DATA, "library-data"),
     "LOG_DIR": os.path.join(TEST_DATA, "logs"),   # importing backend.app starts the log files: never in the repo's logs/
+    "SERVICES_DATA_DIR": os.path.join(TEST_DATA, "services"),   # each service's own SQLite file
 })
+
+# The Conversation service runs for the whole session, in this process (its own thread and event loop) on an ephemeral
+# port; the orchestrator's settings dial it, so chats are saved through the real gRPC path.
+from services.common.inprocess import RunningService  # noqa: E402
+from services.conversation import db as _conversation_store  # noqa: E402
+from services.conversation.server import build_service as _build_conversation  # noqa: E402
+
+CONVERSATION_DB = _conversation_store.open_db()   # a test that must change rows the API can't reaches it here
+CONVERSATION = RunningService(lambda: _build_conversation(CONVERSATION_DB)).start()
+from backend.config.settings import settings as _settings  # noqa: E402
+
+_settings.conversation_service_addr = CONVERSATION.address   # not the environment: config tests read that
 
 
 def pytest_sessionfinish(session, exitstatus):
+    from backend import clients
+    clients.reset_clients()
+    CONVERSATION.stop()
     from backend.rag import vectorstore
     vectorstore.close_client()
     from backend.library import catalog

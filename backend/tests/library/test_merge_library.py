@@ -93,6 +93,7 @@ def sources(tmp_path, monkeypatch):
                              sparse_vectors_config=client.get_collection("c").config.params.sparse_vectors)
     client.upsert("renamer_docs", points=[_point(3, "u2", "r1", "measles fact sheet")], wait=True)
     client.close()
+    monkeypatch.setenv("SERVICES_DATA_DIR", str(tmp_path / "svc"))   # the merge reads and swaps conversation.db there, not the test service's
     monkeypatch.setattr(settings, "collection_name", "c")
     return day7, renamer
 
@@ -105,9 +106,13 @@ def test_the_merge_keeps_every_id_and_passes_its_checks(sources, tmp_path):
     docs = dict(merged.execute("SELECT id, title FROM documents").fetchall())
     assert docs == {"d1": "bm25 notes", "d2": "stemming", "r1": "Measles Fact Sheet"}
     assert merged.execute("SELECT owner, file_name FROM documents WHERE id = 'd2'").fetchone() == ("u1", "u1/stemming.md")
+    merged.close()
+    merged = sqlite3.connect(tmp_path / "staging" / "conversation.db")   # the chats are the Conversation service's file
     assert merged.execute("SELECT title FROM conversations WHERE id = 's1'").fetchone() == ("rename who to Measles Fact Sheet",)
     tools = merged.execute("SELECT role, tool, meta FROM messages WHERE conversation_id = 's1' ORDER BY created_at").fetchall()
     assert tools == [("user", None, None), ("assistant", "manage_documents", '{"actions": [{"type": "rename"}]}')]
+    merged.close()
+    merged = sqlite3.connect(tmp_path / "staging" / "app.db")
     assert {r[0] for r in merged.execute("SELECT id FROM users")} == {"u1", "u2"}
     assert (tmp_path / "staging" / "library" / "u1" / "stemming.md").read_bytes() == b"Stemming reduces words to their stems"
     merged.close()
