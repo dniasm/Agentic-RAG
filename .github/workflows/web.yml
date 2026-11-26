@@ -1,0 +1,34 @@
+name: "Web · Frontend"
+run-name: "Web · Frontend · ${{ github.event.pull_request.title || github.ref_name }}"
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+concurrency:
+  group: "${{ github.workflow }}-${{ github.head_ref || github.ref }}"
+  cancel-in-progress: true
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run build
+
+  logic:
+    uses: ./.github/workflows/_python-tests.yml
+    with:
+      name: "Frontend logic tests"
+      tests: backend/tests/test_frontend_logic.py
+      node: true

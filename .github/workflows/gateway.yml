@@ -1,0 +1,18 @@
+name: "Gateway · API"
+run-name: "Gateway · API · ${{ github.event.pull_request.title || github.ref_name }}"
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+concurrency:
+  group: "${{ github.workflow }}-${{ github.head_ref || github.ref }}"
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    uses: ./.github/workflows/_python-tests.yml
+    with:
+      name: "Gateway tests"
+      tests: backend/tests/test_stream.py backend/tests/test_conversations.py backend/tests/test_chat_limits.py backend/tests/test_compression.py backend/tests/test_version.py
