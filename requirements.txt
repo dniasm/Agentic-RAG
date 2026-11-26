@@ -21,6 +21,8 @@ fsspec==2026.9.0
 google-genai==2.25.0
 groq==0.37.1
 grpcio==1.84.0
+grpcio-health-checking==1.84.0
+grpcio-tools==1.84.0
 h11==0.16.0
 hf-xet==1.6.0
 httpcore2==2.13.1
