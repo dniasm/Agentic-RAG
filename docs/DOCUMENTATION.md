@@ -409,7 +409,7 @@ Most backend folders contain an empty `__init__.py`; it only lets Python import 
 | `web_search.py` | Web search through Tavily → DuckDuckGo → Wikipedia (recency handling, one-hour cache), the web-answer prompt, and source cards. |
 | `memory.py` | Saves facts about the user (cheap pre-check, Qwen extraction, merge rules in code) and writes the short summary of each exchange. |
 
-#### `backend/rag/` — documents in, passages out
+#### `services/document/` (was `backend/rag/`) — documents in, passages out (the Document service, `python -m services.document`)
 
 | File | What it does |
 |---|---|
@@ -455,6 +455,7 @@ Most backend folders contain an empty `__init__.py`; it only lets Python import 
 | `test_rerank.py` | Reranker zones and the fallback when Voyage can't score. |
 | `test_conversations.py` | Renaming chats; `/stats` from the message columns; a fresh database has no `user_memory`/`user_facts` table and no chat tables (they are the Conversation service's). |
 | `services/test_user_service.py` | The User service over real gRPC: sign-up, log-in, log-out, token validation and expiry, legacy bcrypt, case-insensitive names, nothing secret stored or logged, concurrent usage counts, the orchestrator failing closed (503, WebSocket 1013) with the service down, `scripts/migrate_users.py`. |
+| `services/test_document_service.py` | The Document service over real gRPC: ingest progress and chunked bytes over 4 MB, hybrid search with user and document filters, the reranked flag and the LLM fallback, delete, user isolation, request id, `scripts/migrate_documents_rag.py` |
 | `services/test_memory_service.py` | The Memory service over real gRPC: facts (multi-value keys, user isolation), episodes with stub embeddings (dedupe ids, search per person, delete by conversation), the collection created at start, request id, `scripts/migrate_memory.py` with vectors. |
 | `services/test_conversation_service.py` | The Conversation service over real gRPC: every call, user isolation and `NOT_FOUND`, `meta` round trip, request id in the service's log lines, the orchestrator's functions, `scripts/migrate_conversations.py`. |
 | `test_documents.py` | Uploads are titled, stored in the user's folder and indexed in the background; failed / removed-while-waiting / uploaded-twice outcomes; indexing cut off by a restart is resumed. |

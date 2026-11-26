@@ -17,7 +17,7 @@ from backend.api.routes import documents
 from backend.config.settings import settings
 from backend.library import api as library_api, catalog, config, library, titles
 from backend.models import database as db
-from services.document.ingestion import IngestionError
+from backend.documents.rag import IngestionError
 
 
 class LibraryBackedDocuments(unittest.TestCase):
@@ -39,7 +39,7 @@ class LibraryBackedDocuments(unittest.TestCase):
         self.jobs = []  # indexing jobs, run by the test when it chooses
         for target, attr, kw in (
             (library._queue, "submit", {"side_effect": lambda fn, *args: self.jobs.append((fn, args))}),
-            (library.vectorstore, "delete_document_vectors", {}),
+            (library.rag, "delete_document_vectors", {}),
             (library, "_set_chunk_fields", {}),
             (titles, "profile_document", {"return_value": (titles.DocProfile(title="Notes On BM25", summary="s",
                                                                              keywords=[]), True)}),
@@ -57,7 +57,7 @@ class LibraryBackedDocuments(unittest.TestCase):
         return self.client.post("/documents/upload", files={"file": ("notes.txt", text, "text/plain")})
 
     def run_jobs(self, **ingest):
-        with mock.patch.object(library.ingestion, "ingest_file", **ingest):
+        with mock.patch.object(library.rag, "ingest", **ingest):
             for fn, args in self.jobs:
                 fn(*args)
         self.jobs.clear()

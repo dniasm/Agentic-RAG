@@ -53,13 +53,14 @@ def test_run_all_plan_with_no_services_is_the_orchestrator_alone():
     assert (ROOT / "app.py").exists()  # uvicorn app:app runs from the repo root
 
 
-def test_run_all_registry_starts_the_user_conversation_and_memory_services_first():
-    assert run_all.SERVICES == ["user", "conversation", "memory"]
+def test_run_all_registry_starts_the_user_conversation_memory_and_document_services_first():
+    assert run_all.SERVICES == ["user", "conversation", "memory", "document"]
     plan = run_all.build_plan()
-    assert [p.name for p in plan] == ["user", "conversation", "memory", "orchestrator"]
+    assert [p.name for p in plan] == ["user", "conversation", "memory", "document", "orchestrator"]
     assert plan[0].argv[1:] == ("-m", "services.user") and plan[0].kind == "grpc"
     assert plan[1].argv[1:] == ("-m", "services.conversation") and plan[1].kind == "grpc"
     assert plan[2].argv[1:] == ("-m", "services.memory") and plan[2].kind == "grpc"
+    assert plan[3].argv[1:] == ("-m", "services.document") and plan[3].kind == "grpc"
 
 
 def test_run_all_plan_starts_services_first_on_their_reserved_ports():

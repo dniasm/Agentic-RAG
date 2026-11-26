@@ -136,7 +136,7 @@ Old vs current, from the benchmarks and the token log (details: [`docs/DOCUMENTA
 | `backend/models/` | SQLite data access and API schemas |
 | `backend/graph/` | The LangGraph agent: state, nodes, edges |
 | `backend/tools/` | Answer writers (direct, documents, web), small talk, memory extraction |
-| `backend/rag/` | Ingestion, Qdrant vector store, hybrid search, reranking |
+| `backend/documents/rag.py` | The orchestrator's client of the Document service's RAG half (index a file, search, delete) |
 | `backend/memory/` | Conversation memory (Voyage embeddings in Qdrant) |
 | `backend/evaluation/` | Code citation check, LLM answer check, decision reviews |
 | `backend/tests/` | Unit tests (no API calls) |
@@ -224,8 +224,7 @@ on the socket tagged with the `turn_id` the browser put on the POST.
 ## Services
 
 Work in progress: the backend is becoming an orchestrator that talks gRPC to four services (user, conversation,
-memory, document), each owning its own SQLite database. The User, Conversation and Memory services are live; the
-document service is still to come.
+memory, document), each owning its own SQLite database. The User, Conversation, Memory and Document (RAG half) services are live; the document catalog is still in the orchestrator.
 
 | Path | Holds |
 |---|---|
@@ -235,6 +234,7 @@ document service is still to come.
 | `services/user/` | The User service: `server.py` (gRPC), `db.py` (SQL and schema), `accounts.py` (password hashing, tokens), `__main__.py` |
 | `services/conversation/` | The Conversation service: `server.py` (gRPC), `db.py` (SQL and schema), `__main__.py` |
 | `services/memory/` | The Memory service: `server.py` (gRPC), `db.py` (facts SQL), `vectors.py` (episodes in its own Qdrant folder), `__main__.py` |
+| `services/document/` | The Document service (RAG half): `server.py` (gRPC), `ingestion.py` (load, clean, chunk, embed, store), `ocr.py`, `sparse.py`, `vectorstore.py` (its own Qdrant folder), `retrieval.py` (hybrid + RRF), `rerank.py` (Voyage + MMR), `search.py`, `embedding_cache.py`, `db.py` (`document.db`), `__main__.py` |
 | `backend/clients.py` | The orchestrator's gRPC clients: a channel per service, a deadline on every call, the request id sent along |
 
 Ports (override with the env variable, which both the service and the orchestrator read): user `50061`
@@ -301,7 +301,7 @@ and episodes, short summaries of past exchanges found by meaning (its own embedd
 `backend/data/services/memory_qdrant/`, created when the service starts). The service embeds the text itself with Voyage, so
 it needs `VOYAGE_API_KEY`; the orchestrator keeps the language-model work (reading messages for facts, summarising exchanges)
 and calls the service to store and read. `backend/models/memory.py` and `backend/memory/store.py` keep their functions and
-result shapes. The account's Voyage budget (`VOYAGE_REQUESTS_PER_MINUTE`) is split between the two processes that use it: the orchestrator's reranker gets `VOYAGE_RERANK_RESERVE` requests a minute and the service gets the rest (at least 1), so together they never exceed the total.
+result shapes. The account's Voyage budget (`VOYAGE_REQUESTS_PER_MINUTE`) is split between the two processes that use it: the Document service (reranking) gets `VOYAGE_RERANK_RESERVE` requests a minute and the Memory service gets the rest (at least 1), so together they never exceed the total.
 
 ```bash
 python -m services.memory            # on its own; `python scripts/run_all.py` starts it before the orchestrator
@@ -312,6 +312,24 @@ python scripts/migrate_memory.py     # once, BACKEND STOPPED, service running: c
 backend must be stopped), backs up `app.db` and that folder first, copies facts (and the older `user_memory` table if it
 was never converted) and episodes with their ids and vectors (nothing is embedded again), then checks that sending them
 again creates nothing. It deletes nothing: the old rows and collection stay where they were, unused.
+
+### Document service, RAG half (port 50064)
+
+Reading and indexing files and finding passages (`protos/agentic_rag_proto/document.proto`). Ingestion: extract, clean, chunk
+(with overlap), embed (Gemini, paced, with the key pool), store (dense + BM25 sparse vectors), OCR for scanned PDF pages.
+Retrieval: query embedded, dense + keyword search fused by RRF, top-K, Voyage rerank, MMR. The service owns the passage
+index (`backend/data/services/document_qdrant/`) and `document.db` (OCR text and question-embedding caches); the orchestrator
+opens no vector store and embeds nothing. Files are sent as bytes (chunks of 1 MiB), never read from the library folder.
+`Ingest` streams progress (reading, ocr page n of N, chunked, embedding x of y, stored) which the orchestrator republishes as
+WebSocket `library/document` events. The orchestrator keeps the decisions (router, rewrite, grade, the LLM relevance check when
+`Search` says `reranked=false`, generation, citation checks) and the embedding allowance: it checks the User service BEFORE
+calling `Ingest` (passing what is left as `max_passages`) and charges the passages `Ingest` reports as embedded AFTER.
+The documents catalog, renames, edits and undo stay in the orchestrator for now.
+
+```bash
+python -m services.document            # on its own; `python scripts/run_all.py` starts it before the orchestrator
+python scripts/migrate_documents_rag.py   # once, BACKEND STOPPED, service running: copy the passages (with vectors) and caches
+```
 
 ## Logging
 
