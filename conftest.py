@@ -14,23 +14,29 @@ os.environ.update({
     "SERVICES_DATA_DIR": os.path.join(TEST_DATA, "services"),   # each service's own SQLite file
 })
 
-# The Conversation service runs for the whole session, in this process (its own thread and event loop) on an ephemeral
-# port; the orchestrator's settings dial it, so chats are saved through the real gRPC path.
+# The Conversation and User services run for the whole session, in this process (each its own thread and event loop) on
+# an ephemeral port; the orchestrator's settings dial them, so chats, accounts and usage go through the real gRPC path.
 from services.common.inprocess import RunningService  # noqa: E402
+from services.user import db as _user_store  # noqa: E402
+from services.user.server import build_service as _build_user  # noqa: E402
 from services.conversation import db as _conversation_store  # noqa: E402
 from services.conversation.server import build_service as _build_conversation  # noqa: E402
 
 CONVERSATION_DB = _conversation_store.open_db()   # the service's own database
 CONVERSATION = RunningService(lambda: _build_conversation(CONVERSATION_DB)).start()
+USER_DB = _user_store.open_db()   # a test that must change rows the API can't (expire a login, wipe accounts) uses it
+USER = RunningService(lambda: _build_user(USER_DB)).start()
 from backend.config.settings import settings as _settings  # noqa: E402
 
 _settings.conversation_service_addr = CONVERSATION.address   # not the environment: config tests read that
+_settings.user_service_addr = USER.address
 
 
 def pytest_sessionfinish(session, exitstatus):
     from backend import clients
     clients.reset_clients()
     CONVERSATION.stop()
+    USER.stop()
     from backend.rag import vectorstore
     vectorstore.close_client()
     from backend.library import catalog
@@ -63,11 +69,16 @@ def _summaries_settled():
 
 @pytest.fixture(autouse=True)
 def _fresh_embed_usage():
-    """Each test starts with no passages embedded today (the counts are kept in the test database)."""
-    from backend.library import catalog, embed_budget
-    embed_budget._ensure()
-    with catalog.tx() as c:
+    """Each test starts with no passages embedded today (the counts are kept in the User service's database)."""
+    with USER_DB.tx() as c:
         c.execute("DELETE FROM embed_usage")
+
+
+@pytest.fixture
+def user_db():
+    """The User service's database (the one the in-process service runs on), for tests that must change rows the
+    API can't: expire a login, count something for an account, wipe the accounts."""
+    return USER_DB
 
 
 @pytest.fixture(autouse=True)

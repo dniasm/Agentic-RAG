@@ -26,7 +26,7 @@ UNEXPLAINED = "429 RESOURCE_EXHAUSTED. Too many requests."
 
 
 @pytest.fixture(autouse=True)
-def four_keys(monkeypatch):
+def four_keys(monkeypatch, user_db):
     for name, key in zip(("gemini_api_key", "gemini_api_key_2", "gemini_api_key_3", "gemini_api_key_4"), KEYS):
         monkeypatch.setattr(settings, name, key)
     monkeypatch.setattr(settings, "embed_site_per_day", None)
@@ -34,8 +34,8 @@ def four_keys(monkeypatch):
     monkeypatch.setattr(api_meter, "FLUSH_SECONDS", 3600.0)
     with api_meter._lock:
         api_meter._pending.clear()
-    with catalog.tx() as c:
-        c.execute("DROP TABLE IF EXISTS api_usage")
+    with user_db.tx() as c:
+        c.execute("DELETE FROM api_usage")
     gemini.pool.reset()
     yield
     gemini.pool.reset()
@@ -72,10 +72,8 @@ def clients(monkeypatch):
 
 def counts():
     api_meter.flush()
-    with catalog.tx() as c:
-        api_meter._ensure(c)
-        rows = c.execute("SELECT key_index, model, calls, limited FROM api_usage WHERE provider = 'gemini'").fetchall()
-    return {(k, m): (calls, limited) for k, m, calls, limited in rows}
+    rows = [r for r in api_meter.rows_since(2) if r["provider"] == "gemini"]
+    return {(r["key"], r["model"]): (r["calls"], r["limited"]) for r in rows}
 
 
 # ---------------------------------------------------------------- fallback

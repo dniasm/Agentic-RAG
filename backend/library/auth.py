@@ -1,36 +1,40 @@
-"""Accounts: sign-up, log-in, log-out.
+"""Accounts: sign-up, log-in, log-out, as the orchestrator sees them.
 
-  * Passwords are stored as salted PBKDF2-SHA256 hashes (600,000 rounds), never as text.
-  * A login is a random token in an HttpOnly cookie; the catalog keeps only the token's SHA-256, so a copied database
-    holds no token anyone can use. Logins last LOGIN_DAYS.
-  * Wrong passwords are throttled: after MAX_FAILURES for a name from one address within FAILURE_WINDOW, that
-    name waits there; after MAX_ADDRESS_FAILURES from one address, that address waits.
+The accounts themselves live in the User service (services/user/): it hashes and checks passwords (salted PBKDF2, and
+day7's older bcrypt), makes login tokens and keeps only their SHA-256, so a copied database holds no token anyone can
+use. What stays here is what belongs to the HTTP side:
+  * A login is a random token in an HttpOnly cookie (backend/api/routes/auth.py sets it). Logins last LOGIN_DAYS.
+  * Wrong passwords are throttled, in memory: after MAX_FAILURES for a name from one address within FAILURE_WINDOW,
+    that name waits there; after MAX_ADDRESS_FAILURES from one address, that address waits.
   * The first account can always be made, and the library from before accounts existed becomes its own. After that a
     sign-up needs the invite code (SIGNUP_CODE in .env): the site is public through the tunnel, and every
     account spends the owner's Groq, Gemini and Voyage allowances. With no code set, sign-ups are closed.
+  * Admin names (ADMIN_USERNAMES) are checked here, against the account's name.
+  * If the User service can't answer, nobody is logged in: user_for raises UserServiceDown and the routes answer 503.
   * One login for the whole app (day7's chat and the library): backend/api/routes/auth.py serves these at /api/auth/*.
 """
-import hashlib
 import hmac
-import re
-import secrets
 import threading
 import time
-from datetime import datetime, timedelta, timezone
 
-from backend.library import catalog, config
+import grpc
+
+from agentic_rag_proto import user_pb2 as pb
+from backend.clients import get_clients
+from backend.library import config
 from backend.library.logs import event
+from services.user import accounts
 
-ROUNDS = 600_000
-LOGIN_DAYS = 30
+LOGIN_DAYS = accounts.LOGIN_DAYS
 MAX_FAILURES, FAILURE_WINDOW = 5, 15 * 60   # wrong passwords for one name from one address
 MAX_ADDRESS_FAILURES = 20                    # wrong passwords from one address, any names
 COOKIE = "login"
-USERNAME = re.compile(r"^[A-Za-z0-9_.-]{3,32}$")
-MIN_PASSWORD = 8
 
 _failures: dict[str, list[float]] = {}
 _failures_lock = threading.Lock()
+
+# answers about the person (taken name, wrong password, bad shape); every other gRPC failure means "can't tell"
+_ANSWERS = (grpc.StatusCode.ALREADY_EXISTS, grpc.StatusCode.UNAUTHENTICATED, grpc.StatusCode.INVALID_ARGUMENT)
 
 
 class AuthError(Exception):
@@ -39,46 +43,28 @@ class AuthError(Exception):
         self.status = status
 
 
-def hash_password(password: str) -> str:
-    salt = secrets.token_bytes(16)
-    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, ROUNDS)
-    return f"pbkdf2_sha256${ROUNDS}${salt.hex()}${digest.hex()}"
+class UserServiceDown(Exception):
+    """The User service did not answer: whoever asked is NOT logged in (every caller must fail closed)."""
 
 
-def check_password(password: str, stored: str) -> bool:
-    """Both formats in the users table: PBKDF2 (made here) and bcrypt (made by day7's sign-up before the merge),
-    told apart by prefix. They are equal in strength, so neither is re-hashed."""
-    if stored.startswith("$2"):
-        return _check_bcrypt(password, stored)
+def _call(rpc_name: str, request):
+    """One User service call. Answers about the person come back as grpc.RpcError; an unreachable or failing
+    service is UserServiceDown."""
+    clients = get_clients()
     try:
-        _, rounds, salt, digest = stored.split("$")
-        mine = hashlib.pbkdf2_hmac("sha256", password.encode(), bytes.fromhex(salt), int(rounds))
-    except (ValueError, TypeError):
-        return False
-    return hmac.compare_digest(mine.hex(), digest)
+        return clients.call(getattr(clients.user, rpc_name), request)
+    except grpc.RpcError as e:
+        if e.code() in _ANSWERS:
+            raise
+        raise UserServiceDown(f"{rpc_name}: {e.code().name}") from e
 
 
-def _check_bcrypt(password: str, stored: str) -> bool:
-    import base64
-
-    import bcrypt
-    # day7 pre-hashed with SHA-256 so that passphrases past bcrypt's 72 bytes still count
-    prehashed = base64.b64encode(hashlib.sha256(password.encode("utf-8")).digest())
-    try:
-        return bcrypt.checkpw(prehashed, stored.encode())
-    except ValueError:
-        return False
+def _user(u: pb.User) -> dict:
+    return {"id": u.id, "username": u.username, "created_at": u.created_at}
 
 
-def _token_hash(token: str) -> str:
-    return hashlib.sha256(token.encode()).hexdigest()
-
-
-def _new_login(user: dict) -> str:
-    token = secrets.token_urlsafe(32)
-    expires = (datetime.now(timezone.utc) + timedelta(days=LOGIN_DAYS)).isoformat(timespec="seconds")
-    catalog.add_token(user["id"], _token_hash(token), expires)
-    return token
+def user_count() -> int:
+    return _call("CountUsers", pb.CountUsersRequest()).count
 
 
 def _invite_code() -> str:
@@ -87,18 +73,17 @@ def _invite_code() -> str:
 
 def signups_open() -> str:
     """'first' (no account yet), 'invite' (a code is needed) or 'closed'."""
-    if catalog.count_users() == 0:
+    if user_count() == 0:
         return "first"
     return "invite" if _invite_code() else "closed"
 
 
 def sign_up(username: str, password: str, invite: str = "", address: str = "") -> tuple[dict, str]:
     """Returns (user, login token). The first account takes the library from before accounts existed."""
-    username = (username or "").strip()
-    if not USERNAME.match(username):
-        raise AuthError("A username is 3-32 letters, digits, dots, dashes or underscores.")
-    if len(password or "") < MIN_PASSWORD:
-        raise AuthError(f"Use a password of at least {MIN_PASSWORD} characters.")
+    try:
+        username = accounts.validate_new(username, password)
+    except ValueError as e:
+        raise AuthError(str(e)) from e
     state = signups_open()
     if state == "closed":
         raise AuthError("Sign-ups are closed. Ask the site's owner for an invite.", 403)
@@ -108,18 +93,20 @@ def sign_up(username: str, password: str, invite: str = "", address: str = "") -
         if not hmac.compare_digest((invite or "").strip(), _invite_code()):
             _failed("", address)   # wrong invite codes count against the address like wrong passwords
             raise AuthError("That invite code isn't right.", 403)
-    if catalog.user_by_name(username):
-        raise AuthError("That username is taken.", 409)
     if is_admin_name(username):   # an admin name is never claimable by signing up: only an existing account counts
         raise AuthError("That username is taken.", 409)
-    user = catalog.create_user(username, hash_password(password))
-    event("signup", user=user["id"], username=username, first=state == "first")
-    if state == "first":
-        from backend.library import library   # imported here: library imports day7, which tests set up first
+    try:
+        reply = _call("SignUp", pb.SignUpRequest(username=username, password=password))
+    except grpc.RpcError as e:
+        taken = e.code() == grpc.StatusCode.ALREADY_EXISTS
+        raise AuthError(e.details() or "Couldn't sign up.", 409 if taken else 400) from e
+    user = _user(reply.user)
+    if reply.first_account:
+        from backend.library import catalog, library   # imported here: library imports day7, which tests set up first
         moved = library.give_legacy_library_to(user["id"])
         catalog.give_legacy_chats_and_batches_to(user["id"])
         event("legacy_library_claimed", user=user["id"], documents=moved)
-    return user, _new_login(user)
+    return user, reply.token
 
 
 def _recent(key: str, now: float) -> list[float]:
@@ -154,26 +141,35 @@ def log_in(username: str, password: str, address: str = "") -> tuple[dict, str]:
     username = (username or "").strip()
     if _throttled(username, address):
         raise AuthError("Too many wrong passwords. Wait a few minutes and try again.", 429)
-    user = catalog.user_by_name(username)
-    if not user or not check_password(password or "", user["password_hash"]):
+    try:
+        reply = _call("LogIn", pb.LogInRequest(username=username, password=password or ""))
+    except grpc.RpcError as e:   # only an answer about the person gets here: the wrong name or password
         _failed(username, address)
         event("login_failed", username=username[:40], address=address)
-        raise AuthError("Wrong username or password.", 401)
-    event("login", user=user["id"])
-    return user, _new_login(user)
+        raise AuthError("Wrong username or password.", 401) from e
+    return _user(reply.user), reply.token
 
 
 def log_out(token: str | None) -> None:
     if token:
-        catalog.delete_token(_token_hash(token))
+        _call("LogOut", pb.LogOutRequest(token=token))
 
 
 def user_for(token: str | None) -> dict | None:
-    return catalog.user_for_token(_token_hash(token)) if token else None
+    """The account this login token belongs to, or None. Raises UserServiceDown when the service can't say: the
+    caller must refuse the request, never treat the person as signed in."""
+    if not token:
+        return None
+    reply = _call("ValidateToken", pb.ValidateTokenRequest(token=token))
+    return _user(reply.user) if reply.found else None
+
+
+def list_users() -> list[dict]:
+    return [_user(u) for u in _call("ListUsers", pb.ListUsersRequest()).users]
 
 
 def admin_names() -> set[str]:
-    """settings.admin_usernames, compared without case, as logins are (users.username is COLLATE NOCASE)."""
+    """settings.admin_usernames, compared without case, as logins are (usernames are unique without regard to case)."""
     from backend.config.settings import settings
     return {n.strip().casefold() for n in (settings.admin_usernames or "").split(",") if n.strip()}
 

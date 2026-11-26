@@ -44,7 +44,13 @@ from services.common import config as service_config
 MIGRATION = "library_merge_v1"
 RENAMER_COLLECTION = "renamer_docs"
 COPIED_TABLES = ("users", "documents", "renames", "edits", "batches", "batch_tasks", "sessions", "auth_tokens")
-DATA_FOLDERS = ("library", "versions", "font-index", "logs")
+LEGACY_USER_TABLES = """
+CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    password_hash TEXT NOT NULL, created_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS auth_tokens (token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL);
+"""
+DATA_FOLDERS =("library", "versions", "font-index", "logs")
 
 
 class MergeError(RuntimeError):
@@ -190,6 +196,12 @@ def merge(day7_root: Path, renamer_data: Path, staging: Path, conversation_db: P
 
     with _pointed_at(staging):
         db.init_db()   # day7's schema (no documents table) and the catalog's
+        # Accounts live in the User service now; the merged app.db still gets them as the source that
+        # scripts/migrate_users.py copies into user.db.
+        stage = sqlite3.connect(staging / "app.db")
+        stage.executescript(LEGACY_USER_TABLES)
+        stage.commit()
+        stage.close()
         conn = sqlite3.connect(f"file:{staging / 'app.db'}", uri=True)   # uri: ATTACH below opens read-only
         conn.execute("PRAGMA foreign_keys = ON")
 

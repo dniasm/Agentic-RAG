@@ -13,7 +13,9 @@ _PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
+import grpc
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.api.routes import admin, auth, chat, documents, health, ws
@@ -21,6 +23,7 @@ from backend.realtime.hub import hub
 from backend.config import redact
 from backend.config.settings import settings
 from backend.library import api as library_api
+from backend.library.auth import UserServiceDown
 from backend.memory.store import ensure_memory_collection
 from backend.models.database import init_db
 from backend import version
@@ -92,6 +95,14 @@ app.add_middleware(SecurityMiddleware)
 
 # The request id and the access line. Added last, so outermost: even a refused request gets both.
 app.add_middleware(RequestLogMiddleware)
+
+@app.exception_handler(UserServiceDown)
+@app.exception_handler(grpc.RpcError)
+def _service_unavailable(request, exc):
+    """A service the request needs didn't answer: refused, never let through (the sign-in check fails closed)."""
+    logging.getLogger(__name__).error("Service unavailable on %s: %s", request.url.path, exc)
+    return JSONResponse({"detail": "A service this needs is unavailable. Try again shortly."}, status_code=503)
+
 
 #ROUTES
 for module in (health, auth, chat, documents, admin, ws):

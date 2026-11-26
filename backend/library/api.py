@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
 from backend.api.dependencies import get_current_user
-from backend.library import batch, catalog, config, export, library, naming
+from backend.library import auth, batch, catalog, config, export, library, naming
 from backend.library.logs import event
 
 router = APIRouter(prefix="/library", tags=["Library"])
@@ -36,7 +36,11 @@ def startup() -> None:
     """Called from day7's lifespan: unfinished files, the queue worker."""
     _resume_unfinished()
     batch.start()
-    event("server_started", documents=len(catalog.list_documents()), users=catalog.count_users())
+    try:
+        users = auth.user_count()
+    except auth.UserServiceDown:   # the server starts anyway: until the service answers, nobody can sign in
+        users = "unknown"
+    event("server_started", documents=len(catalog.list_documents()), users=users)
 
 
 def shutdown() -> None:

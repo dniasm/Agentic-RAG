@@ -13,16 +13,17 @@ questions need. EMBED_SITE_PER_DAY, when set, is a fixed total instead.
 
 An operation is checked before anything is embedded, on the number it really needs (stored vectors are reused), and
 refused whole if it doesn't fit: no partial indexing. Only embeddings that succeeded are charged. The counts are kept
-in app.db (embed_usage for indexing per account, api_usage for every request per key), so a restart keeps them.
+in the User service (embed_usage for indexing per account, api_usage for every request per key), so a restart keeps them.
 
 The day is Google's: Gemini's per-day quotas reset at midnight Pacific time (America/Los_Angeles, with US daylight
 saving), not at local midnight (config/gemini.provider_day).
 """
 from datetime import datetime
 
+from agentic_rag_proto import user_pb2 as pb
+from backend.clients import get_clients
 from backend.config import gemini
 from backend.config.settings import settings
-from backend.library import catalog
 
 provider_day = gemini.provider_day
 
@@ -31,23 +32,22 @@ class EmbedBudgetExceeded(Exception):
     """Refused before embedding; the message says how many passages were needed and how many are left today."""
 
 
-def _ensure() -> None:
-    with catalog.tx() as c:
-        c.execute("CREATE TABLE IF NOT EXISTS embed_usage (day TEXT NOT NULL, user_id TEXT NOT NULL, "
-                  "chunks INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (day, user_id))")
+def _call(rpc_name: str, request):
+    clients = get_clients()
+    return clients.call(getattr(clients.user, rpc_name), request)
 
 
 def used(user_id: str | None = None, day: str | None = None) -> int:
     """Chunks embedded for indexing today: by one account, or (None) by the whole site."""
-    _ensure()
-    day = day or provider_day()
-    with catalog.tx() as c:
-        if user_id is None:
-            row = c.execute("SELECT COALESCE(SUM(chunks), 0) FROM embed_usage WHERE day = ?", (day,)).fetchone()
-        else:
-            row = c.execute("SELECT COALESCE(SUM(chunks), 0) FROM embed_usage WHERE day = ? AND user_id = ?",
-                            (day, user_id)).fetchone()
-    return int(row[0])
+    request = pb.GetEmbedUsageRequest(day=day or provider_day())
+    if user_id is not None:
+        request.user_id = user_id
+    return _call("GetEmbedUsage", request).chunks
+
+
+def used_by_user(day: str) -> dict[str, int]:
+    """Every account's chunks embedded for indexing on `day` (the admin panel)."""
+    return {r.user_id: r.chunks for r in _call("ListEmbedUsage", pb.ListEmbedUsageRequest(day=day)).rows}
 
 
 def key_states(now: datetime | None = None) -> list[dict]:
@@ -119,11 +119,8 @@ def check(user_id: str, needed: int, safety: bool = False) -> None:
 
 
 def charge(user_id: str, chunks: int) -> None:
-    """Count chunks that were embedded (after the embedding succeeded)."""
+    """Count chunks that were embedded (after the embedding succeeded). The User service adds them atomically."""
     if chunks <= 0:
         return
-    _ensure()
-    with catalog.tx() as c:
-        c.execute("INSERT INTO embed_usage (day, user_id, chunks) VALUES (?, ?, ?) "
-                  "ON CONFLICT(day, user_id) DO UPDATE SET chunks = chunks + excluded.chunks",
-                  (provider_day(), user_id, chunks))
+    _call("AddEmbedUsage", pb.AddEmbedUsageRequest(day=provider_day(), user_id=user_id, chunks=chunks))
+

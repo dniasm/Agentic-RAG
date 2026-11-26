@@ -24,18 +24,18 @@ def sign_up(client, name, invite_code=""):
 
 
 @pytest.fixture
-def two_users(library_docs, signed_in, invite, tmp_path):
+def two_users(library_docs, signed_in, invite, tmp_path, user_db):
     """tester (the first account: owns the four DOCS) and mallory, with one document of her own."""
     other = browser()
     assert sign_up(other, "mallory", INVITE).status_code == 200
-    mallory = catalog.user_by_name("mallory")
+    mallory = dict(user_db.connection().execute("SELECT * FROM users WHERE username = ?", ("mallory",)).fetchone())
     path = tmp_path / "secret.txt"
     path.write_text("Mallory's secret plan\nThe plan is to rename everything about kernels.", encoding="utf-8")
     doc, _ = library.ingest_path(path)          # made as the legacy owner, then given to her: row and chunks both
     library._set_chunk_fields(doc["id"], config.OWNER, user_id=mallory["id"])
     with catalog.tx() as c:
         c.execute("UPDATE documents SET owner = ? WHERE id = ?", (mallory["id"], doc["id"]))
-    return signed_in, other, catalog.get_user(signed_in.user["id"]), mallory
+    return signed_in, other, dict(user_db.connection().execute("SELECT * FROM users WHERE id = ?", (signed_in.user["id"],)).fetchone()), mallory
 
 
 # ---------------------------------------------------------------- signing up and in
@@ -70,11 +70,11 @@ def test_bad_usernames_and_short_passwords_are_refused():
     assert c.post("/api/auth/signup", json={"username": "ok_name", "password": "short"}).status_code == 400
 
 
-def test_passwords_and_logins_are_never_stored_as_given(signed_in):
-    user = catalog.get_user(signed_in.user["id"])
+def test_passwords_and_logins_are_never_stored_as_given(signed_in, user_db):
+    user = dict(user_db.connection().execute("SELECT * FROM users WHERE id = ?", (signed_in.user["id"],)).fetchone())
     assert "correct horse" not in user["password_hash"] and user["password_hash"].startswith("pbkdf2_sha256$")
     token = signed_in.cookies.get(auth.COOKIE)
-    with catalog.tx() as c:
+    with user_db.tx() as c:
         stored = [r[0] for r in c.execute("SELECT token_hash FROM auth_tokens")]
     assert token not in stored and len(stored) == 1
 
@@ -174,8 +174,8 @@ def test_a_logged_out_token_is_dead_even_if_kept(signed_in):
     assert stolen.get("/api/conversations").status_code == 401
 
 
-def test_an_expired_token_is_refused(signed_in):
-    with catalog.tx() as c:
+def test_an_expired_token_is_refused(signed_in, user_db):
+    with user_db.tx() as c:
         c.execute("UPDATE auth_tokens SET expires_at = '2000-01-01T00:00:00+00:00'")
     assert signed_in.get("/api/auth/me").status_code == 401
     assert signed_in.get("/api/documents").status_code == 401

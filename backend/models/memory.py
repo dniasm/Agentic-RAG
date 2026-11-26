@@ -10,7 +10,7 @@ SCHEMA = """
 -- backup of the pre-migration data; new databases don't get it.
 CREATE TABLE IF NOT EXISTS user_facts (
     id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL,   -- a User service id: that table lives in another database, so no foreign key
     memory_key TEXT NOT NULL,
     value TEXT NOT NULL COLLATE NOCASE,
     created_at TEXT NOT NULL,
@@ -40,6 +40,20 @@ def _migrate_memory_to_facts(c) -> None:
     c.execute("INSERT INTO migrations (name, applied_at) VALUES ('user_facts_v1', ?)", (_now(),))
 
 
+
+
+def _drop_users_foreign_key(c) -> None:
+    """user_facts once pointed at app.db's users table, which now lives in the User service (user.db): rebuild the
+    table without the foreign key, or every new account's first fact would be refused. Rows are copied as they are."""
+    row = c.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'user_facts'").fetchone()
+    if not row or "REFERENCES users" not in row[0]:
+        return
+    c.execute("DROP INDEX IF EXISTS idx_facts_user")
+    c.execute("ALTER TABLE user_facts RENAME TO user_facts_old")
+    c.executescript(SCHEMA)   # (commits: the copy below is its own step; both are safe to repeat)
+    c.execute("INSERT OR IGNORE INTO user_facts (id, user_id, memory_key, value, created_at, updated_at) "
+              "SELECT id, user_id, memory_key, value, created_at, updated_at FROM user_facts_old")
+    c.execute("DROP TABLE user_facts_old")
 
 
 def _decode_values(raw: str) -> list[str]:

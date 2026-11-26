@@ -12,7 +12,7 @@ Three providers, one key each except Groq (GROQ_API_KEY ... _4) and Gemini (GEMI
 
 The key text is never stored or shown: keys are numbered 1-4 in the order of the settings.
 
-Counting happens in memory; a background timer adds the counts to app.db (api_usage, one row per UTC hour,
+Counting happens in memory; a background timer adds the counts to the User service (api_usage, one row per UTC hour,
 provider, key and model) every FLUSH_SECONDS and when the admin panel reads them, so a model call never waits on
 a database write. A crash loses at most the last few seconds of counts. The latest headers stay in memory only
 (they are stale after a restart until the next call).
@@ -45,7 +45,7 @@ def hour_of(when: datetime | None = None) -> str:
 
 
 def count(provider: str, key: int, model: str, calls: int = 0, tokens: int = 0, limited: int = 0) -> None:
-    """Add to this hour's counts (in memory; flushed to app.db in the background)."""
+    """Add to this hour's counts (in memory; flushed to the User service in the background)."""
     if not (calls or tokens or limited):
         return
     with _lock:
@@ -125,29 +125,25 @@ def latest_headers() -> dict[tuple[int, str], dict]:
         return {k: dict(v) for k, v in _latest.items()}
 
 
-# ---------------------------------------------------------------- storage
-def _ensure(c) -> None:
-    c.execute("CREATE TABLE IF NOT EXISTS api_usage (hour TEXT NOT NULL, provider TEXT NOT NULL, "
-              "key_index INTEGER NOT NULL, model TEXT NOT NULL, calls INTEGER NOT NULL DEFAULT 0, "
-              "tokens INTEGER NOT NULL DEFAULT 0, limited INTEGER NOT NULL DEFAULT 0, "
-              "PRIMARY KEY (hour, provider, key_index, model))")
+# ---------------------------------------------------------------- storage (the User service's api_usage table)
+def _call(rpc_name: str, request):
+    from backend.clients import get_clients
+    clients = get_clients()
+    return clients.call(getattr(clients.user, rpc_name), request)
 
 
 def flush() -> None:
-    """Add the counts kept in memory to app.db."""
+    """Send the counts kept in memory to the User service; if it can't take them, keep them for the next try."""
     with _lock:
         rows = [(*k, *v) for k, v in _pending.items()]
         _pending.clear()
     if not rows:
         return
-    from backend.library import catalog
+    from agentic_rag_proto import user_pb2 as pb
     try:
-        with catalog.tx() as c:
-            _ensure(c)
-            c.executemany("INSERT INTO api_usage (hour, provider, key_index, model, calls, tokens, limited) "
-                          "VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(hour, provider, key_index, model) DO UPDATE SET "
-                          "calls = calls + excluded.calls, tokens = tokens + excluded.tokens, "
-                          "limited = limited + excluded.limited", rows)
+        _call("AddApiUsage", pb.AddApiUsageRequest(rows=[
+            pb.ApiUsageRow(hour=h, provider=p, key_index=k, model=m, calls=c, tokens=t, limited=li)
+            for h, p, k, m, c, t, li in rows]))
     except Exception:
         log.exception("Couldn't store API usage counts; keeping them for the next try")
         with _lock:
@@ -161,24 +157,19 @@ def flush() -> None:
 def rows_since(hours: int) -> list[dict]:
     """Stored counts (after a flush) for the last `hours` UTC hours, the current one included."""
     flush()
-    from backend.library import catalog
+    from agentic_rag_proto import user_pb2 as pb
     since = hour_of(datetime.now(timezone.utc) - timedelta(hours=hours - 1))
-    with catalog.tx() as c:
-        _ensure(c)
-        found = c.execute("SELECT hour, provider, key_index, model, calls, tokens, limited FROM api_usage "
-                          "WHERE hour >= ? ORDER BY hour", (since,)).fetchall()
-    return [dict(zip(("hour", "provider", "key", "model", "calls", "tokens", "limited"), r)) for r in found]
+    reply = _call("ListApiUsage", pb.ListApiUsageRequest(since_hour=since))
+    return [{"hour": r.hour, "provider": r.provider, "key": r.key_index, "model": r.model, "calls": r.calls,
+             "tokens": r.tokens, "limited": r.limited} for r in reply.rows]
 
 
 def calls_by_key(provider: str, since_hour: str) -> dict[int, int]:
     """Requests per key index for one provider from `since_hour` on (counts in memory included)."""
     flush()
-    from backend.library import catalog
-    with catalog.tx() as c:
-        _ensure(c)
-        found = c.execute("SELECT key_index, SUM(calls) FROM api_usage WHERE provider = ? AND hour >= ? "
-                          "GROUP BY key_index", (provider, since_hour)).fetchall()
-    return {int(k): int(n) for k, n in found}
+    from agentic_rag_proto import user_pb2 as pb
+    reply = _call("CallsByKey", pb.CallsByKeyRequest(provider=provider, since_hour=since_hour))
+    return {int(k): int(n) for k, n in reply.calls.items()}
 
 
 def _run_timer() -> None:

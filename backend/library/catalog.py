@@ -95,18 +95,6 @@ CREATE TABLE IF NOT EXISTS sessions (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
-CREATE TABLE IF NOT EXISTS users (
-    id TEXT PRIMARY KEY,
-    username TEXT NOT NULL UNIQUE COLLATE NOCASE,
-    password_hash TEXT NOT NULL,      -- pbkdf2_sha256$iterations$salt$hash (see backend/library/auth.py)
-    created_at TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS auth_tokens (
-    token_hash TEXT PRIMARY KEY,      -- sha256 of the login cookie: a stolen database holds no usable tokens
-    user_id TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    expires_at TEXT NOT NULL
-);
 CREATE TABLE IF NOT EXISTS undone_edits (
     id INTEGER PRIMARY KEY,           -- the edit's own id: a redo brings the edit back as it was
     doc_id TEXT NOT NULL,
@@ -546,51 +534,6 @@ def requeue_running_tasks() -> None:
     """Tasks that were running when the server stopped are queued again."""
     with tx() as c:
         c.execute("UPDATE batch_tasks SET status = 'queued', started_at = NULL WHERE status = 'running'")
-
-
-# ---------------------------------------------------------------- users and logins
-def create_user(username: str, password_hash: str) -> dict:
-    user_id = uuid.uuid4().hex[:12]
-    with tx() as c:
-        c.execute("INSERT INTO users (id, username, password_hash, created_at) VALUES (?, ?, ?, ?)",
-                  (user_id, username, password_hash, now()))
-    return get_user(user_id)
-
-
-def get_user(user_id: str) -> dict | None:
-    with _lock:
-        row = _db().execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
-    return dict(row) if row else None
-
-
-def user_by_name(username: str) -> dict | None:
-    with _lock:
-        row = _db().execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
-    return dict(row) if row else None
-
-
-def count_users() -> int:
-    with _lock:
-        return _db().execute("SELECT COUNT(*) FROM users").fetchone()[0]
-
-
-def add_token(user_id: str, token_hash: str, expires_at: str) -> None:
-    with tx() as c:
-        c.execute("DELETE FROM auth_tokens WHERE expires_at < ?", (now(),))
-        c.execute("INSERT INTO auth_tokens (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
-                  (token_hash, user_id, now(), expires_at))
-
-
-def user_for_token(token_hash: str) -> dict | None:
-    with _lock:
-        row = _db().execute("SELECT u.* FROM auth_tokens t JOIN users u ON u.id = t.user_id "
-                            "WHERE t.token_hash = ? AND t.expires_at > ?", (token_hash, now())).fetchone()
-    return dict(row) if row else None
-
-
-def delete_token(token_hash: str) -> None:
-    with tx() as c:
-        c.execute("DELETE FROM auth_tokens WHERE token_hash = ?", (token_hash,))
 
 
 def give_legacy_chats_and_batches_to(user_id: str) -> None:

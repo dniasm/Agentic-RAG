@@ -17,7 +17,7 @@ from backend import chat_limits
 from backend.api.dependencies import require_admin
 from backend.config import api_meter, gemini, llm
 from backend.config.settings import settings
-from backend.library import catalog, embed_budget
+from backend.library import auth, embed_budget
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -109,11 +109,8 @@ def _accounts(now: datetime) -> dict:
     windows = chat_limits.allowance.windows()
     chats = chat_limits.allowance.counts()
     day = embed_budget.provider_day(now)
-    embed_budget.used(day=day)   # (makes sure the table exists)
-    with catalog.tx() as c:
-        names = {r[0]: r[1] for r in c.execute("SELECT id, username FROM users").fetchall()}
-        embedded = {r[0]: r[1] for r in c.execute(
-            "SELECT user_id, chunks FROM embed_usage WHERE day = ?", (day,)).fetchall()}
+    names = {u["id"]: u["username"] for u in auth.list_users()}
+    embedded = embed_budget.used_by_user(day)
     rows = []
     for user_id in set(chats) | set(embedded):
         if user_id not in names:

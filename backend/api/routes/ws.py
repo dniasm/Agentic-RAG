@@ -29,6 +29,7 @@ log = logging.getLogger(__name__)
 HEARTBEAT_SECONDS = 20.0
 UNAUTHENTICATED_CLOSE = 4401
 POLICY_CLOSE = 1008
+TRY_AGAIN_CLOSE = 1013
 GOING_AWAY_CLOSE = 1001
 MAX_CLIENT_MESSAGE = 1024
 
@@ -50,8 +51,16 @@ async def session_socket(websocket: WebSocket, after: int | None = None):
         log.warning("WS refused: origin %s", websocket.headers.get("origin"))
         await websocket.close(code=POLICY_CLOSE)
         return
-    user = auth.user_for(websocket.cookies.get(auth.COOKIE))
+    try:
+        user = auth.user_for(websocket.cookies.get(auth.COOKIE))
+        unavailable = False
+    except auth.UserServiceDown:   # can't tell who this is: not signed in, and the browser is told to try again later
+        user, unavailable = None, True
     await websocket.accept()   # accepted first so the browser can read our close code
+    if unavailable:
+        log.warning("WS refused: the User service is unavailable")
+        await websocket.close(code=TRY_AGAIN_CLOSE, reason="Try again shortly.")
+        return
     if not user:
         log.info("WS refused: not signed in")
         await websocket.close(code=UNAUTHENTICATED_CLOSE, reason="Please log in.")

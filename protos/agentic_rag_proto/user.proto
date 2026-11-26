@@ -1,0 +1,146 @@
+syntax = "proto3";
+
+// Accounts, logins and usage limits. The service holds every credential: it hashes and checks passwords (PBKDF2, and
+// day7's older bcrypt hashes), makes login tokens and keeps only their SHA-256, so a caller never sees a password hash
+// or a stored token. The orchestrator keeps the HTTP cookie, the per-address throttle, the invite code and the admin
+// names. Every user id is a plain string owned by this service's database; other services keep it without a foreign key.
+//
+// Errors: INVALID_ARGUMENT (bad username/password shape; the message is shown to the person), ALREADY_EXISTS (username
+// taken, case-insensitively), UNAUTHENTICATED (wrong username or password), UNAVAILABLE / DEADLINE_EXCEEDED (the caller
+// must treat these as "not logged in", never as "logged in").
+package agentic_rag.v1;
+
+service UserService {
+  // How many accounts exist: 0 means the next sign-up is the first (it takes the library from before accounts).
+  rpc CountUsers(CountUsersRequest) returns (CountUsersReply);
+  // Creates the account and a login. The username must be 3-32 of [A-Za-z0-9_.-] and the password at least 8 characters.
+  rpc SignUp(SignUpRequest) returns (LoginReply);
+  // Checks the password and makes a login. UNAUTHENTICATED for an unknown name and a wrong password alike.
+  rpc LogIn(LogInRequest) returns (LoginReply);
+  // Ends the login whose token this is (nothing happens for an unknown token).
+  rpc LogOut(LogOutRequest) returns (LogOutReply);
+  // The hot path (every authenticated request): found=false for an unknown, ended or expired token.
+  rpc ValidateToken(ValidateTokenRequest) returns (ValidateTokenReply);
+  rpc ListUsers(ListUsersRequest) returns (ListUsersReply);
+
+  // Passages embedded for indexing on a provider day: one account's (user_id set) or the whole site's.
+  rpc GetEmbedUsage(GetEmbedUsageRequest) returns (EmbedUsage);
+  // Adds to one account's count for the day (atomic: concurrent calls all count) and returns that account's new total.
+  rpc AddEmbedUsage(AddEmbedUsageRequest) returns (EmbedUsage);
+  // Every account's count for the day.
+  rpc ListEmbedUsage(ListEmbedUsageRequest) returns (ListEmbedUsageReply);
+
+  // Adds counts to the hour/provider/key/model rows (the orchestrator flushes its in-memory counts here).
+  rpc AddApiUsage(AddApiUsageRequest) returns (AddApiUsageReply);
+  // Rows from an hour ("YYYY-MM-DDTHH", UTC) on, oldest first.
+  rpc ListApiUsage(ListApiUsageRequest) returns (ListApiUsageReply);
+  // Requests per key index for one provider from an hour on.
+  rpc CallsByKey(CallsByKeyRequest) returns (CallsByKeyReply);
+
+  // Idempotent bulk copy for scripts/migrate_users.py (and tests): rows keep their ids and timestamps; ones already
+  // there (same id, or for a user the same name without regard to case) are left as they are.
+  rpc ImportUsers(ImportUsersRequest) returns (ImportUsersReply);
+}
+
+message User {
+  string id = 1;
+  string username = 2;
+  string created_at = 3;
+}
+
+message CountUsersRequest {}
+message CountUsersReply { int64 count = 1; }
+
+message SignUpRequest {
+  string username = 1;
+  string password = 2;
+}
+message LogInRequest {
+  string username = 1;
+  string password = 2;
+}
+message LoginReply {
+  User user = 1;
+  string token = 2;            // the cookie's value; the service keeps only its hash
+  bool first_account = 3;      // sign-up only: this was the first account
+  int64 max_age_seconds = 4;   // how long the login lasts
+}
+
+message LogOutRequest { string token = 1; }
+message LogOutReply {}
+
+message ValidateTokenRequest { string token = 1; }
+message ValidateTokenReply {
+  bool found = 1;
+  User user = 2;
+}
+
+message ListUsersRequest {}
+message ListUsersReply { repeated User users = 1; }
+
+message GetEmbedUsageRequest {
+  string day = 1;
+  optional string user_id = 2;   // unset: the whole site
+}
+message AddEmbedUsageRequest {
+  string day = 1;
+  string user_id = 2;
+  int64 chunks = 3;
+}
+message EmbedUsage { int64 chunks = 1; }
+message ListEmbedUsageRequest { string day = 1; }
+message EmbedUsageRow {
+  string user_id = 1;
+  int64 chunks = 2;
+}
+message ListEmbedUsageReply { repeated EmbedUsageRow rows = 1; }
+
+message ApiUsageRow {
+  string hour = 1;
+  string provider = 2;
+  int64 key_index = 3;
+  string model = 4;
+  int64 calls = 5;
+  int64 tokens = 6;
+  int64 limited = 7;
+}
+message AddApiUsageRequest { repeated ApiUsageRow rows = 1; }
+message AddApiUsageReply {}
+message ListApiUsageRequest { string since_hour = 1; }
+message ListApiUsageReply { repeated ApiUsageRow rows = 1; }
+message CallsByKeyRequest {
+  string provider = 1;
+  string since_hour = 2;
+}
+message CallsByKeyReply { map<int64, int64> calls = 1; }
+
+message ImportedUser {
+  string id = 1;
+  string username = 2;
+  string password_hash = 3;
+  string created_at = 4;
+}
+message ImportedToken {
+  string token_hash = 1;
+  string user_id = 2;
+  string created_at = 3;
+  string expires_at = 4;
+}
+message ImportedEmbedUsage {
+  string day = 1;
+  string user_id = 2;
+  int64 chunks = 3;
+}
+message ImportUsersRequest {
+  repeated ImportedUser users = 1;
+  repeated ImportedToken tokens = 2;
+  repeated ImportedEmbedUsage embed_usage = 3;
+  repeated ApiUsageRow api_usage = 4;
+}
+message ImportUsersReply {
+  int64 users_created = 1;
+  int64 tokens_created = 2;
+  int64 embed_usage_created = 3;
+  int64 api_usage_created = 4;
+  repeated string skipped_users = 5;   // "<id>: <reason>", e.g. a name that another id already has
+}
