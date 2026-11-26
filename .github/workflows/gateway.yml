@@ -15,4 +15,4 @@ jobs:
     uses: ./.github/workflows/_python-tests.yml
     with:
       name: "Gateway tests"
-      tests: backend/tests/test_stream.py backend/tests/test_websocket.py backend/tests/test_conversations.py backend/tests/test_chat_limits.py backend/tests/test_compression.py backend/tests/test_version.py
+      tests: backend/tests/test_stream.py backend/tests/test_websocket.py backend/tests/test_conversations.py backend/tests/test_chat_limits.py backend/tests/test_compression.py backend/tests/test_version.py backend/tests/test_e2e_services.py
