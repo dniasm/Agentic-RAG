@@ -19,6 +19,8 @@ jobs:
         include:
           - name: "Service bootstrap tests"
             tests: backend/tests/services/test_services_server.py backend/tests/services/test_services_tooling.py
+          - name: "user"
+            tests: backend/tests/services/test_user_service.py
           - name: "conversation"
             tests: backend/tests/services/test_conversation_service.py
     uses: ./.github/workflows/_python-tests.yml

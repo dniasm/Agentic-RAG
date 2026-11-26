@@ -224,14 +224,15 @@ on the socket tagged with the `turn_id` the browser put on the POST.
 ## Services
 
 Work in progress: the backend is becoming an orchestrator that talks gRPC to four services (user, conversation,
-memory, document), each owning its own SQLite database. The Conversation service is the first one live; the other
-three are still to come.
+memory, document), each owning its own SQLite database. The User and Conversation services are live; the other
+two are still to come.
 
 | Path | Holds |
 |---|---|
 | `protos/agentic_rag_proto/` | The `.proto` sources |
 | `agentic_rag_proto/` | Generated Python code (committed; never edit by hand) |
 | `services/common/` | `config.py` (addresses, data dir), `server.py` (gRPC server with health and graceful shutdown), `sqlite_db.py` (one SQLite file per service) |
+| `services/user/` | The User service: `server.py` (gRPC), `db.py` (SQL and schema), `accounts.py` (password hashing, tokens), `__main__.py` |
 | `services/conversation/` | The Conversation service: `server.py` (gRPC), `db.py` (SQL and schema), `__main__.py` |
 | `backend/clients.py` | The orchestrator's gRPC clients: a channel per service, a deadline on every call, the request id sent along |
 
@@ -246,6 +247,29 @@ python scripts/gen_protos.py --check    # fails when the committed generated cod
 python scripts/run_all.py               # starts the registered services, then uvicorn app:app; Ctrl+C stops all
 python scripts/grpc_healthcheck.py 50062   # exit 0 when that port answers grpc.health.v1 with SERVING
 ```
+
+### User service (port 50061)
+
+Accounts, logins and usage limits (`protos/agentic_rag_proto/user.proto`), in `backend/data/services/user.db`: the one
+`users` table of the whole app, `auth_tokens`, `embed_usage` (passages embedded per account per day) and `api_usage`
+(requests per provider key per hour). The service hashes and checks passwords (PBKDF2, and day7's older bcrypt hashes)
+and issues and checks login tokens, keeping only their SHA-256; no RPC returns a password hash or a stored token. The
+orchestrator keeps the HTTP side: the cookie, the per-address throttle on wrong passwords, the invite code and the admin
+names. `backend/library/auth.py`, `embed_budget.py` and `config/api_meter.py` (which still counts in memory and flushes
+in the background, now over gRPC) call it; `app.db` no longer holds these tables.
+
+Every authenticated request, and the WebSocket, makes one `ValidateToken` call. If the service cannot answer, nobody is
+signed in: HTTP routes answer `503` and the socket closes with code `1013`; a request with no cookie is still a plain
+`401`. The server starts without the service and recovers when it returns.
+
+```bash
+python -m services.user              # on its own; `python scripts/run_all.py` starts it first
+python scripts/migrate_users.py      # once, with the service running: copy accounts, logins and usage out of app.db
+```
+
+`scripts/migrate_users.py` backs up `app.db`, copies users, logins, `embed_usage` and `api_usage` (ids and timestamps
+kept, so people stay signed in), verifies each, and can be repeated. It deletes nothing: the old tables stay in `app.db`,
+unused. Start the User service (and migrate) before the orchestrator is used again, or nobody can sign in.
 
 ### Conversation service (port 50062)
 

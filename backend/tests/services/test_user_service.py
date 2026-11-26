@@ -12,6 +12,7 @@ from pathlib import Path
 import bcrypt
 import grpc
 import pytest
+from starlette.websockets import WebSocketDisconnect
 
 from agentic_rag_proto import user_pb2 as pb
 from agentic_rag_proto import user_pb2_grpc as pb_grpc
@@ -230,10 +231,10 @@ def test_with_the_service_down_nobody_is_logged_in(signed_in_cookie_factory):
         browser.cookies.clear()
         browser.cookies.set("login", "a-token-nobody-issued")
         assert browser.get("/api/auth/me").status_code == 503   # can't tell: refused, never let through
-        with pytest.raises(Exception) as closed:
-            with browser.websocket_connect("/api/ws"):
-                pass
-        assert getattr(closed.value, "code", None) == 1013
+        with pytest.raises(WebSocketDisconnect) as closed:
+            with browser.websocket_connect("/api/ws") as ws:
+                ws.receive_json()
+        assert closed.value.code == 1013
     browser.cookies.set("login", token)
     assert browser.get("/api/auth/me").status_code == 200   # and back when it returns
 

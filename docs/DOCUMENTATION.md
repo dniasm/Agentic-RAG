@@ -454,6 +454,7 @@ Most backend folders contain an empty `__init__.py`; it only lets Python import 
 | `test_citations.py` | The code citation check. |
 | `test_rerank.py` | Reranker zones and the fallback when Voyage can't score. |
 | `test_conversations.py` | Renaming chats; `/stats` from the message columns; a fresh database has no old `user_memory` table and no chat tables (they are the Conversation service's). |
+| `services/test_user_service.py` | The User service over real gRPC: sign-up, log-in, log-out, token validation and expiry, legacy bcrypt, case-insensitive names, nothing secret stored or logged, concurrent usage counts, the orchestrator failing closed (503, WebSocket 1013) with the service down, `scripts/migrate_users.py`. |
 | `services/test_conversation_service.py` | The Conversation service over real gRPC: every call, user isolation and `NOT_FOUND`, `meta` round trip, request id in the service's log lines, the orchestrator's functions, `scripts/migrate_conversations.py`. |
 | `test_documents.py` | Uploads are titled, stored in the user's folder and indexed in the background; failed / removed-while-waiting / uploaded-twice outcomes; indexing cut off by a restart is resumed. |
 | `test_stream.py` | A chat turn's events reach the WebSocket in order and end with `final`; the answer is saved with nobody connected. |
@@ -988,7 +989,28 @@ users ──< documents ──< renames, edits, undone_edits
 | `undone_edits` | as `edits`, plus `redo`, `ext`, `undone_at`, `undo_order` | Undone edits Redo can bring back (cleared by a new edit) |
 | `batches`, `batch_tasks` | a batch's tasks: `instruction`, `payload`, `checkpoint`, `status`, `reply`, `actions`, `tokens` | The queue (§22) |
 | `sessions` | the document agent's messages and guard, per conversation | |
-| `auth_tokens` | the login token's hash, its user, when it expires | Logins (§13) |
+
+### User service (`backend/data/services/user.db`)
+
+Accounts, logins and usage counts live in the User service's own database (gRPC `agentic_rag.v1.UserService`, port
+50061; `python -m services.user`, started first by `scripts/run_all.py`). `app.db` no longer has `users`, `auth_tokens`,
+`embed_usage` or `api_usage`; databases from before keep them, unused. Copy them across once with
+`python scripts/migrate_users.py` (service running; backs up `app.db` first, is safe to repeat, verifies, deletes
+nothing). `user_facts` no longer has a foreign key to `users` (the table is in another database); `init_db` rebuilds an
+older table without it.
+
+| Table | Columns | Notes |
+|---|---|---|
+| `users` | `id`, `username` (unique, case-insensitive), `password_hash`, `created_at` | PBKDF2-SHA256 (600,000 rounds), or day7's bcrypt; the hash never leaves the service |
+| `auth_tokens` | `token_hash` (SHA-256 of the cookie), `user_id`, `created_at`, `expires_at` | 30 days; expired ones are swept when a login is made; cascade with the user |
+| `embed_usage` | `day` (Gemini's Pacific day), `user_id`, `chunks` | added atomically |
+| `api_usage` | `hour` (UTC), `provider`, `key_index`, `model`, `calls`, `tokens`, `limited` | the orchestrator flushes its in-memory counts every 30 s |
+
+RPCs: `CountUsers`, `SignUp`, `LogIn`, `LogOut`, `ValidateToken`, `ListUsers`, `GetEmbedUsage`, `AddEmbedUsage`,
+`ListEmbedUsage`, `AddApiUsage`, `ListApiUsage`, `CallsByKey`, `ImportUsers` (for the migration script).
+Fail closed: `auth.user_for` raises `UserServiceDown` when the call fails for any reason other than an answer about the
+person, and the app turns that (and any other gRPC failure) into `503`; the WebSocket closes with `1013`. The per-address
+throttle, the invite code and the admin-name check stay in the orchestrator.
 
 ### Conversation service (`backend/data/services/conversation.db`)
 
@@ -1000,7 +1022,7 @@ longer creates or reads these tables; databases from before keep them, unused. C
 counts, deletes nothing).
 
 ```
-conversations ──< messages        (user_id is a plain id: users are in app.db, so there is no foreign key)
+conversations ──< messages        (user_id is a plain id: users are in the User service, so there is no foreign key)
 ```
 
 | Table | Columns | Constraints |

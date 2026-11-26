@@ -75,6 +75,10 @@ def sources(tmp_path, monkeypatch):
     from backend.library import catalog
     catalog.reset_connection()
     with catalog.tx() as c:
+        c.executescript("CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE COLLATE NOCASE, "
+                        "password_hash TEXT NOT NULL, created_at TEXT NOT NULL); "   # the renamer's own catalog had them
+                        "CREATE TABLE IF NOT EXISTS auth_tokens (token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, "
+                        "created_at TEXT NOT NULL, expires_at TEXT NOT NULL);")
         c.execute("INSERT INTO users VALUES ('u2', 'bob', 'pbkdf2_sha256$1$aa$bb', ?)", (T0,))
         c.execute("INSERT INTO documents (id, title, original_name, file_name, ext, sha256, original_sha256, "
                   "size_bytes, pages, chunks, owner, status, created_at, updated_at) VALUES "
