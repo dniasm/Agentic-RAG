@@ -15,7 +15,7 @@ The **Documents** page does the same with buttons. See [Document library](#docum
 | Layer | Tech |
 |---|---|
 | Frontend | React 18 + Vite + Tailwind, `react-markdown` |
-| API | FastAPI, one WebSocket for everything pushed to the browser, cookie login (PBKDF2, server-side tokens), SQLite |
+| API | FastAPI, one WebSocket for everything pushed to the browser, cookie login (PBKDF2, server-side tokens); no database of its own (each service has its SQLite file) |
 | Agent | LangGraph state machine |
 | LLMs (Groq) | `openai/gpt-oss-120b`: every reply (answers and small talk), the knowledge gate, answer evaluation, decision reviews. `openai/gpt-oss-20b`: routing and query rewrites. `qwen/qwen3.8-27b`: memory extraction and conversation summaries (own rate limit, no hidden reasoning) |
 | Embeddings | Gemini `gemini-embedding-001` (768-d) for documents; Voyage `voyage-4-lite` for conversation memory |
@@ -133,7 +133,7 @@ Old vs current, from the benchmarks and the token log (details: [`docs/DOCUMENTA
 | `backend/api/` | HTTP routes (auth, chat, the WebSocket, documents, health) and the login dependency |
 | `backend/library/` | The document library: catalog, files, indexing queue, document agent, rename/edit/undo, PDF editing, accounts, batch queue, its own API at `/api/library/*` |
 | `backend/config/` | Settings, model clients per role, token accounting |
-| `backend/models/` | SQLite data access and API schemas |
+| `backend/models/` | Thin gRPC clients for chats, facts and accounts, and API schemas |
 | `backend/graph/` | The LangGraph agent: state, nodes, edges |
 | `backend/tools/` | Answer writers (direct, documents, web), small talk, memory extraction |
 | `backend/documents/rag.py` | The orchestrator's client of the Document service's RAG half (index a file, search, delete) |
@@ -224,7 +224,7 @@ on the socket tagged with the `turn_id` the browser put on the POST.
 ## Services
 
 Work in progress: the backend is becoming an orchestrator that talks gRPC to four services (user, conversation,
-memory, document), each owning its own SQLite database. The User, Conversation, Memory and Document (RAG half) services are live; the document catalog is still in the orchestrator.
+memory, document), each owning its own SQLite database. All four are live, and the orchestrator holds no database: accounts are the User service's, chats the Conversation service's, facts the Memory service's, and the library catalog (documents, renames, edits and undo, the document chat's sessions and queued batches) the Document service's.
 
 | Path | Holds |
 |---|---|
@@ -324,7 +324,23 @@ opens no vector store and embeds nothing. Files are sent as bytes (chunks of 1 M
 WebSocket `library/document` events. The orchestrator keeps the decisions (router, rewrite, grade, the LLM relevance check when
 `Search` says `reranked=false`, generation, citation checks) and the embedding allowance: it checks the User service BEFORE
 calling `Ingest` (passing what is left as `max_passages`) and charges the passages `Ingest` reports as embedded AFTER.
-The documents catalog, renames, edits and undo stay in the orchestrator for now.
+
+The Document service also owns the library catalog in `document.db` (the same `DocumentService`, so no new port): documents,
+rename history, edits and undo, the library chat's sessions and the queued batches. The orchestrator's `backend/library/catalog.py`
+calls it over gRPC with the same function names and return shapes; it keeps only the catalog version (and the cached list of
+indexed titles built on it) and the live pushes to open tabs. A rename, edit, undo or redo is saved with its document change in one
+transaction. The document **files** are still on disk in `LIBRARY_DATA_DIR` (`library/<user>/`, `versions/<doc_id>/`); only their
+rows moved, and the paths in them stay relative to that folder. Start the Document service before the backend: startup reads the
+catalog (unfinished files, queued tasks), and a stopped service shows as gRPC `UNAVAILABLE`. `document.db` now holds real data, so
+`python -m backend.scripts.backup` copies it with the other service databases.
+
+```bash
+python scripts/migrate_library_catalog.py   # once, BACKEND STOPPED, Document service running: copy the catalog out of app.db
+```
+
+It backs up `app.db` (into `--dest`, default `D:\onboarding_tasks\backups`), sends every row with its id and timestamps, verifies
+the counts and can be repeated; it never touches `app.db`, which can be deleted by hand once the library has been seen working.
+Run `scripts/migrate_users.py`, `migrate_conversations.py` and `migrate_memory.py` first if an old `app.db` still has those tables.
 
 ```bash
 python -m services.document            # on its own; `python scripts/run_all.py` starts it before the orchestrator

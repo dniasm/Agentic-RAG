@@ -74,11 +74,11 @@ What makes it *agentic* rather than a fixed pipeline:
 │  library/auth  graph/workflow.py (LangGraph agent)      rag/ingestion.py      │
 │        │            │   │   │                                │                │
 │        ▼            │   │   └── tools/web_search ──► Tavily / DuckDuckGo / Wikipedia
-│  SQLite (app.db)    │   └────── rag/retrieval + rerank ──┐                    │
-│  users, user_facts, │                                    ▼                    │
-│  documents,         │                    Qdrant: documents (dense + BM25)     │
-│  conversations,     │                            user_memories (Voyage)       │
-│  messages           ├── Groq: gpt-oss-120b, gpt-oss-20b, qwen3.8-27b          │
+│  no database of its │   └────── rag/retrieval + rerank ──┐                    │
+│  own: users, chats, │                                    ▼                    │
+│  facts, documents:  │                    Qdrant: documents (dense + BM25)     │
+│  the services' own  │                            user_memories (Voyage)       │
+│  SQLite files       ├── Groq: gpt-oss-120b, gpt-oss-20b, qwen3.8-27b          │
 │                     ├── Gemini embeddings (documents) · Voyage (memory)       │
 │                     └── Voyage rerank-2.5                                     │
 └───────────────────────────────────────────────────────────────────────────────┘
@@ -194,7 +194,8 @@ Runtime data is created automatically:
 
 | Path | Contents |
 |---|---|
-| `backend/data/app.db` | SQLite database |
+| `backend/data/app.db` | Only on an installation from before the services: the old SQLite database. The orchestrator no longer creates or opens it; the `scripts/migrate_*.py` scripts read it, and it can be deleted once they have run. |
+| `backend/data/services/*.db` | The services' own SQLite files: `user.db`, `conversation.db`, `memory.db`, and `document.db` (OCR and embedding caches **and the library catalog**: documents, renames, edits, batches, chat sessions). |
 | `backend/data/embedding_cache.db` | Cached question embeddings |
 | `backend/data/token_usage.jsonl` | One line per request: tokens per model and step, route, path |
 | `backend/data/library/<user_id>/` | The stored documents, named after their current titles |
@@ -207,7 +208,7 @@ To reset everything: stop the backend and delete those paths.
 
 ### Backups
 `python -m backend.scripts.backup` copies the data to a new folder `D:\onboarding_tasks\backups\day7-<date>_<time>`
-(`--dest` for another place): `app.db` through SQLite's backup API (consistent even while the backend runs), the
+(`--dest` for another place): an old `app.db` if one is still there (through SQLite's backup API), the
 stored documents (`library/`) and their edit history (`versions/`), each service's database (`services/*.db`, through
 the same API) and, **only while the services are stopped**, their Qdrant folders (`services/document_qdrant/`, the
 search index, and `services/memory_qdrant/`). Each backup says FULL or PARTIAL in its `BACKUP.txt`. It never overwrites a folder or
@@ -215,7 +216,7 @@ deletes old backups. It holds documents and password hashes: keep it private, an
 
 Restoring is manual, since it overwrites live data:
 1. Stop the backend.
-2. Copy `app.db`, `library/` and `versions/` from the backup into `backend/data/`, replacing what is there (move the
+2. Copy `library/` and `versions/` (and `app.db`, if the backup has one) from the backup into `backend/data/`, replacing what is there (move the
    current ones aside first if in doubt).
 3. Copy `services/` into `backend/data/services/` (or your `SERVICES_DATA_DIR`). From a PARTIAL backup (no Qdrant folders), the search index no longer
    matches the documents: re-index them (it costs embedding quota).
@@ -264,7 +265,7 @@ overridden by an environment variable / `.env` entry with the same name (case-in
 | `VERIFY_DECISIONS` / `MAX_REVIEW_ROUNDS` / `REVIEW_ONLY_UNCERTAIN` | `True` / `2` / `True` | 120B reviews the 20B's uncertain decisions. |
 | `WEB_RESULTS` / `TAVILY_SEARCH_DEPTH` / `WEB_CACHE_TTL_SECONDS` | `5` / `basic` / `3600` | Web search. |
 | `HISTORY_TURNS` | `6` | Past messages passed to the agent. |
-| `DATABASE_PATH` | `backend/data/app.db` | SQLite file. |
+| `DATABASE_PATH` | `backend/data/app.db` | The old SQLite file, which the `scripts/migrate_*.py` scripts read by default (`--source`) and the backup copies if it exists. The orchestrator opens no database and never creates it. |
 | `SIGNUP_CODE` | `""` | Invite code for every sign-up after the first; empty: sign-ups closed. |
 | `ADMIN_USERNAMES` | `""` | Accounts that can open the Admin page (API key usage), comma-separated, without case. A listed name can't be signed up for, so list accounts that already exist. Empty: no one. |
 | `LIBRARY_DATA_DIR` | `backend/data` | The library's files, versions, fonts and logs (§22). |
@@ -356,7 +357,7 @@ Most backend folders contain an empty `__init__.py`; it only lets Python import 
 |---|---|
 | `api.py` | `/api/library/*`: rename, undo, redo, file / PDF / preview downloads, the queue and batch cancel; starts and stops the library's workers. |
 | `auth.py` | Accounts: PBKDF2 passwords, login tokens (only their hashes stored), throttling of wrong passwords, the invite code (§13). |
-| `catalog.py` | SQLite tables of the library (documents, renames, edits, undone edits, batches, tasks, agent sessions, users, login tokens) in `app.db`. |
+| `catalog.py` | The library's catalog (documents, renames, edits, undone edits, batches, tasks, agent sessions) as gRPC calls to the Document service, which owns the tables in `document.db`; keeps the catalog version, the indexed-titles cache and the queue pushes. |
 | `library.py` | Add a file, index it (queue), title it, find a document by name or content, rename (file, catalog and chunks at once), delete. |
 | `titles.py` | A title, summary and keywords for each new document, written by the model from its opening text. |
 | `naming.py` | Cleaning titles, stored file names, and how closely a phrase matches a document's name. |
@@ -388,7 +389,7 @@ Most backend folders contain an empty `__init__.py`; it only lets Python import 
 
 | File | What it does |
 |---|---|
-| `database.py` | SQLite schema, migrations and every query: users, facts, documents and stats, all filtered by user; conversations and messages go through `conversations.py` to the Conversation service (gRPC; §14). |
+| `database.py` | Re-exports the thin gRPC clients (no database, no connection): conversations and messages (`conversations.py`, Conversation service), facts (`memory.py`), test accounts (`users.py`); the document counts in `/stats` come from the catalog (§14). |
 | `schemas.py` | Pydantic models for requests and responses (`Credentials`, `DocumentOut`, `ChatRequest`, `ChatResponse`, …). |
 
 #### `backend/graph/` — the agent
@@ -468,7 +469,7 @@ Most backend folders contain an empty `__init__.py`; it only lets Python import 
 
 | Folder | Contents |
 |---|---|
-| `backend/data/` | `app.db` (SQLite), `embedding_cache.db`, `token_usage.jsonl`; `library/`, `versions/`, `fonts/`, `logs/` (§4). |
+| `backend/data/` | `token_usage.jsonl`; no `app.db` any more (the services' databases are in `services/`); `library/`, `versions/`, `fonts/`, `logs/` (§4). |
 | `backend/vector_db/qdrant_data/` | Embedded Qdrant storage (same note). |
 
 #### `frontend/` — the web app
@@ -843,7 +844,7 @@ the answer). It sums input, output and hidden-reasoning tokens per model and per
   warning when Google refused a key for the day well under its count (it probably shares a project with another).
 - **Voyage:** requests in `voyage.call`, by use (rerank, find, recall, save).
 
-Counts are kept in memory and added to `app.db` (`api_usage`, one row per UTC hour, provider, key and model) every
+Counts are kept in memory and added to the User service's `api_usage` table (`api_usage`, one row per UTC hour, provider, key and model) every
 30 s and when the page reads them; a crash loses at most those seconds. Keys are shown as "Key 1–4", never their
 text. The page gives Groq counts as "today (UTC)" and "last 24 hours", since it isn't confirmed which one Groq's
 daily limits use; the headers' remaining numbers are the authoritative ones. Per account it shows chat and indexing
@@ -854,8 +855,7 @@ counts against their allowances, never message content or document titles.
 ## 12. Backend module reference
 
 ### `app.py`
-Adds the project root to `sys.path`; `lifespan` checks the required keys, runs `init_db()` (and migrations), opens the
-Qdrant collection, starts the library (`library/api.startup`: logs, unfinished indexing, the batch worker), and on
+Adds the project root to `sys.path`; `lifespan` checks the required keys, starts the library (`library/api.startup`: logs, unfinished indexing, the batch worker), and on
 shutdown stops it and extracts any facts still waiting in the memory batch. Mounts `frontend/dist` when it exists. CORS: `CORS_ORIGINS` plus any localhost port.
 
 ### `config/gemini.py`, `config/redact.py`
@@ -877,15 +877,13 @@ replaces every configured API key in a text with `[key]`, and its log filter doe
 | `structured(model_cls, fast=True, backup=False, memory=False)` | Schema-constrained runnable (see 7.8). |
 
 ### `models/database.py`
-One shared SQLite connection guarded by a re-entrant lock; `tx()` gives a serialized transaction. All queries use
-placeholders and filter by `user_id`.
+No database: the orchestrator opens no SQLite file (the old `connection.py`, `tx()` and `init_db` are gone). The module re-exports the gRPC clients below.
 
 | Group | Functions |
 |---|---|
-| Setup | `init_db`, `_migrate_memory_to_facts`, `_decode_values`, `tx`, `_now`, `_one`, `_all` |
-| Users | `create_user`, `get_user_by_username`, `get_user` |
+| Users (tests and scripts) | `create_user`, `get_user` |
 | Facts | `list_memories` (grouped: `memory_key`, `values`, `memory_value`, `updated_at`), `add_fact`, `set_fact`, `delete_fact(value=None)` |
-| Documents | `add_document`, `update_document`, `find_document_by_hash`, `list_documents`, `get_document`, `delete_document` |
+| Documents | in `library/catalog.py`: `add_document`, `update_document`, `find_by_hash`, `list_documents`, `get_document`, `delete_document` and the rest of the catalog, all calls to the Document service |
 | Conversations | `create_conversation`, `get_conversation`, `list_conversations`, `rename_conversation` (title only; the chat keeps its place), `delete_conversation` |
 | Messages | `add_message`, `list_messages(conv_id, limit)` |
 | Stats | `user_stats` (SQL aggregates over the `messages` stat columns; no JSON parsing) |
@@ -970,22 +968,23 @@ failure returns `401 Please log in.`; the frontend then shows the login screen.
 
 ## 14. Data model
 
-### SQLite (`backend/data/app.db`)
+### Document service: the library catalog (`backend/data/services/document.db`)
+
+The orchestrator holds no database. The library catalog is the Document service's: the same `agentic_rag.v1.DocumentService` that
+indexes and searches (38 catalog RPCs, one per atomic operation; `services/document/catalog.py` and `catalog_server.py`). The
+files stay in `LIBRARY_DIR`; `file_name`, `backup` and `redo` are paths relative to it. `owner` is a user's id (a plain id, no
+foreign key: accounts are the User service's). An old installation's catalog is copied across once with
+`python scripts/migrate_library_catalog.py` (backend stopped, service running; backs up `app.db`, keeps ids and timestamps,
+verifies the counts, safe to repeat, deletes nothing).
 
 ```
-users ──< documents ──< renames, edits, undone_edits
-  ├──< user_facts
-  ├──< batches ──< batch_tasks
-  ├──< sessions          (the document agent's state per conversation)
-  └──< auth_tokens
+documents ──< renames, edits, undone_edits
+batches ──< batch_tasks
+sessions          (the document agent's state per conversation)
 ```
 
 | Table | Columns | Constraints |
 |---|---|---|
-| `users` | `id`, `username`, `password_hash`, `created_at` | `username` unique, case-insensitive |
-| `user_facts` | `id`, `user_id`, `memory_key`, `value`, `created_at`, `updated_at` | `UNIQUE(user_id, memory_key, value)`, `value` case-insensitive |
-| `migrations` | `name`, `applied_at` | One-off data migrations applied |
-| `user_memory` | `id`, `user_id`, `memory_key`, `memory_value`, … | Pre-migration backup, no longer written; only in databases from before 1 November |
 | `documents` | `id`, `title`, `original_name`, `file_name`, `ext`, `sha256`, `original_sha256`, `size_bytes`, `pages`, `chunks`, `summary`, `keywords`, `owner`, `status`, `error`, `created_at`, `updated_at` | `owner` is the user's id; a re-upload of the same file (as uploaded, or as it is now) is a duplicate |
 | `renames` | `doc_id`, `old_title`, `new_title`, `reason`, `at` | A document's rename history |
 | `edits` | `id`, `doc_id`, `operation`, `detail`, `backup`, `at` | `backup`: the file before the edit, in `data/versions/<doc_id>/` |
@@ -999,8 +998,7 @@ Accounts, logins and usage counts live in the User service's own database (gRPC 
 50061; `python -m services.user`, started first by `scripts/run_all.py`). `app.db` no longer has `users`, `auth_tokens`,
 `embed_usage` or `api_usage`; databases from before keep them, unused. Copy them across once with
 `python scripts/migrate_users.py` (service running; backs up `app.db` first, is safe to repeat, verifies, deletes
-nothing). `user_facts` no longer has a foreign key to `users` (the table is in another database); `init_db` rebuilds an
-older table without it.
+nothing).
 
 | Table | Columns | Notes |
 |---|---|---|
