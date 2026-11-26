@@ -347,3 +347,563 @@ class DocumentImportReply(_message.Message):
     CREATED_FIELD_NUMBER: _ClassVar[int]
     created: int
     def __init__(self, created: _Optional[int] = ...) -> None: ...
+
+class CatalogOwnerlessRequest(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class CountReply(_message.Message):
+    __slots__ = ("count",)
+    COUNT_FIELD_NUMBER: _ClassVar[int]
+    count: int
+    def __init__(self, count: _Optional[int] = ...) -> None: ...
+
+class CatalogDocument(_message.Message):
+    __slots__ = ("id", "title", "original_name", "file_name", "ext", "sha256", "original_sha256", "size_bytes", "pages", "chunks", "summary", "keywords_json", "owner", "status", "error", "created_at", "updated_at")
+    ID_FIELD_NUMBER: _ClassVar[int]
+    TITLE_FIELD_NUMBER: _ClassVar[int]
+    ORIGINAL_NAME_FIELD_NUMBER: _ClassVar[int]
+    FILE_NAME_FIELD_NUMBER: _ClassVar[int]
+    EXT_FIELD_NUMBER: _ClassVar[int]
+    SHA256_FIELD_NUMBER: _ClassVar[int]
+    ORIGINAL_SHA256_FIELD_NUMBER: _ClassVar[int]
+    SIZE_BYTES_FIELD_NUMBER: _ClassVar[int]
+    PAGES_FIELD_NUMBER: _ClassVar[int]
+    CHUNKS_FIELD_NUMBER: _ClassVar[int]
+    SUMMARY_FIELD_NUMBER: _ClassVar[int]
+    KEYWORDS_JSON_FIELD_NUMBER: _ClassVar[int]
+    OWNER_FIELD_NUMBER: _ClassVar[int]
+    STATUS_FIELD_NUMBER: _ClassVar[int]
+    ERROR_FIELD_NUMBER: _ClassVar[int]
+    CREATED_AT_FIELD_NUMBER: _ClassVar[int]
+    UPDATED_AT_FIELD_NUMBER: _ClassVar[int]
+    id: str
+    title: str
+    original_name: str
+    file_name: str
+    ext: str
+    sha256: str
+    original_sha256: str
+    size_bytes: int
+    pages: int
+    chunks: int
+    summary: str
+    keywords_json: str
+    owner: str
+    status: str
+    error: str
+    created_at: str
+    updated_at: str
+    def __init__(self, id: _Optional[str] = ..., title: _Optional[str] = ..., original_name: _Optional[str] = ..., file_name: _Optional[str] = ..., ext: _Optional[str] = ..., sha256: _Optional[str] = ..., original_sha256: _Optional[str] = ..., size_bytes: _Optional[int] = ..., pages: _Optional[int] = ..., chunks: _Optional[int] = ..., summary: _Optional[str] = ..., keywords_json: _Optional[str] = ..., owner: _Optional[str] = ..., status: _Optional[str] = ..., error: _Optional[str] = ..., created_at: _Optional[str] = ..., updated_at: _Optional[str] = ...) -> None: ...
+
+class OptionalCatalogDocument(_message.Message):
+    __slots__ = ("document",)
+    DOCUMENT_FIELD_NUMBER: _ClassVar[int]
+    document: CatalogDocument
+    def __init__(self, document: _Optional[_Union[CatalogDocument, _Mapping]] = ...) -> None: ...
+
+class CatalogDocumentList(_message.Message):
+    __slots__ = ("documents",)
+    DOCUMENTS_FIELD_NUMBER: _ClassVar[int]
+    documents: _containers.RepeatedCompositeFieldContainer[CatalogDocument]
+    def __init__(self, documents: _Optional[_Iterable[_Union[CatalogDocument, _Mapping]]] = ...) -> None: ...
+
+class CatalogDocumentRef(_message.Message):
+    __slots__ = ("doc_id",)
+    DOC_ID_FIELD_NUMBER: _ClassVar[int]
+    doc_id: str
+    def __init__(self, doc_id: _Optional[str] = ...) -> None: ...
+
+class AddCatalogDocumentRequest(_message.Message):
+    __slots__ = ("title", "original_name", "file_name", "ext", "sha256", "size_bytes", "owner")
+    TITLE_FIELD_NUMBER: _ClassVar[int]
+    ORIGINAL_NAME_FIELD_NUMBER: _ClassVar[int]
+    FILE_NAME_FIELD_NUMBER: _ClassVar[int]
+    EXT_FIELD_NUMBER: _ClassVar[int]
+    SHA256_FIELD_NUMBER: _ClassVar[int]
+    SIZE_BYTES_FIELD_NUMBER: _ClassVar[int]
+    OWNER_FIELD_NUMBER: _ClassVar[int]
+    title: str
+    original_name: str
+    file_name: str
+    ext: str
+    sha256: str
+    size_bytes: int
+    owner: str
+    def __init__(self, title: _Optional[str] = ..., original_name: _Optional[str] = ..., file_name: _Optional[str] = ..., ext: _Optional[str] = ..., sha256: _Optional[str] = ..., size_bytes: _Optional[int] = ..., owner: _Optional[str] = ...) -> None: ...
+
+class FindByHashRequest(_message.Message):
+    __slots__ = ("sha256", "owner")
+    SHA256_FIELD_NUMBER: _ClassVar[int]
+    OWNER_FIELD_NUMBER: _ClassVar[int]
+    sha256: str
+    owner: str
+    def __init__(self, sha256: _Optional[str] = ..., owner: _Optional[str] = ...) -> None: ...
+
+class ListCatalogDocumentsRequest(_message.Message):
+    __slots__ = ("status", "owner")
+    STATUS_FIELD_NUMBER: _ClassVar[int]
+    OWNER_FIELD_NUMBER: _ClassVar[int]
+    status: str
+    owner: str
+    def __init__(self, status: _Optional[str] = ..., owner: _Optional[str] = ...) -> None: ...
+
+class RenameRecord(_message.Message):
+    __slots__ = ("old_title", "new_title", "reason", "at")
+    OLD_TITLE_FIELD_NUMBER: _ClassVar[int]
+    NEW_TITLE_FIELD_NUMBER: _ClassVar[int]
+    REASON_FIELD_NUMBER: _ClassVar[int]
+    AT_FIELD_NUMBER: _ClassVar[int]
+    old_title: str
+    new_title: str
+    reason: str
+    at: str
+    def __init__(self, old_title: _Optional[str] = ..., new_title: _Optional[str] = ..., reason: _Optional[str] = ..., at: _Optional[str] = ...) -> None: ...
+
+class RecordRenameRequest(_message.Message):
+    __slots__ = ("doc_id", "old_title", "new_title", "reason")
+    DOC_ID_FIELD_NUMBER: _ClassVar[int]
+    OLD_TITLE_FIELD_NUMBER: _ClassVar[int]
+    NEW_TITLE_FIELD_NUMBER: _ClassVar[int]
+    REASON_FIELD_NUMBER: _ClassVar[int]
+    doc_id: str
+    old_title: str
+    new_title: str
+    reason: str
+    def __init__(self, doc_id: _Optional[str] = ..., old_title: _Optional[str] = ..., new_title: _Optional[str] = ..., reason: _Optional[str] = ...) -> None: ...
+
+class UpdateCatalogDocumentRequest(_message.Message):
+    __slots__ = ("doc_id", "fields_json", "rename")
+    DOC_ID_FIELD_NUMBER: _ClassVar[int]
+    FIELDS_JSON_FIELD_NUMBER: _ClassVar[int]
+    RENAME_FIELD_NUMBER: _ClassVar[int]
+    doc_id: str
+    fields_json: str
+    rename: RecordRenameRequest
+    def __init__(self, doc_id: _Optional[str] = ..., fields_json: _Optional[str] = ..., rename: _Optional[_Union[RecordRenameRequest, _Mapping]] = ...) -> None: ...
+
+class RenameHistoryReply(_message.Message):
+    __slots__ = ("renames",)
+    RENAMES_FIELD_NUMBER: _ClassVar[int]
+    renames: _containers.RepeatedCompositeFieldContainer[RenameRecord]
+    def __init__(self, renames: _Optional[_Iterable[_Union[RenameRecord, _Mapping]]] = ...) -> None: ...
+
+class DocumentRenames(_message.Message):
+    __slots__ = ("doc_id", "renames")
+    DOC_ID_FIELD_NUMBER: _ClassVar[int]
+    RENAMES_FIELD_NUMBER: _ClassVar[int]
+    doc_id: str
+    renames: _containers.RepeatedCompositeFieldContainer[RenameRecord]
+    def __init__(self, doc_id: _Optional[str] = ..., renames: _Optional[_Iterable[_Union[RenameRecord, _Mapping]]] = ...) -> None: ...
+
+class RenameHistoriesReply(_message.Message):
+    __slots__ = ("documents",)
+    DOCUMENTS_FIELD_NUMBER: _ClassVar[int]
+    documents: _containers.RepeatedCompositeFieldContainer[DocumentRenames]
+    def __init__(self, documents: _Optional[_Iterable[_Union[DocumentRenames, _Mapping]]] = ...) -> None: ...
+
+class UsedFileNamesRequest(_message.Message):
+    __slots__ = ("exclude_doc",)
+    EXCLUDE_DOC_FIELD_NUMBER: _ClassVar[int]
+    exclude_doc: str
+    def __init__(self, exclude_doc: _Optional[str] = ...) -> None: ...
+
+class UsedFileNamesReply(_message.Message):
+    __slots__ = ("file_names",)
+    FILE_NAMES_FIELD_NUMBER: _ClassVar[int]
+    file_names: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, file_names: _Optional[_Iterable[str]] = ...) -> None: ...
+
+class EditRecord(_message.Message):
+    __slots__ = ("id", "doc_id", "operation", "detail", "backup", "at")
+    ID_FIELD_NUMBER: _ClassVar[int]
+    DOC_ID_FIELD_NUMBER: _ClassVar[int]
+    OPERATION_FIELD_NUMBER: _ClassVar[int]
+    DETAIL_FIELD_NUMBER: _ClassVar[int]
+    BACKUP_FIELD_NUMBER: _ClassVar[int]
+    AT_FIELD_NUMBER: _ClassVar[int]
+    id: int
+    doc_id: str
+    operation: str
+    detail: str
+    backup: str
+    at: str
+    def __init__(self, id: _Optional[int] = ..., doc_id: _Optional[str] = ..., operation: _Optional[str] = ..., detail: _Optional[str] = ..., backup: _Optional[str] = ..., at: _Optional[str] = ...) -> None: ...
+
+class OptionalEdit(_message.Message):
+    __slots__ = ("edit",)
+    EDIT_FIELD_NUMBER: _ClassVar[int]
+    edit: EditRecord
+    def __init__(self, edit: _Optional[_Union[EditRecord, _Mapping]] = ...) -> None: ...
+
+class EditRef(_message.Message):
+    __slots__ = ("edit_id",)
+    EDIT_ID_FIELD_NUMBER: _ClassVar[int]
+    edit_id: int
+    def __init__(self, edit_id: _Optional[int] = ...) -> None: ...
+
+class EditExistsReply(_message.Message):
+    __slots__ = ("exists",)
+    EXISTS_FIELD_NUMBER: _ClassVar[int]
+    exists: bool
+    def __init__(self, exists: _Optional[bool] = ...) -> None: ...
+
+class EditSummary(_message.Message):
+    __slots__ = ("operation", "detail", "at")
+    OPERATION_FIELD_NUMBER: _ClassVar[int]
+    DETAIL_FIELD_NUMBER: _ClassVar[int]
+    AT_FIELD_NUMBER: _ClassVar[int]
+    operation: str
+    detail: str
+    at: str
+    def __init__(self, operation: _Optional[str] = ..., detail: _Optional[str] = ..., at: _Optional[str] = ...) -> None: ...
+
+class EditHistoryReply(_message.Message):
+    __slots__ = ("edits",)
+    EDITS_FIELD_NUMBER: _ClassVar[int]
+    edits: _containers.RepeatedCompositeFieldContainer[EditSummary]
+    def __init__(self, edits: _Optional[_Iterable[_Union[EditSummary, _Mapping]]] = ...) -> None: ...
+
+class RecordEditRequest(_message.Message):
+    __slots__ = ("doc_id", "operation", "detail", "backup", "document_fields_json")
+    DOC_ID_FIELD_NUMBER: _ClassVar[int]
+    OPERATION_FIELD_NUMBER: _ClassVar[int]
+    DETAIL_FIELD_NUMBER: _ClassVar[int]
+    BACKUP_FIELD_NUMBER: _ClassVar[int]
+    DOCUMENT_FIELDS_JSON_FIELD_NUMBER: _ClassVar[int]
+    doc_id: str
+    operation: str
+    detail: str
+    backup: str
+    document_fields_json: str
+    def __init__(self, doc_id: _Optional[str] = ..., operation: _Optional[str] = ..., detail: _Optional[str] = ..., backup: _Optional[str] = ..., document_fields_json: _Optional[str] = ...) -> None: ...
+
+class RecordEditReply(_message.Message):
+    __slots__ = ("edit_id",)
+    EDIT_ID_FIELD_NUMBER: _ClassVar[int]
+    edit_id: int
+    def __init__(self, edit_id: _Optional[int] = ...) -> None: ...
+
+class UndoneEdit(_message.Message):
+    __slots__ = ("id", "doc_id", "operation", "detail", "backup", "redo", "ext", "at", "undone_at", "undo_order")
+    ID_FIELD_NUMBER: _ClassVar[int]
+    DOC_ID_FIELD_NUMBER: _ClassVar[int]
+    OPERATION_FIELD_NUMBER: _ClassVar[int]
+    DETAIL_FIELD_NUMBER: _ClassVar[int]
+    BACKUP_FIELD_NUMBER: _ClassVar[int]
+    REDO_FIELD_NUMBER: _ClassVar[int]
+    EXT_FIELD_NUMBER: _ClassVar[int]
+    AT_FIELD_NUMBER: _ClassVar[int]
+    UNDONE_AT_FIELD_NUMBER: _ClassVar[int]
+    UNDO_ORDER_FIELD_NUMBER: _ClassVar[int]
+    id: int
+    doc_id: str
+    operation: str
+    detail: str
+    backup: str
+    redo: str
+    ext: str
+    at: str
+    undone_at: str
+    undo_order: int
+    def __init__(self, id: _Optional[int] = ..., doc_id: _Optional[str] = ..., operation: _Optional[str] = ..., detail: _Optional[str] = ..., backup: _Optional[str] = ..., redo: _Optional[str] = ..., ext: _Optional[str] = ..., at: _Optional[str] = ..., undone_at: _Optional[str] = ..., undo_order: _Optional[int] = ...) -> None: ...
+
+class OptionalUndoneEdit(_message.Message):
+    __slots__ = ("undone",)
+    UNDONE_FIELD_NUMBER: _ClassVar[int]
+    undone: UndoneEdit
+    def __init__(self, undone: _Optional[_Union[UndoneEdit, _Mapping]] = ...) -> None: ...
+
+class UndoEditRequest(_message.Message):
+    __slots__ = ("edit", "redo", "ext", "document_fields_json")
+    EDIT_FIELD_NUMBER: _ClassVar[int]
+    REDO_FIELD_NUMBER: _ClassVar[int]
+    EXT_FIELD_NUMBER: _ClassVar[int]
+    DOCUMENT_FIELDS_JSON_FIELD_NUMBER: _ClassVar[int]
+    edit: EditRecord
+    redo: str
+    ext: str
+    document_fields_json: str
+    def __init__(self, edit: _Optional[_Union[EditRecord, _Mapping]] = ..., redo: _Optional[str] = ..., ext: _Optional[str] = ..., document_fields_json: _Optional[str] = ...) -> None: ...
+
+class RedoEditRequest(_message.Message):
+    __slots__ = ("undone_id", "document_fields_json")
+    UNDONE_ID_FIELD_NUMBER: _ClassVar[int]
+    DOCUMENT_FIELDS_JSON_FIELD_NUMBER: _ClassVar[int]
+    undone_id: int
+    document_fields_json: str
+    def __init__(self, undone_id: _Optional[int] = ..., document_fields_json: _Optional[str] = ...) -> None: ...
+
+class ClearUndoneReply(_message.Message):
+    __slots__ = ("dropped",)
+    DROPPED_FIELD_NUMBER: _ClassVar[int]
+    dropped: _containers.RepeatedCompositeFieldContainer[UndoneEdit]
+    def __init__(self, dropped: _Optional[_Iterable[_Union[UndoneEdit, _Mapping]]] = ...) -> None: ...
+
+class LibrarySessionRef(_message.Message):
+    __slots__ = ("session_id",)
+    SESSION_ID_FIELD_NUMBER: _ClassVar[int]
+    session_id: str
+    def __init__(self, session_id: _Optional[str] = ...) -> None: ...
+
+class LibrarySession(_message.Message):
+    __slots__ = ("id", "turn", "llm_messages_json", "display_json", "guard_json", "owner")
+    ID_FIELD_NUMBER: _ClassVar[int]
+    TURN_FIELD_NUMBER: _ClassVar[int]
+    LLM_MESSAGES_JSON_FIELD_NUMBER: _ClassVar[int]
+    DISPLAY_JSON_FIELD_NUMBER: _ClassVar[int]
+    GUARD_JSON_FIELD_NUMBER: _ClassVar[int]
+    OWNER_FIELD_NUMBER: _ClassVar[int]
+    id: str
+    turn: int
+    llm_messages_json: str
+    display_json: str
+    guard_json: str
+    owner: str
+    def __init__(self, id: _Optional[str] = ..., turn: _Optional[int] = ..., llm_messages_json: _Optional[str] = ..., display_json: _Optional[str] = ..., guard_json: _Optional[str] = ..., owner: _Optional[str] = ...) -> None: ...
+
+class BatchItem(_message.Message):
+    __slots__ = ("instruction", "payload_json")
+    INSTRUCTION_FIELD_NUMBER: _ClassVar[int]
+    PAYLOAD_JSON_FIELD_NUMBER: _ClassVar[int]
+    instruction: str
+    payload_json: str
+    def __init__(self, instruction: _Optional[str] = ..., payload_json: _Optional[str] = ...) -> None: ...
+
+class AddBatchRequest(_message.Message):
+    __slots__ = ("session_id", "items", "owner")
+    SESSION_ID_FIELD_NUMBER: _ClassVar[int]
+    ITEMS_FIELD_NUMBER: _ClassVar[int]
+    OWNER_FIELD_NUMBER: _ClassVar[int]
+    session_id: str
+    items: _containers.RepeatedCompositeFieldContainer[BatchItem]
+    owner: str
+    def __init__(self, session_id: _Optional[str] = ..., items: _Optional[_Iterable[_Union[BatchItem, _Mapping]]] = ..., owner: _Optional[str] = ...) -> None: ...
+
+class BatchRef(_message.Message):
+    __slots__ = ("batch_id",)
+    BATCH_ID_FIELD_NUMBER: _ClassVar[int]
+    batch_id: str
+    def __init__(self, batch_id: _Optional[str] = ...) -> None: ...
+
+class TaskRef(_message.Message):
+    __slots__ = ("task_id",)
+    TASK_ID_FIELD_NUMBER: _ClassVar[int]
+    task_id: int
+    def __init__(self, task_id: _Optional[int] = ...) -> None: ...
+
+class CatalogTask(_message.Message):
+    __slots__ = ("id", "batch_id", "position", "instruction", "payload_json", "checkpoint_json", "status", "reply", "actions_json", "tokens", "started_at", "finished_at")
+    ID_FIELD_NUMBER: _ClassVar[int]
+    BATCH_ID_FIELD_NUMBER: _ClassVar[int]
+    POSITION_FIELD_NUMBER: _ClassVar[int]
+    INSTRUCTION_FIELD_NUMBER: _ClassVar[int]
+    PAYLOAD_JSON_FIELD_NUMBER: _ClassVar[int]
+    CHECKPOINT_JSON_FIELD_NUMBER: _ClassVar[int]
+    STATUS_FIELD_NUMBER: _ClassVar[int]
+    REPLY_FIELD_NUMBER: _ClassVar[int]
+    ACTIONS_JSON_FIELD_NUMBER: _ClassVar[int]
+    TOKENS_FIELD_NUMBER: _ClassVar[int]
+    STARTED_AT_FIELD_NUMBER: _ClassVar[int]
+    FINISHED_AT_FIELD_NUMBER: _ClassVar[int]
+    id: int
+    batch_id: str
+    position: int
+    instruction: str
+    payload_json: str
+    checkpoint_json: str
+    status: str
+    reply: str
+    actions_json: str
+    tokens: int
+    started_at: str
+    finished_at: str
+    def __init__(self, id: _Optional[int] = ..., batch_id: _Optional[str] = ..., position: _Optional[int] = ..., instruction: _Optional[str] = ..., payload_json: _Optional[str] = ..., checkpoint_json: _Optional[str] = ..., status: _Optional[str] = ..., reply: _Optional[str] = ..., actions_json: _Optional[str] = ..., tokens: _Optional[int] = ..., started_at: _Optional[str] = ..., finished_at: _Optional[str] = ...) -> None: ...
+
+class OptionalTask(_message.Message):
+    __slots__ = ("task",)
+    TASK_FIELD_NUMBER: _ClassVar[int]
+    task: CatalogTask
+    def __init__(self, task: _Optional[_Union[CatalogTask, _Mapping]] = ...) -> None: ...
+
+class TaskList(_message.Message):
+    __slots__ = ("tasks",)
+    TASKS_FIELD_NUMBER: _ClassVar[int]
+    tasks: _containers.RepeatedCompositeFieldContainer[CatalogTask]
+    def __init__(self, tasks: _Optional[_Iterable[_Union[CatalogTask, _Mapping]]] = ...) -> None: ...
+
+class CatalogBatch(_message.Message):
+    __slots__ = ("id", "session_id", "owner", "created_at", "tasks")
+    ID_FIELD_NUMBER: _ClassVar[int]
+    SESSION_ID_FIELD_NUMBER: _ClassVar[int]
+    OWNER_FIELD_NUMBER: _ClassVar[int]
+    CREATED_AT_FIELD_NUMBER: _ClassVar[int]
+    TASKS_FIELD_NUMBER: _ClassVar[int]
+    id: str
+    session_id: str
+    owner: str
+    created_at: str
+    tasks: _containers.RepeatedCompositeFieldContainer[CatalogTask]
+    def __init__(self, id: _Optional[str] = ..., session_id: _Optional[str] = ..., owner: _Optional[str] = ..., created_at: _Optional[str] = ..., tasks: _Optional[_Iterable[_Union[CatalogTask, _Mapping]]] = ...) -> None: ...
+
+class OptionalBatch(_message.Message):
+    __slots__ = ("batch",)
+    BATCH_FIELD_NUMBER: _ClassVar[int]
+    batch: CatalogBatch
+    def __init__(self, batch: _Optional[_Union[CatalogBatch, _Mapping]] = ...) -> None: ...
+
+class BatchList(_message.Message):
+    __slots__ = ("batches",)
+    BATCHES_FIELD_NUMBER: _ClassVar[int]
+    batches: _containers.RepeatedCompositeFieldContainer[CatalogBatch]
+    def __init__(self, batches: _Optional[_Iterable[_Union[CatalogBatch, _Mapping]]] = ...) -> None: ...
+
+class ActiveBatchesRequest(_message.Message):
+    __slots__ = ("hours", "owner")
+    HOURS_FIELD_NUMBER: _ClassVar[int]
+    OWNER_FIELD_NUMBER: _ClassVar[int]
+    hours: float
+    owner: str
+    def __init__(self, hours: _Optional[float] = ..., owner: _Optional[str] = ...) -> None: ...
+
+class ListBatchesRequest(_message.Message):
+    __slots__ = ("limit", "owner")
+    LIMIT_FIELD_NUMBER: _ClassVar[int]
+    OWNER_FIELD_NUMBER: _ClassVar[int]
+    limit: int
+    owner: str
+    def __init__(self, limit: _Optional[int] = ..., owner: _Optional[str] = ...) -> None: ...
+
+class TaskRun(_message.Message):
+    __slots__ = ("actions_json", "finished_at")
+    ACTIONS_JSON_FIELD_NUMBER: _ClassVar[int]
+    FINISHED_AT_FIELD_NUMBER: _ClassVar[int]
+    actions_json: str
+    finished_at: str
+    def __init__(self, actions_json: _Optional[str] = ..., finished_at: _Optional[str] = ...) -> None: ...
+
+class TasksRunReply(_message.Message):
+    __slots__ = ("tasks",)
+    TASKS_FIELD_NUMBER: _ClassVar[int]
+    tasks: _containers.RepeatedCompositeFieldContainer[TaskRun]
+    def __init__(self, tasks: _Optional[_Iterable[_Union[TaskRun, _Mapping]]] = ...) -> None: ...
+
+class UpdateTaskRequest(_message.Message):
+    __slots__ = ("task_id", "fields_json")
+    TASK_ID_FIELD_NUMBER: _ClassVar[int]
+    FIELDS_JSON_FIELD_NUMBER: _ClassVar[int]
+    task_id: int
+    fields_json: str
+    def __init__(self, task_id: _Optional[int] = ..., fields_json: _Optional[str] = ...) -> None: ...
+
+class TaskOwner(_message.Message):
+    __slots__ = ("batch_id", "owner")
+    BATCH_ID_FIELD_NUMBER: _ClassVar[int]
+    OWNER_FIELD_NUMBER: _ClassVar[int]
+    batch_id: str
+    owner: str
+    def __init__(self, batch_id: _Optional[str] = ..., owner: _Optional[str] = ...) -> None: ...
+
+class CancelBatchReply(_message.Message):
+    __slots__ = ("cancelled", "owner")
+    CANCELLED_FIELD_NUMBER: _ClassVar[int]
+    OWNER_FIELD_NUMBER: _ClassVar[int]
+    cancelled: int
+    owner: str
+    def __init__(self, cancelled: _Optional[int] = ..., owner: _Optional[str] = ...) -> None: ...
+
+class CountQueuedRequest(_message.Message):
+    __slots__ = ("owner",)
+    OWNER_FIELD_NUMBER: _ClassVar[int]
+    owner: str
+    def __init__(self, owner: _Optional[str] = ...) -> None: ...
+
+class TasksWithStatusRequest(_message.Message):
+    __slots__ = ("status",)
+    STATUS_FIELD_NUMBER: _ClassVar[int]
+    status: str
+    def __init__(self, status: _Optional[str] = ...) -> None: ...
+
+class GiveLegacyRequest(_message.Message):
+    __slots__ = ("user_id",)
+    USER_ID_FIELD_NUMBER: _ClassVar[int]
+    user_id: str
+    def __init__(self, user_id: _Optional[str] = ...) -> None: ...
+
+class CatalogDump(_message.Message):
+    __slots__ = ("documents", "renames", "edits", "undone_edits", "batches", "sessions")
+    DOCUMENTS_FIELD_NUMBER: _ClassVar[int]
+    RENAMES_FIELD_NUMBER: _ClassVar[int]
+    EDITS_FIELD_NUMBER: _ClassVar[int]
+    UNDONE_EDITS_FIELD_NUMBER: _ClassVar[int]
+    BATCHES_FIELD_NUMBER: _ClassVar[int]
+    SESSIONS_FIELD_NUMBER: _ClassVar[int]
+    documents: _containers.RepeatedCompositeFieldContainer[CatalogDocument]
+    renames: _containers.RepeatedCompositeFieldContainer[RenameRow]
+    edits: _containers.RepeatedCompositeFieldContainer[EditRecord]
+    undone_edits: _containers.RepeatedCompositeFieldContainer[UndoneEdit]
+    batches: _containers.RepeatedCompositeFieldContainer[CatalogBatch]
+    sessions: _containers.RepeatedCompositeFieldContainer[StoredSession]
+    def __init__(self, documents: _Optional[_Iterable[_Union[CatalogDocument, _Mapping]]] = ..., renames: _Optional[_Iterable[_Union[RenameRow, _Mapping]]] = ..., edits: _Optional[_Iterable[_Union[EditRecord, _Mapping]]] = ..., undone_edits: _Optional[_Iterable[_Union[UndoneEdit, _Mapping]]] = ..., batches: _Optional[_Iterable[_Union[CatalogBatch, _Mapping]]] = ..., sessions: _Optional[_Iterable[_Union[StoredSession, _Mapping]]] = ...) -> None: ...
+
+class RenameRow(_message.Message):
+    __slots__ = ("id", "doc_id", "old_title", "new_title", "reason", "at")
+    ID_FIELD_NUMBER: _ClassVar[int]
+    DOC_ID_FIELD_NUMBER: _ClassVar[int]
+    OLD_TITLE_FIELD_NUMBER: _ClassVar[int]
+    NEW_TITLE_FIELD_NUMBER: _ClassVar[int]
+    REASON_FIELD_NUMBER: _ClassVar[int]
+    AT_FIELD_NUMBER: _ClassVar[int]
+    id: int
+    doc_id: str
+    old_title: str
+    new_title: str
+    reason: str
+    at: str
+    def __init__(self, id: _Optional[int] = ..., doc_id: _Optional[str] = ..., old_title: _Optional[str] = ..., new_title: _Optional[str] = ..., reason: _Optional[str] = ..., at: _Optional[str] = ...) -> None: ...
+
+class StoredSession(_message.Message):
+    __slots__ = ("session", "created_at", "updated_at")
+    SESSION_FIELD_NUMBER: _ClassVar[int]
+    CREATED_AT_FIELD_NUMBER: _ClassVar[int]
+    UPDATED_AT_FIELD_NUMBER: _ClassVar[int]
+    session: LibrarySession
+    created_at: str
+    updated_at: str
+    def __init__(self, session: _Optional[_Union[LibrarySession, _Mapping]] = ..., created_at: _Optional[str] = ..., updated_at: _Optional[str] = ...) -> None: ...
+
+class ImportCatalogRequest(_message.Message):
+    __slots__ = ("dump",)
+    DUMP_FIELD_NUMBER: _ClassVar[int]
+    dump: CatalogDump
+    def __init__(self, dump: _Optional[_Union[CatalogDump, _Mapping]] = ...) -> None: ...
+
+class CatalogCounts(_message.Message):
+    __slots__ = ("documents", "renames", "edits", "undone_edits", "batches", "batch_tasks", "sessions")
+    DOCUMENTS_FIELD_NUMBER: _ClassVar[int]
+    RENAMES_FIELD_NUMBER: _ClassVar[int]
+    EDITS_FIELD_NUMBER: _ClassVar[int]
+    UNDONE_EDITS_FIELD_NUMBER: _ClassVar[int]
+    BATCHES_FIELD_NUMBER: _ClassVar[int]
+    BATCH_TASKS_FIELD_NUMBER: _ClassVar[int]
+    SESSIONS_FIELD_NUMBER: _ClassVar[int]
+    documents: int
+    renames: int
+    edits: int
+    undone_edits: int
+    batches: int
+    batch_tasks: int
+    sessions: int
+    def __init__(self, documents: _Optional[int] = ..., renames: _Optional[int] = ..., edits: _Optional[int] = ..., undone_edits: _Optional[int] = ..., batches: _Optional[int] = ..., batch_tasks: _Optional[int] = ..., sessions: _Optional[int] = ...) -> None: ...
+
+class ImportCatalogReply(_message.Message):
+    __slots__ = ("created",)
+    CREATED_FIELD_NUMBER: _ClassVar[int]
+    created: CatalogCounts
+    def __init__(self, created: _Optional[_Union[CatalogCounts, _Mapping]] = ...) -> None: ...
+
+class CountCatalogReply(_message.Message):
+    __slots__ = ("held",)
+    HELD_FIELD_NUMBER: _ClassVar[int]
+    held: CatalogCounts
+    def __init__(self, held: _Optional[_Union[CatalogCounts, _Mapping]] = ...) -> None: ...

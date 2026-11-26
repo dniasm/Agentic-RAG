@@ -21,6 +21,7 @@ from agentic_rag_proto import document_pb2_grpc as pb_grpc
 from backend.config import gemini, voyage
 from services.common.server import Service, serve
 from services.document import db, ingestion, ocr, rerank, search, sparse, vectorstore
+from services.document.catalog_server import CatalogMixin
 
 log = logging.getLogger(__name__)
 NAME = "document"
@@ -58,7 +59,7 @@ def failure_of(e: Exception) -> pb.Failure:
     return pb.Failure(kind="error", message=f"{type(e).__name__}: {e}"[:400])
 
 
-class DocumentServicer(pb_grpc.DocumentServiceServicer):
+class DocumentServicer(CatalogMixin, pb_grpc.DocumentServiceServicer):
     # ---------------------------------------------------------------- helpers
     async def _run(self, context, fn, *args, **kwargs):
         """Run a blocking call off the event loop; bad input becomes INVALID_ARGUMENT."""

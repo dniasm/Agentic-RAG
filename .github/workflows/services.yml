@@ -26,7 +26,7 @@ jobs:
           - name: "memory"
             tests: backend/tests/services/test_memory_service.py
           - name: "document"
-            tests: backend/tests/services/test_document_service.py
+            tests: backend/tests/services/test_document_service.py backend/tests/services/test_document_catalog.py
     uses: ./.github/workflows/_python-tests.yml
     with:
       name: ${{ matrix.name }}

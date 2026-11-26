@@ -89,6 +89,196 @@ class DocumentServiceStub:
                 request_serializer=agentic__rag__proto_dot_document__pb2.ImportCachesRequest.SerializeToString,
                 response_deserializer=agentic__rag__proto_dot_document__pb2.DocumentImportReply.FromString,
                 _registered_method=True)
+        self.AddCatalogDocument = channel.unary_unary(
+                '/agentic_rag.v1.DocumentService/AddCatalogDocument',
+                request_serializer=agentic__rag__proto_dot_document__pb2.AddCatalogDocumentRequest.SerializeToString,
+                response_deserializer=agentic__rag__proto_dot_document__pb2.CatalogDocument.FromString,
+                _registered_method=True)
+        self.GetCatalogDocument = channel.unary_unary(
+                '/agentic_rag.v1.DocumentService/GetCatalogDocument',
+                request_serializer=agentic__rag__proto_dot_document__pb2.CatalogDocumentRef.SerializeToString,
+                response_deserializer=agentic__rag__proto_dot_document__pb2.OptionalCatalogDocument.FromString,
+                _registered_method=True)
+        self.FindCatalogDocumentByHash = channel.unary_unary(
+                '/agentic_rag.v1.DocumentService/FindCatalogDocumentByHash',
+                request_serializer=agentic__rag__proto_dot_document__pb2.FindByHashRequest.SerializeToString,
+                response_deserializer=agentic__rag__proto_dot_document__pb2.OptionalCatalogDocument.FromString,
+                _registered_method=True)
+        self.ListCatalogDocuments = channel.unary_unary(
+                '/agentic_rag.v1.DocumentService/ListCatalogDocuments',
+                request_serializer=agentic__rag__proto_dot_document__pb2.ListCatalogDocumentsRequest.SerializeToString,
+                response_deserializer=agentic__rag__proto_dot_document__pb2.CatalogDocumentList.FromString,
+                _registered_method=True)
+        self.UpdateCatalogDocument = channel.unary_unary(
+                '/agentic_rag.v1.DocumentService/UpdateCatalogDocument',
+                request_serializer=agentic__rag__proto_dot_document__pb2.UpdateCatalogDocumentRequest.SerializeToString,
+                response_deserializer=agentic__rag__proto_dot_document__pb2.DeleteReply.FromString,
+                _registered_method=True)
+        self.DeleteCatalogDocument = channel.unary_unary(
+                '/agentic_rag.v1.DocumentService/DeleteCatalogDocument',
+                request_serializer=agentic__rag__proto_dot_document__pb2.CatalogDocumentRef.SerializeToString,
+                response_deserializer=agentic__rag__proto_dot_document__pb2.DeleteReply.FromString,
+                _registered_method=True)
+        self.RecordRename = channel.unary_unary(
+                '/agentic_rag.v1.DocumentService/RecordRename',
+                request_serializer=agentic__rag__proto_dot_document__pb2.RecordRenameRequest.SerializeToString,
+                response_deserializer=agentic__rag__proto_dot_document__pb2.DeleteReply.FromString,
+                _registered_method=True)
+        self.RenameHistories = channel.unary_unary(
+                '/agentic_rag.v1.DocumentService/RenameHistories',
+                request_serializer=agentic__rag__proto_dot_document__pb2.CatalogOwnerlessRequest.SerializeToString,
+                response_deserializer=agentic__rag__proto_dot_document__pb2.RenameHistoriesReply.FromString,
+                _registered_method=True)
+        self.RenameHistory = channel.unary_unary(
+                '/agentic_rag.v1.DocumentService/RenameHistory',
+                request_serializer=agentic__rag__proto_dot_document__pb2.CatalogDocumentRef.SerializeToString,
+                response_deserializer=agentic__rag__proto_dot_document__pb2.RenameHistoryReply.FromString,
+                _registered_method=True)
+        self.UsedFileNames = channel.unary_unary(
+                '/agentic_rag.v1.DocumentService/UsedFileNames',
+                request_serializer=agentic__rag__proto_dot_document__pb2.UsedFileNamesRequest.SerializeToString,
+                response_deserializer=agentic__rag__proto_dot_document__pb2.UsedFileNamesReply.FromString,
+                _registered_method=True)
+        self.RecordEdit = channel.unary_unary(
+                '/agentic_rag.v1.DocumentService/RecordEdit',
+                request_serializer=agentic__rag__proto_dot_document__pb2.RecordEditRequest.SerializeToString,
+                response_deserializer=agentic__rag__proto_dot_document__pb2.RecordEditReply.FromString,
+                _registered_method=True)
+        self.LastEdit = channel.unary_unary(
+                '/agentic_rag.v1.DocumentService/LastEdit',
+                request_serializer=agentic__rag__proto_dot_document__pb2.CatalogDocumentRef.SerializeToString,
+                response_deserializer=agentic__rag__proto_dot_document__pb2.OptionalEdit.FromString,
+                _registered_method=True)
+        self.EditExists = channel.unary_unary(
+                '/agentic_rag.v1.DocumentService/EditExists',
+                request_serializer=agentic__rag__proto_dot_document__pb2.EditRef.SerializeToString,
+                response_deserializer=agentic__rag__proto_dot_document__pb2.EditExistsReply.FromString,
+                _registered_method=True)
+        self.EditHistory = channel.unary_unary(
+                '/agentic_rag.v1.DocumentService/EditHistory',
+                request_serializer=agentic__rag__proto_dot_document__pb2.CatalogDocumentRef.SerializeToString,
+                response_deserializer=agentic__rag__proto_dot_document__pb2.EditHistoryReply.FromString,
+                _registered_method=True)
+        self.DeleteEdit = channel.unary_unary(
+                '/agentic_rag.v1.DocumentService/DeleteEdit',
+                request_serializer=agentic__rag__proto_dot_document__pb2.EditRef.SerializeToString,
+                response_deserializer=agentic__rag__proto_dot_document__pb2.DeleteReply.FromString,
+                _registered_method=True)
+        self.UndoEdit = channel.unary_unary(
+                '/agentic_rag.v1.DocumentService/UndoEdit',
+                request_serializer=agentic__rag__proto_dot_document__pb2.UndoEditRequest.SerializeToString,
+                response_deserializer=agentic__rag__proto_dot_document__pb2.DeleteReply.FromString,
+                _registered_method=True)
+        self.LastUndone = channel.unary_unary(
+                '/agentic_rag.v1.DocumentService/LastUndone',
+                request_serializer=agentic__rag__proto_dot_document__pb2.CatalogDocumentRef.SerializeToString,
+                response_deserializer=agentic__rag__proto_dot_document__pb2.OptionalUndoneEdit.FromString,
+                _registered_method=True)
+        self.RedoEdit = channel.unary_unary(
+                '/agentic_rag.v1.DocumentService/RedoEdit',
+                request_serializer=agentic__rag__proto_dot_document__pb2.RedoEditRequest.SerializeToString,
+                response_deserializer=agentic__rag__proto_dot_document__pb2.DeleteReply.FromString,
+                _registered_method=True)
+        self.ClearUndone = channel.unary_unary(
+                '/agentic_rag.v1.DocumentService/ClearUndone',
+                request_serializer=agentic__rag__proto_dot_document__pb2.CatalogDocumentRef.SerializeToString,
+                response_deserializer=agentic__rag__proto_dot_document__pb2.ClearUndoneReply.FromString,
+                _registered_method=True)
+        self.LoadLibrarySession = channel.unary_unary(
+                '/agentic_rag.v1.DocumentService/LoadLibrarySession',
+                request_serializer=agentic__rag__proto_dot_document__pb2.LibrarySessionRef.SerializeToString,
+                response_deserializer=agentic__rag__proto_dot_document__pb2.LibrarySession.FromString,
+                _registered_method=True)
+        self.SaveLibrarySession = channel.unary_unary(
+                '/agentic_rag.v1.DocumentService/SaveLibrarySession',
+                request_serializer=agentic__rag__proto_dot_document__pb2.LibrarySession.SerializeToString,
+                response_deserializer=agentic__rag__proto_dot_document__pb2.DeleteReply.FromString,
+                _registered_method=True)
+        self.AddBatch = channel.unary_unary(
+                '/agentic_rag.v1.DocumentService/AddBatch',
+                request_serializer=agentic__rag__proto_dot_document__pb2.AddBatchRequest.SerializeToString,
+                response_deserializer=agentic__rag__proto_dot_document__pb2.CatalogBatch.FromString,
+                _registered_method=True)
+        self.GetBatch = channel.unary_unary(
+                '/agentic_rag.v1.DocumentService/GetBatch',
+                request_serializer=agentic__rag__proto_dot_document__pb2.BatchRef.SerializeToString,
+                response_deserializer=agentic__rag__proto_dot_document__pb2.OptionalBatch.FromString,
+                _registered_method=True)
+        self.ActiveOrRecentBatches = channel.unary_unary(
+                '/agentic_rag.v1.DocumentService/ActiveOrRecentBatches',
+                request_serializer=agentic__rag__proto_dot_document__pb2.ActiveBatchesRequest.SerializeToString,
+                response_deserializer=agentic__rag__proto_dot_document__pb2.BatchList.FromString,
+                _registered_method=True)
+        self.ListBatches = channel.unary_unary(
+                '/agentic_rag.v1.DocumentService/ListBatches',
+                request_serializer=agentic__rag__proto_dot_document__pb2.ListBatchesRequest.SerializeToString,
+                response_deserializer=agentic__rag__proto_dot_document__pb2.BatchList.FromString,
+                _registered_method=True)
+        self.TasksRunFor = channel.unary_unary(
+                '/agentic_rag.v1.DocumentService/TasksRunFor',
+                request_serializer=agentic__rag__proto_dot_document__pb2.LibrarySessionRef.SerializeToString,
+                response_deserializer=agentic__rag__proto_dot_document__pb2.TasksRunReply.FromString,
+                _registered_method=True)
+        self.PendingTasksFor = channel.unary_unary(
+                '/agentic_rag.v1.DocumentService/PendingTasksFor',
+                request_serializer=agentic__rag__proto_dot_document__pb2.LibrarySessionRef.SerializeToString,
+                response_deserializer=agentic__rag__proto_dot_document__pb2.CountReply.FromString,
+                _registered_method=True)
+        self.NextQueuedTask = channel.unary_unary(
+                '/agentic_rag.v1.DocumentService/NextQueuedTask',
+                request_serializer=agentic__rag__proto_dot_document__pb2.CatalogOwnerlessRequest.SerializeToString,
+                response_deserializer=agentic__rag__proto_dot_document__pb2.OptionalTask.FromString,
+                _registered_method=True)
+        self.ClaimNextTask = channel.unary_unary(
+                '/agentic_rag.v1.DocumentService/ClaimNextTask',
+                request_serializer=agentic__rag__proto_dot_document__pb2.CatalogOwnerlessRequest.SerializeToString,
+                response_deserializer=agentic__rag__proto_dot_document__pb2.OptionalTask.FromString,
+                _registered_method=True)
+        self.GetTask = channel.unary_unary(
+                '/agentic_rag.v1.DocumentService/GetTask',
+                request_serializer=agentic__rag__proto_dot_document__pb2.TaskRef.SerializeToString,
+                response_deserializer=agentic__rag__proto_dot_document__pb2.OptionalTask.FromString,
+                _registered_method=True)
+        self.UpdateTask = channel.unary_unary(
+                '/agentic_rag.v1.DocumentService/UpdateTask',
+                request_serializer=agentic__rag__proto_dot_document__pb2.UpdateTaskRequest.SerializeToString,
+                response_deserializer=agentic__rag__proto_dot_document__pb2.TaskOwner.FromString,
+                _registered_method=True)
+        self.CancelBatch = channel.unary_unary(
+                '/agentic_rag.v1.DocumentService/CancelBatch',
+                request_serializer=agentic__rag__proto_dot_document__pb2.BatchRef.SerializeToString,
+                response_deserializer=agentic__rag__proto_dot_document__pb2.CancelBatchReply.FromString,
+                _registered_method=True)
+        self.CountQueuedTasks = channel.unary_unary(
+                '/agentic_rag.v1.DocumentService/CountQueuedTasks',
+                request_serializer=agentic__rag__proto_dot_document__pb2.CountQueuedRequest.SerializeToString,
+                response_deserializer=agentic__rag__proto_dot_document__pb2.CountReply.FromString,
+                _registered_method=True)
+        self.TasksWithStatus = channel.unary_unary(
+                '/agentic_rag.v1.DocumentService/TasksWithStatus',
+                request_serializer=agentic__rag__proto_dot_document__pb2.TasksWithStatusRequest.SerializeToString,
+                response_deserializer=agentic__rag__proto_dot_document__pb2.TaskList.FromString,
+                _registered_method=True)
+        self.RequeueRunningTasks = channel.unary_unary(
+                '/agentic_rag.v1.DocumentService/RequeueRunningTasks',
+                request_serializer=agentic__rag__proto_dot_document__pb2.CatalogOwnerlessRequest.SerializeToString,
+                response_deserializer=agentic__rag__proto_dot_document__pb2.CountReply.FromString,
+                _registered_method=True)
+        self.GiveLegacyChatsAndBatchesTo = channel.unary_unary(
+                '/agentic_rag.v1.DocumentService/GiveLegacyChatsAndBatchesTo',
+                request_serializer=agentic__rag__proto_dot_document__pb2.GiveLegacyRequest.SerializeToString,
+                response_deserializer=agentic__rag__proto_dot_document__pb2.DeleteReply.FromString,
+                _registered_method=True)
+        self.ImportCatalog = channel.unary_unary(
+                '/agentic_rag.v1.DocumentService/ImportCatalog',
+                request_serializer=agentic__rag__proto_dot_document__pb2.ImportCatalogRequest.SerializeToString,
+                response_deserializer=agentic__rag__proto_dot_document__pb2.ImportCatalogReply.FromString,
+                _registered_method=True)
+        self.CountCatalog = channel.unary_unary(
+                '/agentic_rag.v1.DocumentService/CountCatalog',
+                request_serializer=agentic__rag__proto_dot_document__pb2.CatalogOwnerlessRequest.SerializeToString,
+                response_deserializer=agentic__rag__proto_dot_document__pb2.CountCatalogReply.FromString,
+                _registered_method=True)
 
 
 class DocumentServiceServicer:
@@ -176,6 +366,251 @@ class DocumentServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def AddCatalogDocument(self, request, context):
+        """---- the library catalog (document.db). One call per atomic operation; free-form JSON columns are JSON strings.
+        Documents
+        status 'processing'
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetCatalogDocument(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def FindCatalogDocumentByHash(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListCatalogDocuments(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UpdateCatalogDocument(self, request, context):
+        """Updates columns (fields_json, a JSON object; null sets NULL; keywords is a JSON list) and, in the same transaction,
+        adds a rename record when `rename` is set.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DeleteCatalogDocument(self, request, context):
+        """also its renames and edits
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RecordRename(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RenameHistories(self, request, context):
+        """every document's, oldest first
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RenameHistory(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UsedFileNames(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RecordEdit(self, request, context):
+        """Edits and undo
+        + optional document update, atomically
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def LastEdit(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def EditExists(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def EditHistory(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DeleteEdit(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UndoEdit(self, request, context):
+        """edit -> undone_edits (+ optional document update)
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def LastUndone(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RedoEdit(self, request, context):
+        """undone_edits -> edits under its own id (+ update)
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ClearUndone(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def LoadLibrarySession(self, request, context):
+        """The library chat agent's sessions
+        a fresh empty one (no owner) when unknown
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SaveLibrarySession(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def AddBatch(self, request, context):
+        """Queued batches
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetBatch(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ActiveOrRecentBatches(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListBatches(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def TasksRunFor(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def PendingTasksFor(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def NextQueuedTask(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ClaimNextTask(self, request, context):
+        """Picks the next queued task and marks it running (started_at = now) in one transaction.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetTask(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UpdateTask(self, request, context):
+        """says whose batch it is, for the queue push
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CancelBatch(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CountQueuedTasks(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def TasksWithStatus(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RequeueRunningTasks(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GiveLegacyChatsAndBatchesTo(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ImportCatalog(self, request, context):
+        """Migration (scripts/migrate_library_catalog.py)
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CountCatalog(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_DocumentServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -233,6 +668,196 @@ def add_DocumentServiceServicer_to_server(servicer, server):
                     servicer.ImportCaches,
                     request_deserializer=agentic__rag__proto_dot_document__pb2.ImportCachesRequest.FromString,
                     response_serializer=agentic__rag__proto_dot_document__pb2.DocumentImportReply.SerializeToString,
+            ),
+            'AddCatalogDocument': grpc.unary_unary_rpc_method_handler(
+                    servicer.AddCatalogDocument,
+                    request_deserializer=agentic__rag__proto_dot_document__pb2.AddCatalogDocumentRequest.FromString,
+                    response_serializer=agentic__rag__proto_dot_document__pb2.CatalogDocument.SerializeToString,
+            ),
+            'GetCatalogDocument': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetCatalogDocument,
+                    request_deserializer=agentic__rag__proto_dot_document__pb2.CatalogDocumentRef.FromString,
+                    response_serializer=agentic__rag__proto_dot_document__pb2.OptionalCatalogDocument.SerializeToString,
+            ),
+            'FindCatalogDocumentByHash': grpc.unary_unary_rpc_method_handler(
+                    servicer.FindCatalogDocumentByHash,
+                    request_deserializer=agentic__rag__proto_dot_document__pb2.FindByHashRequest.FromString,
+                    response_serializer=agentic__rag__proto_dot_document__pb2.OptionalCatalogDocument.SerializeToString,
+            ),
+            'ListCatalogDocuments': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListCatalogDocuments,
+                    request_deserializer=agentic__rag__proto_dot_document__pb2.ListCatalogDocumentsRequest.FromString,
+                    response_serializer=agentic__rag__proto_dot_document__pb2.CatalogDocumentList.SerializeToString,
+            ),
+            'UpdateCatalogDocument': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdateCatalogDocument,
+                    request_deserializer=agentic__rag__proto_dot_document__pb2.UpdateCatalogDocumentRequest.FromString,
+                    response_serializer=agentic__rag__proto_dot_document__pb2.DeleteReply.SerializeToString,
+            ),
+            'DeleteCatalogDocument': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeleteCatalogDocument,
+                    request_deserializer=agentic__rag__proto_dot_document__pb2.CatalogDocumentRef.FromString,
+                    response_serializer=agentic__rag__proto_dot_document__pb2.DeleteReply.SerializeToString,
+            ),
+            'RecordRename': grpc.unary_unary_rpc_method_handler(
+                    servicer.RecordRename,
+                    request_deserializer=agentic__rag__proto_dot_document__pb2.RecordRenameRequest.FromString,
+                    response_serializer=agentic__rag__proto_dot_document__pb2.DeleteReply.SerializeToString,
+            ),
+            'RenameHistories': grpc.unary_unary_rpc_method_handler(
+                    servicer.RenameHistories,
+                    request_deserializer=agentic__rag__proto_dot_document__pb2.CatalogOwnerlessRequest.FromString,
+                    response_serializer=agentic__rag__proto_dot_document__pb2.RenameHistoriesReply.SerializeToString,
+            ),
+            'RenameHistory': grpc.unary_unary_rpc_method_handler(
+                    servicer.RenameHistory,
+                    request_deserializer=agentic__rag__proto_dot_document__pb2.CatalogDocumentRef.FromString,
+                    response_serializer=agentic__rag__proto_dot_document__pb2.RenameHistoryReply.SerializeToString,
+            ),
+            'UsedFileNames': grpc.unary_unary_rpc_method_handler(
+                    servicer.UsedFileNames,
+                    request_deserializer=agentic__rag__proto_dot_document__pb2.UsedFileNamesRequest.FromString,
+                    response_serializer=agentic__rag__proto_dot_document__pb2.UsedFileNamesReply.SerializeToString,
+            ),
+            'RecordEdit': grpc.unary_unary_rpc_method_handler(
+                    servicer.RecordEdit,
+                    request_deserializer=agentic__rag__proto_dot_document__pb2.RecordEditRequest.FromString,
+                    response_serializer=agentic__rag__proto_dot_document__pb2.RecordEditReply.SerializeToString,
+            ),
+            'LastEdit': grpc.unary_unary_rpc_method_handler(
+                    servicer.LastEdit,
+                    request_deserializer=agentic__rag__proto_dot_document__pb2.CatalogDocumentRef.FromString,
+                    response_serializer=agentic__rag__proto_dot_document__pb2.OptionalEdit.SerializeToString,
+            ),
+            'EditExists': grpc.unary_unary_rpc_method_handler(
+                    servicer.EditExists,
+                    request_deserializer=agentic__rag__proto_dot_document__pb2.EditRef.FromString,
+                    response_serializer=agentic__rag__proto_dot_document__pb2.EditExistsReply.SerializeToString,
+            ),
+            'EditHistory': grpc.unary_unary_rpc_method_handler(
+                    servicer.EditHistory,
+                    request_deserializer=agentic__rag__proto_dot_document__pb2.CatalogDocumentRef.FromString,
+                    response_serializer=agentic__rag__proto_dot_document__pb2.EditHistoryReply.SerializeToString,
+            ),
+            'DeleteEdit': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeleteEdit,
+                    request_deserializer=agentic__rag__proto_dot_document__pb2.EditRef.FromString,
+                    response_serializer=agentic__rag__proto_dot_document__pb2.DeleteReply.SerializeToString,
+            ),
+            'UndoEdit': grpc.unary_unary_rpc_method_handler(
+                    servicer.UndoEdit,
+                    request_deserializer=agentic__rag__proto_dot_document__pb2.UndoEditRequest.FromString,
+                    response_serializer=agentic__rag__proto_dot_document__pb2.DeleteReply.SerializeToString,
+            ),
+            'LastUndone': grpc.unary_unary_rpc_method_handler(
+                    servicer.LastUndone,
+                    request_deserializer=agentic__rag__proto_dot_document__pb2.CatalogDocumentRef.FromString,
+                    response_serializer=agentic__rag__proto_dot_document__pb2.OptionalUndoneEdit.SerializeToString,
+            ),
+            'RedoEdit': grpc.unary_unary_rpc_method_handler(
+                    servicer.RedoEdit,
+                    request_deserializer=agentic__rag__proto_dot_document__pb2.RedoEditRequest.FromString,
+                    response_serializer=agentic__rag__proto_dot_document__pb2.DeleteReply.SerializeToString,
+            ),
+            'ClearUndone': grpc.unary_unary_rpc_method_handler(
+                    servicer.ClearUndone,
+                    request_deserializer=agentic__rag__proto_dot_document__pb2.CatalogDocumentRef.FromString,
+                    response_serializer=agentic__rag__proto_dot_document__pb2.ClearUndoneReply.SerializeToString,
+            ),
+            'LoadLibrarySession': grpc.unary_unary_rpc_method_handler(
+                    servicer.LoadLibrarySession,
+                    request_deserializer=agentic__rag__proto_dot_document__pb2.LibrarySessionRef.FromString,
+                    response_serializer=agentic__rag__proto_dot_document__pb2.LibrarySession.SerializeToString,
+            ),
+            'SaveLibrarySession': grpc.unary_unary_rpc_method_handler(
+                    servicer.SaveLibrarySession,
+                    request_deserializer=agentic__rag__proto_dot_document__pb2.LibrarySession.FromString,
+                    response_serializer=agentic__rag__proto_dot_document__pb2.DeleteReply.SerializeToString,
+            ),
+            'AddBatch': grpc.unary_unary_rpc_method_handler(
+                    servicer.AddBatch,
+                    request_deserializer=agentic__rag__proto_dot_document__pb2.AddBatchRequest.FromString,
+                    response_serializer=agentic__rag__proto_dot_document__pb2.CatalogBatch.SerializeToString,
+            ),
+            'GetBatch': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetBatch,
+                    request_deserializer=agentic__rag__proto_dot_document__pb2.BatchRef.FromString,
+                    response_serializer=agentic__rag__proto_dot_document__pb2.OptionalBatch.SerializeToString,
+            ),
+            'ActiveOrRecentBatches': grpc.unary_unary_rpc_method_handler(
+                    servicer.ActiveOrRecentBatches,
+                    request_deserializer=agentic__rag__proto_dot_document__pb2.ActiveBatchesRequest.FromString,
+                    response_serializer=agentic__rag__proto_dot_document__pb2.BatchList.SerializeToString,
+            ),
+            'ListBatches': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListBatches,
+                    request_deserializer=agentic__rag__proto_dot_document__pb2.ListBatchesRequest.FromString,
+                    response_serializer=agentic__rag__proto_dot_document__pb2.BatchList.SerializeToString,
+            ),
+            'TasksRunFor': grpc.unary_unary_rpc_method_handler(
+                    servicer.TasksRunFor,
+                    request_deserializer=agentic__rag__proto_dot_document__pb2.LibrarySessionRef.FromString,
+                    response_serializer=agentic__rag__proto_dot_document__pb2.TasksRunReply.SerializeToString,
+            ),
+            'PendingTasksFor': grpc.unary_unary_rpc_method_handler(
+                    servicer.PendingTasksFor,
+                    request_deserializer=agentic__rag__proto_dot_document__pb2.LibrarySessionRef.FromString,
+                    response_serializer=agentic__rag__proto_dot_document__pb2.CountReply.SerializeToString,
+            ),
+            'NextQueuedTask': grpc.unary_unary_rpc_method_handler(
+                    servicer.NextQueuedTask,
+                    request_deserializer=agentic__rag__proto_dot_document__pb2.CatalogOwnerlessRequest.FromString,
+                    response_serializer=agentic__rag__proto_dot_document__pb2.OptionalTask.SerializeToString,
+            ),
+            'ClaimNextTask': grpc.unary_unary_rpc_method_handler(
+                    servicer.ClaimNextTask,
+                    request_deserializer=agentic__rag__proto_dot_document__pb2.CatalogOwnerlessRequest.FromString,
+                    response_serializer=agentic__rag__proto_dot_document__pb2.OptionalTask.SerializeToString,
+            ),
+            'GetTask': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetTask,
+                    request_deserializer=agentic__rag__proto_dot_document__pb2.TaskRef.FromString,
+                    response_serializer=agentic__rag__proto_dot_document__pb2.OptionalTask.SerializeToString,
+            ),
+            'UpdateTask': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdateTask,
+                    request_deserializer=agentic__rag__proto_dot_document__pb2.UpdateTaskRequest.FromString,
+                    response_serializer=agentic__rag__proto_dot_document__pb2.TaskOwner.SerializeToString,
+            ),
+            'CancelBatch': grpc.unary_unary_rpc_method_handler(
+                    servicer.CancelBatch,
+                    request_deserializer=agentic__rag__proto_dot_document__pb2.BatchRef.FromString,
+                    response_serializer=agentic__rag__proto_dot_document__pb2.CancelBatchReply.SerializeToString,
+            ),
+            'CountQueuedTasks': grpc.unary_unary_rpc_method_handler(
+                    servicer.CountQueuedTasks,
+                    request_deserializer=agentic__rag__proto_dot_document__pb2.CountQueuedRequest.FromString,
+                    response_serializer=agentic__rag__proto_dot_document__pb2.CountReply.SerializeToString,
+            ),
+            'TasksWithStatus': grpc.unary_unary_rpc_method_handler(
+                    servicer.TasksWithStatus,
+                    request_deserializer=agentic__rag__proto_dot_document__pb2.TasksWithStatusRequest.FromString,
+                    response_serializer=agentic__rag__proto_dot_document__pb2.TaskList.SerializeToString,
+            ),
+            'RequeueRunningTasks': grpc.unary_unary_rpc_method_handler(
+                    servicer.RequeueRunningTasks,
+                    request_deserializer=agentic__rag__proto_dot_document__pb2.CatalogOwnerlessRequest.FromString,
+                    response_serializer=agentic__rag__proto_dot_document__pb2.CountReply.SerializeToString,
+            ),
+            'GiveLegacyChatsAndBatchesTo': grpc.unary_unary_rpc_method_handler(
+                    servicer.GiveLegacyChatsAndBatchesTo,
+                    request_deserializer=agentic__rag__proto_dot_document__pb2.GiveLegacyRequest.FromString,
+                    response_serializer=agentic__rag__proto_dot_document__pb2.DeleteReply.SerializeToString,
+            ),
+            'ImportCatalog': grpc.unary_unary_rpc_method_handler(
+                    servicer.ImportCatalog,
+                    request_deserializer=agentic__rag__proto_dot_document__pb2.ImportCatalogRequest.FromString,
+                    response_serializer=agentic__rag__proto_dot_document__pb2.ImportCatalogReply.SerializeToString,
+            ),
+            'CountCatalog': grpc.unary_unary_rpc_method_handler(
+                    servicer.CountCatalog,
+                    request_deserializer=agentic__rag__proto_dot_document__pb2.CatalogOwnerlessRequest.FromString,
+                    response_serializer=agentic__rag__proto_dot_document__pb2.CountCatalogReply.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -532,6 +1157,1032 @@ class DocumentService:
             '/agentic_rag.v1.DocumentService/ImportCaches',
             agentic__rag__proto_dot_document__pb2.ImportCachesRequest.SerializeToString,
             agentic__rag__proto_dot_document__pb2.DocumentImportReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def AddCatalogDocument(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/agentic_rag.v1.DocumentService/AddCatalogDocument',
+            agentic__rag__proto_dot_document__pb2.AddCatalogDocumentRequest.SerializeToString,
+            agentic__rag__proto_dot_document__pb2.CatalogDocument.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetCatalogDocument(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/agentic_rag.v1.DocumentService/GetCatalogDocument',
+            agentic__rag__proto_dot_document__pb2.CatalogDocumentRef.SerializeToString,
+            agentic__rag__proto_dot_document__pb2.OptionalCatalogDocument.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def FindCatalogDocumentByHash(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/agentic_rag.v1.DocumentService/FindCatalogDocumentByHash',
+            agentic__rag__proto_dot_document__pb2.FindByHashRequest.SerializeToString,
+            agentic__rag__proto_dot_document__pb2.OptionalCatalogDocument.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListCatalogDocuments(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/agentic_rag.v1.DocumentService/ListCatalogDocuments',
+            agentic__rag__proto_dot_document__pb2.ListCatalogDocumentsRequest.SerializeToString,
+            agentic__rag__proto_dot_document__pb2.CatalogDocumentList.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UpdateCatalogDocument(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/agentic_rag.v1.DocumentService/UpdateCatalogDocument',
+            agentic__rag__proto_dot_document__pb2.UpdateCatalogDocumentRequest.SerializeToString,
+            agentic__rag__proto_dot_document__pb2.DeleteReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DeleteCatalogDocument(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/agentic_rag.v1.DocumentService/DeleteCatalogDocument',
+            agentic__rag__proto_dot_document__pb2.CatalogDocumentRef.SerializeToString,
+            agentic__rag__proto_dot_document__pb2.DeleteReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RecordRename(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/agentic_rag.v1.DocumentService/RecordRename',
+            agentic__rag__proto_dot_document__pb2.RecordRenameRequest.SerializeToString,
+            agentic__rag__proto_dot_document__pb2.DeleteReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RenameHistories(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/agentic_rag.v1.DocumentService/RenameHistories',
+            agentic__rag__proto_dot_document__pb2.CatalogOwnerlessRequest.SerializeToString,
+            agentic__rag__proto_dot_document__pb2.RenameHistoriesReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RenameHistory(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/agentic_rag.v1.DocumentService/RenameHistory',
+            agentic__rag__proto_dot_document__pb2.CatalogDocumentRef.SerializeToString,
+            agentic__rag__proto_dot_document__pb2.RenameHistoryReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UsedFileNames(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/agentic_rag.v1.DocumentService/UsedFileNames',
+            agentic__rag__proto_dot_document__pb2.UsedFileNamesRequest.SerializeToString,
+            agentic__rag__proto_dot_document__pb2.UsedFileNamesReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RecordEdit(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/agentic_rag.v1.DocumentService/RecordEdit',
+            agentic__rag__proto_dot_document__pb2.RecordEditRequest.SerializeToString,
+            agentic__rag__proto_dot_document__pb2.RecordEditReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def LastEdit(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/agentic_rag.v1.DocumentService/LastEdit',
+            agentic__rag__proto_dot_document__pb2.CatalogDocumentRef.SerializeToString,
+            agentic__rag__proto_dot_document__pb2.OptionalEdit.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def EditExists(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/agentic_rag.v1.DocumentService/EditExists',
+            agentic__rag__proto_dot_document__pb2.EditRef.SerializeToString,
+            agentic__rag__proto_dot_document__pb2.EditExistsReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def EditHistory(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/agentic_rag.v1.DocumentService/EditHistory',
+            agentic__rag__proto_dot_document__pb2.CatalogDocumentRef.SerializeToString,
+            agentic__rag__proto_dot_document__pb2.EditHistoryReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DeleteEdit(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/agentic_rag.v1.DocumentService/DeleteEdit',
+            agentic__rag__proto_dot_document__pb2.EditRef.SerializeToString,
+            agentic__rag__proto_dot_document__pb2.DeleteReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UndoEdit(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/agentic_rag.v1.DocumentService/UndoEdit',
+            agentic__rag__proto_dot_document__pb2.UndoEditRequest.SerializeToString,
+            agentic__rag__proto_dot_document__pb2.DeleteReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def LastUndone(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/agentic_rag.v1.DocumentService/LastUndone',
+            agentic__rag__proto_dot_document__pb2.CatalogDocumentRef.SerializeToString,
+            agentic__rag__proto_dot_document__pb2.OptionalUndoneEdit.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RedoEdit(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/agentic_rag.v1.DocumentService/RedoEdit',
+            agentic__rag__proto_dot_document__pb2.RedoEditRequest.SerializeToString,
+            agentic__rag__proto_dot_document__pb2.DeleteReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ClearUndone(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/agentic_rag.v1.DocumentService/ClearUndone',
+            agentic__rag__proto_dot_document__pb2.CatalogDocumentRef.SerializeToString,
+            agentic__rag__proto_dot_document__pb2.ClearUndoneReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def LoadLibrarySession(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/agentic_rag.v1.DocumentService/LoadLibrarySession',
+            agentic__rag__proto_dot_document__pb2.LibrarySessionRef.SerializeToString,
+            agentic__rag__proto_dot_document__pb2.LibrarySession.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SaveLibrarySession(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/agentic_rag.v1.DocumentService/SaveLibrarySession',
+            agentic__rag__proto_dot_document__pb2.LibrarySession.SerializeToString,
+            agentic__rag__proto_dot_document__pb2.DeleteReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def AddBatch(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/agentic_rag.v1.DocumentService/AddBatch',
+            agentic__rag__proto_dot_document__pb2.AddBatchRequest.SerializeToString,
+            agentic__rag__proto_dot_document__pb2.CatalogBatch.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetBatch(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/agentic_rag.v1.DocumentService/GetBatch',
+            agentic__rag__proto_dot_document__pb2.BatchRef.SerializeToString,
+            agentic__rag__proto_dot_document__pb2.OptionalBatch.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ActiveOrRecentBatches(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/agentic_rag.v1.DocumentService/ActiveOrRecentBatches',
+            agentic__rag__proto_dot_document__pb2.ActiveBatchesRequest.SerializeToString,
+            agentic__rag__proto_dot_document__pb2.BatchList.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListBatches(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/agentic_rag.v1.DocumentService/ListBatches',
+            agentic__rag__proto_dot_document__pb2.ListBatchesRequest.SerializeToString,
+            agentic__rag__proto_dot_document__pb2.BatchList.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def TasksRunFor(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/agentic_rag.v1.DocumentService/TasksRunFor',
+            agentic__rag__proto_dot_document__pb2.LibrarySessionRef.SerializeToString,
+            agentic__rag__proto_dot_document__pb2.TasksRunReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def PendingTasksFor(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/agentic_rag.v1.DocumentService/PendingTasksFor',
+            agentic__rag__proto_dot_document__pb2.LibrarySessionRef.SerializeToString,
+            agentic__rag__proto_dot_document__pb2.CountReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def NextQueuedTask(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/agentic_rag.v1.DocumentService/NextQueuedTask',
+            agentic__rag__proto_dot_document__pb2.CatalogOwnerlessRequest.SerializeToString,
+            agentic__rag__proto_dot_document__pb2.OptionalTask.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ClaimNextTask(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/agentic_rag.v1.DocumentService/ClaimNextTask',
+            agentic__rag__proto_dot_document__pb2.CatalogOwnerlessRequest.SerializeToString,
+            agentic__rag__proto_dot_document__pb2.OptionalTask.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetTask(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/agentic_rag.v1.DocumentService/GetTask',
+            agentic__rag__proto_dot_document__pb2.TaskRef.SerializeToString,
+            agentic__rag__proto_dot_document__pb2.OptionalTask.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UpdateTask(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/agentic_rag.v1.DocumentService/UpdateTask',
+            agentic__rag__proto_dot_document__pb2.UpdateTaskRequest.SerializeToString,
+            agentic__rag__proto_dot_document__pb2.TaskOwner.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CancelBatch(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/agentic_rag.v1.DocumentService/CancelBatch',
+            agentic__rag__proto_dot_document__pb2.BatchRef.SerializeToString,
+            agentic__rag__proto_dot_document__pb2.CancelBatchReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CountQueuedTasks(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/agentic_rag.v1.DocumentService/CountQueuedTasks',
+            agentic__rag__proto_dot_document__pb2.CountQueuedRequest.SerializeToString,
+            agentic__rag__proto_dot_document__pb2.CountReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def TasksWithStatus(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/agentic_rag.v1.DocumentService/TasksWithStatus',
+            agentic__rag__proto_dot_document__pb2.TasksWithStatusRequest.SerializeToString,
+            agentic__rag__proto_dot_document__pb2.TaskList.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RequeueRunningTasks(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/agentic_rag.v1.DocumentService/RequeueRunningTasks',
+            agentic__rag__proto_dot_document__pb2.CatalogOwnerlessRequest.SerializeToString,
+            agentic__rag__proto_dot_document__pb2.CountReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GiveLegacyChatsAndBatchesTo(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/agentic_rag.v1.DocumentService/GiveLegacyChatsAndBatchesTo',
+            agentic__rag__proto_dot_document__pb2.GiveLegacyRequest.SerializeToString,
+            agentic__rag__proto_dot_document__pb2.DeleteReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ImportCatalog(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/agentic_rag.v1.DocumentService/ImportCatalog',
+            agentic__rag__proto_dot_document__pb2.ImportCatalogRequest.SerializeToString,
+            agentic__rag__proto_dot_document__pb2.ImportCatalogReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CountCatalog(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/agentic_rag.v1.DocumentService/CountCatalog',
+            agentic__rag__proto_dot_document__pb2.CatalogOwnerlessRequest.SerializeToString,
+            agentic__rag__proto_dot_document__pb2.CountCatalogReply.FromString,
             options,
             channel_credentials,
             insecure,

@@ -3,8 +3,9 @@ syntax = "proto3";
 // The RAG half of the document system: reading files, indexing them as passages (clean, chunk with overlap, embed, store;
 // OCR for scanned PDF pages) and finding them again (query embedded, dense + keyword search fused by RRF, cross-encoder
 // rerank, MMR for diverse passages). The service owns the passage index (its own embedded Qdrant folder) and its caches
-// (document.db: OCR text of scanned pages, query embeddings), and does all the embedding and reranking. The documents
-// catalog (titles, renames, edits, undo) stays in the orchestrator for now.
+// (document.db: OCR text of scanned pages, query embeddings), and does all the embedding and reranking. It also owns the
+// library CATALOG in document.db (documents, rename history, edits and undone edits, the library chat's sessions, queued
+// batches and their tasks); the stored files themselves stay in the orchestrator's library folder for now.
 //
 // Files are sent as bytes (the service never reads the orchestrator's library folder): the first message of a stream
 // describes the file, the rest are chunks of at most 1 MiB, so a file larger than gRPC's 4 MB message limit works.
@@ -51,6 +52,54 @@ service DocumentService {
   // (nothing is embedded again); the caches keep their keys. Rows already there are left as they are.
   rpc ImportPassages(ImportPassagesRequest) returns (DocumentImportReply);
   rpc ImportCaches(ImportCachesRequest) returns (DocumentImportReply);
+
+  // ---- the library catalog (document.db). One call per atomic operation; free-form JSON columns are JSON strings.
+  // Documents
+  rpc AddCatalogDocument(AddCatalogDocumentRequest) returns (CatalogDocument);   // status 'processing'
+  rpc GetCatalogDocument(CatalogDocumentRef) returns (OptionalCatalogDocument);
+  rpc FindCatalogDocumentByHash(FindByHashRequest) returns (OptionalCatalogDocument);
+  rpc ListCatalogDocuments(ListCatalogDocumentsRequest) returns (CatalogDocumentList);
+  // Updates columns (fields_json, a JSON object; null sets NULL; keywords is a JSON list) and, in the same transaction,
+  // adds a rename record when `rename` is set.
+  rpc UpdateCatalogDocument(UpdateCatalogDocumentRequest) returns (DeleteReply);
+  rpc DeleteCatalogDocument(CatalogDocumentRef) returns (DeleteReply);          // also its renames and edits
+  rpc RecordRename(RecordRenameRequest) returns (DeleteReply);
+  rpc RenameHistories(CatalogOwnerlessRequest) returns (RenameHistoriesReply);   // every document's, oldest first
+  rpc RenameHistory(CatalogDocumentRef) returns (RenameHistoryReply);
+  rpc UsedFileNames(UsedFileNamesRequest) returns (UsedFileNamesReply);
+  // Edits and undo
+  rpc RecordEdit(RecordEditRequest) returns (RecordEditReply);                   // + optional document update, atomically
+  rpc LastEdit(CatalogDocumentRef) returns (OptionalEdit);
+  rpc EditExists(EditRef) returns (EditExistsReply);
+  rpc EditHistory(CatalogDocumentRef) returns (EditHistoryReply);
+  rpc DeleteEdit(EditRef) returns (DeleteReply);
+  rpc UndoEdit(UndoEditRequest) returns (DeleteReply);          // edit -> undone_edits (+ optional document update)
+  rpc LastUndone(CatalogDocumentRef) returns (OptionalUndoneEdit);
+  rpc RedoEdit(RedoEditRequest) returns (DeleteReply);          // undone_edits -> edits under its own id (+ update)
+  rpc ClearUndone(CatalogDocumentRef) returns (ClearUndoneReply);
+  // The library chat agent's sessions
+  rpc LoadLibrarySession(LibrarySessionRef) returns (LibrarySession);   // a fresh empty one (no owner) when unknown
+  rpc SaveLibrarySession(LibrarySession) returns (DeleteReply);
+  // Queued batches
+  rpc AddBatch(AddBatchRequest) returns (CatalogBatch);
+  rpc GetBatch(BatchRef) returns (OptionalBatch);
+  rpc ActiveOrRecentBatches(ActiveBatchesRequest) returns (BatchList);
+  rpc ListBatches(ListBatchesRequest) returns (BatchList);
+  rpc TasksRunFor(LibrarySessionRef) returns (TasksRunReply);
+  rpc PendingTasksFor(LibrarySessionRef) returns (CountReply);
+  rpc NextQueuedTask(CatalogOwnerlessRequest) returns (OptionalTask);
+  // Picks the next queued task and marks it running (started_at = now) in one transaction.
+  rpc ClaimNextTask(CatalogOwnerlessRequest) returns (OptionalTask);
+  rpc GetTask(TaskRef) returns (OptionalTask);
+  rpc UpdateTask(UpdateTaskRequest) returns (TaskOwner);        // says whose batch it is, for the queue push
+  rpc CancelBatch(BatchRef) returns (CancelBatchReply);
+  rpc CountQueuedTasks(CountQueuedRequest) returns (CountReply);
+  rpc TasksWithStatus(TasksWithStatusRequest) returns (TaskList);
+  rpc RequeueRunningTasks(CatalogOwnerlessRequest) returns (CountReply);
+  rpc GiveLegacyChatsAndBatchesTo(GiveLegacyRequest) returns (DeleteReply);
+  // Migration (scripts/migrate_library_catalog.py)
+  rpc ImportCatalog(ImportCatalogRequest) returns (ImportCatalogReply);
+  rpc CountCatalog(CatalogOwnerlessRequest) returns (CountCatalogReply);
 }
 
 message IngestStart {
@@ -227,3 +276,232 @@ message ImportCachesRequest {
   repeated CacheRow query_embeddings = 2;
 }
 message DocumentImportReply { int64 created = 1; }
+
+// ---------------------------------------------------------------- the library catalog
+message CatalogOwnerlessRequest {}
+message CountReply { int64 count = 1; }
+message CatalogDocument {
+  string id = 1;
+  string title = 2;
+  string original_name = 3;
+  string file_name = 4;
+  string ext = 5;
+  string sha256 = 6;
+  optional string original_sha256 = 7;
+  int64 size_bytes = 8;
+  optional int64 pages = 9;
+  optional int64 chunks = 10;
+  string summary = 11;
+  string keywords_json = 12;          // JSON list of strings
+  string owner = 13;
+  string status = 14;                 // processing | indexed | failed
+  optional string error = 15;
+  string created_at = 16;
+  string updated_at = 17;
+}
+message OptionalCatalogDocument { optional CatalogDocument document = 1; }
+message CatalogDocumentList { repeated CatalogDocument documents = 1; }
+message CatalogDocumentRef { string doc_id = 1; }
+message AddCatalogDocumentRequest {
+  string title = 1;
+  string original_name = 2;
+  string file_name = 3;
+  string ext = 4;
+  string sha256 = 5;
+  int64 size_bytes = 6;
+  string owner = 7;                   // empty: "library"
+}
+message FindByHashRequest {
+  string sha256 = 1;
+  string owner = 2;                   // empty: "library"
+}
+message ListCatalogDocumentsRequest {
+  optional string status = 1;
+  optional string owner = 2;          // unset: everyone's (the server's own work)
+}
+message RenameRecord {
+  string old_title = 1;
+  string new_title = 2;
+  string reason = 3;                  // titled | user
+  string at = 4;
+}
+message RecordRenameRequest {
+  string doc_id = 1;
+  string old_title = 2;
+  string new_title = 3;
+  string reason = 4;
+}
+message UpdateCatalogDocumentRequest {
+  string doc_id = 1;
+  string fields_json = 2;             // title, original_name, file_name, ext, sha256, original_sha256, size_bytes, pages,
+                                      // chunks, summary, keywords, owner, status, error
+  optional RecordRenameRequest rename = 3;
+}
+message RenameHistoryReply { repeated RenameRecord renames = 1; }
+message DocumentRenames {
+  string doc_id = 1;
+  repeated RenameRecord renames = 2;
+}
+message RenameHistoriesReply { repeated DocumentRenames documents = 1; }
+message UsedFileNamesRequest { optional string exclude_doc = 1; }
+message UsedFileNamesReply { repeated string file_names = 1; }   // relative to the library folder, lower case, "/"
+
+message EditRecord {
+  int64 id = 1;
+  string doc_id = 2;
+  string operation = 3;
+  string detail = 4;
+  string backup = 5;
+  string at = 6;
+}
+message OptionalEdit { optional EditRecord edit = 1; }
+message EditRef { int64 edit_id = 1; }
+message EditExistsReply { bool exists = 1; }
+message EditSummary {
+  string operation = 1;
+  string detail = 2;
+  string at = 3;
+}
+message EditHistoryReply { repeated EditSummary edits = 1; }
+message RecordEditRequest {
+  string doc_id = 1;
+  string operation = 2;
+  string detail = 3;
+  string backup = 4;
+  optional string document_fields_json = 5;   // updates the document in the same transaction
+}
+message RecordEditReply { int64 edit_id = 1; }
+message UndoneEdit {
+  int64 id = 1;
+  string doc_id = 2;
+  string operation = 3;
+  string detail = 4;
+  string backup = 5;
+  string redo = 6;
+  string ext = 7;
+  string at = 8;
+  string undone_at = 9;
+  int64 undo_order = 10;
+}
+message OptionalUndoneEdit { optional UndoneEdit undone = 1; }
+message UndoEditRequest {
+  EditRecord edit = 1;
+  string redo = 2;
+  string ext = 3;
+  optional string document_fields_json = 4;   // updates edit.doc_id's document in the same transaction
+}
+message RedoEditRequest {
+  int64 undone_id = 1;
+  optional string document_fields_json = 2;   // updates the undone edit's document in the same transaction
+}
+message ClearUndoneReply { repeated UndoneEdit dropped = 1; }
+
+message LibrarySessionRef { string session_id = 1; }
+message LibrarySession {
+  string id = 1;
+  int64 turn = 2;
+  string llm_messages_json = 3;
+  string display_json = 4;
+  string guard_json = 5;
+  optional string owner = 6;          // unset on load: the session does not exist yet
+}
+
+message BatchItem {
+  string instruction = 1;
+  optional string payload_json = 2;   // a structured change, run in code; unset: free text for the agent
+}
+message AddBatchRequest {
+  string session_id = 1;
+  repeated BatchItem items = 2;
+  string owner = 3;                   // empty: "library"
+}
+message BatchRef { string batch_id = 1; }
+message TaskRef { int64 task_id = 1; }
+message CatalogTask {
+  int64 id = 1;
+  string batch_id = 2;
+  int64 position = 3;
+  string instruction = 4;
+  optional string payload_json = 5;
+  optional string checkpoint_json = 6;
+  string status = 7;                  // queued | running | done | not_done | failed | cancelled
+  string reply = 8;
+  string actions_json = 9;
+  int64 tokens = 10;
+  optional string started_at = 11;
+  optional string finished_at = 12;
+}
+message OptionalTask { optional CatalogTask task = 1; }
+message TaskList { repeated CatalogTask tasks = 1; }
+message CatalogBatch {
+  string id = 1;
+  string session_id = 2;
+  string owner = 3;
+  string created_at = 4;
+  repeated CatalogTask tasks = 5;
+}
+message OptionalBatch { optional CatalogBatch batch = 1; }
+message BatchList { repeated CatalogBatch batches = 1; }
+message ActiveBatchesRequest {
+  double hours = 1;
+  optional string owner = 2;
+}
+message ListBatchesRequest {
+  int64 limit = 1;
+  optional string owner = 2;
+}
+message TaskRun {
+  string actions_json = 1;
+  string finished_at = 2;
+}
+message TasksRunReply { repeated TaskRun tasks = 1; }
+message UpdateTaskRequest {
+  int64 task_id = 1;
+  string fields_json = 2;             // status, reply, actions (list), tokens, started_at, finished_at, checkpoint (object or null)
+}
+message TaskOwner {
+  string batch_id = 1;
+  string owner = 2;
+}
+message CancelBatchReply {
+  int64 cancelled = 1;
+  optional string owner = 2;          // unset: no such batch
+}
+message CountQueuedRequest { optional string owner = 1; }
+message TasksWithStatusRequest { string status = 1; }
+message GiveLegacyRequest { string user_id = 1; }
+
+// Rows as they are in app.db, kept with their ids and timestamps.
+message CatalogDump {
+  repeated CatalogDocument documents = 1;
+  repeated RenameRow renames = 2;
+  repeated EditRecord edits = 3;
+  repeated UndoneEdit undone_edits = 4;
+  repeated CatalogBatch batches = 5;      // with their tasks
+  repeated StoredSession sessions = 6;
+}
+message RenameRow {
+  int64 id = 1;
+  string doc_id = 2;
+  string old_title = 3;
+  string new_title = 4;
+  string reason = 5;
+  string at = 6;
+}
+message StoredSession {
+  LibrarySession session = 1;
+  string created_at = 2;
+  string updated_at = 3;
+}
+message ImportCatalogRequest { CatalogDump dump = 1; }
+message CatalogCounts {
+  int64 documents = 1;
+  int64 renames = 2;
+  int64 edits = 3;
+  int64 undone_edits = 4;
+  int64 batches = 5;
+  int64 batch_tasks = 6;
+  int64 sessions = 7;
+}
+message ImportCatalogReply { CatalogCounts created = 1; }   // rows created now (rows already there are kept)
+message CountCatalogReply { CatalogCounts held = 1; }
