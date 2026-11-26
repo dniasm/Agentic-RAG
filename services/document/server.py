@@ -202,7 +202,7 @@ class DocumentServicer(pb_grpc.DocumentServiceServicer):
     async def SetChunkFields(self, request, context):
         if not request.user_id.strip() or not request.doc_id.strip():
             await context.abort(grpc.StatusCode.INVALID_ARGUMENT, "user_id and doc_id must not be empty")
-        await self._run(context, vectorstore.set_chunk_fields, request.user_id, request.doc_id, dict(request.fields))
+        await self._run(context, vectorstore.set_chunk_fields, request.user_id, request.doc_id, json.loads(request.fields_json or "{}"))
         return pb.DeleteReply()
 
     async def CountPassages(self, request, context):

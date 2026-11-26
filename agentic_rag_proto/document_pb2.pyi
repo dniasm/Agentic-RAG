@@ -249,21 +249,14 @@ class DeleteReply(_message.Message):
     def __init__(self) -> None: ...
 
 class SetChunkFieldsRequest(_message.Message):
-    __slots__ = ("user_id", "doc_id", "fields")
-    class FieldsEntry(_message.Message):
-        __slots__ = ("key", "value")
-        KEY_FIELD_NUMBER: _ClassVar[int]
-        VALUE_FIELD_NUMBER: _ClassVar[int]
-        key: str
-        value: str
-        def __init__(self, key: _Optional[str] = ..., value: _Optional[str] = ...) -> None: ...
+    __slots__ = ("user_id", "doc_id", "fields_json")
     USER_ID_FIELD_NUMBER: _ClassVar[int]
     DOC_ID_FIELD_NUMBER: _ClassVar[int]
-    FIELDS_FIELD_NUMBER: _ClassVar[int]
+    FIELDS_JSON_FIELD_NUMBER: _ClassVar[int]
     user_id: str
     doc_id: str
-    fields: _containers.ScalarMap[str, str]
-    def __init__(self, user_id: _Optional[str] = ..., doc_id: _Optional[str] = ..., fields: _Optional[_Mapping[str, str]] = ...) -> None: ...
+    fields_json: str
+    def __init__(self, user_id: _Optional[str] = ..., doc_id: _Optional[str] = ..., fields_json: _Optional[str] = ...) -> None: ...
 
 class CountPassagesRequest(_message.Message):
     __slots__ = ("user_id", "doc_id")

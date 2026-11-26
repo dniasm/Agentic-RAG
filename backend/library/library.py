@@ -61,7 +61,7 @@ def _path(doc: dict) -> Path:
 def _set_chunk_fields(doc_id: str, owner: str, **fields) -> None:
     """Update metadata fields on every chunk of a document (no re-embedding). Chunks are found under their owner:
     each user's chunks carry their own user_id, which every search filters on."""
-    rag.set_chunk_fields(owner, doc_id, **fields)
+    rag.set_chunk_fields(owner, doc_id, fields)
 
 
 def folder_of(owner: str) -> str:

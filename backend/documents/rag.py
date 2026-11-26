@@ -6,6 +6,7 @@ already use. The orchestrator opens no vector store and embeds nothing itself; i
 embedding anything) and charges the passages the service says it really embedded, AFTER.
 """
 import hashlib
+import json
 import logging
 from pathlib import Path
 
@@ -166,9 +167,9 @@ def delete_document_vectors(user_id: str, doc_id: str) -> None:
     _call("DeleteDocumentVectors", pb.DocumentRef(user_id=user_id, doc_id=doc_id))
 
 
-def set_chunk_fields(user_id: str, doc_id: str, **fields: str) -> None:
+def set_chunk_fields(owner: str, doc_id: str, fields: dict) -> None:
     """Set metadata fields (title, file_name) on every passage of a document, without re-embedding."""
-    _call("SetChunkFields", pb.SetChunkFieldsRequest(user_id=user_id, doc_id=doc_id, fields=fields))
+    _call("SetChunkFields", pb.SetChunkFieldsRequest(user_id=owner, doc_id=doc_id, fields_json=json.dumps(fields)))
 
 
 def count_passages(user_id: str | None = None, doc_id: str | None = None) -> int:

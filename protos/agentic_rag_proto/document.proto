@@ -184,7 +184,7 @@ message DeleteReply {}
 message SetChunkFieldsRequest {
   string user_id = 1;
   string doc_id = 2;
-  map<string, string> fields = 3;
+  string fields_json = 3;             // a JSON object of the metadata fields to set (null clears one)
 }
 
 message CountPassagesRequest {
