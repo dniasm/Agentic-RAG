@@ -10,7 +10,7 @@ import time
 import grpc
 from grpc_health.v1 import health_pb2, health_pb2_grpc
 
-from agentic_rag_proto import conversation_pb2_grpc, user_pb2_grpc
+from agentic_rag_proto import conversation_pb2_grpc, memory_pb2_grpc, user_pb2_grpc
 from backend.config.settings import Settings, settings as default_settings
 from services.common.config import SERVICE_ADDRESSES
 from services.common.log import REQUEST_ID_HEADER, get_request_id
@@ -29,6 +29,7 @@ class Clients:
         self._channels = {name: grpc.insecure_channel(addr) for name, addr in self.addresses.items()}
         self.conversation = conversation_pb2_grpc.ConversationServiceStub(self._channels["conversation"])
         self.user = user_pb2_grpc.UserServiceStub(self._channels["user"])
+        self.memory = memory_pb2_grpc.MemoryServiceStub(self._channels["memory"])
 
     def channel(self, name: str) -> grpc.Channel:
         return self._channels[name]

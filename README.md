@@ -224,8 +224,8 @@ on the socket tagged with the `turn_id` the browser put on the POST.
 ## Services
 
 Work in progress: the backend is becoming an orchestrator that talks gRPC to four services (user, conversation,
-memory, document), each owning its own SQLite database. The User and Conversation services are live; the other
-two are still to come.
+memory, document), each owning its own SQLite database. The User, Conversation and Memory services are live; the
+document service is still to come.
 
 | Path | Holds |
 |---|---|
@@ -234,6 +234,7 @@ two are still to come.
 | `services/common/` | `config.py` (addresses, data dir), `server.py` (gRPC server with health and graceful shutdown), `sqlite_db.py` (one SQLite file per service) |
 | `services/user/` | The User service: `server.py` (gRPC), `db.py` (SQL and schema), `accounts.py` (password hashing, tokens), `__main__.py` |
 | `services/conversation/` | The Conversation service: `server.py` (gRPC), `db.py` (SQL and schema), `__main__.py` |
+| `services/memory/` | The Memory service: `server.py` (gRPC), `db.py` (facts SQL), `vectors.py` (episodes in its own Qdrant folder), `__main__.py` |
 | `backend/clients.py` | The orchestrator's gRPC clients: a channel per service, a deadline on every call, the request id sent along |
 
 Ports (override with the env variable, which both the service and the orchestrator read): user `50061`
@@ -292,6 +293,25 @@ chats look right in the app. Without the service running, the orchestrator canno
 
 The test suite starts this service in its own process thread (`conftest.py`, ephemeral port, temporary folder), so
 `pytest` needs nothing running.
+
+### Memory service (port 50063)
+
+What the app remembers about each person (`protos/agentic_rag_proto/memory.proto`): exact facts (`backend/data/services/memory.db`)
+and episodes, short summaries of past exchanges found by meaning (its own embedded Qdrant folder,
+`backend/data/services/memory_qdrant/`, created when the service starts). The service embeds the text itself with Voyage, so
+it needs `VOYAGE_API_KEY`; the orchestrator keeps the language-model work (reading messages for facts, summarising exchanges)
+and calls the service to store and read. `backend/models/memory.py` and `backend/memory/store.py` keep their functions and
+result shapes. The Voyage rate limit is now counted separately in the service and in the orchestrator (the reranker).
+
+```bash
+python -m services.memory            # on its own; `python scripts/run_all.py` starts it before the orchestrator
+python scripts/migrate_memory.py     # once, BACKEND STOPPED, service running: copy facts and episodes (with vectors)
+```
+
+`scripts/migrate_memory.py` reads the orchestrator's embedded Qdrant folder directly (one process can open it, so the
+backend must be stopped), backs up `app.db` and that folder first, copies facts (and the older `user_memory` table if it
+was never converted) and episodes with their ids and vectors (nothing is embedded again), then checks that sending them
+again creates nothing. It deletes nothing: the old rows and collection stay where they were, unused.
 
 ## Logging
 

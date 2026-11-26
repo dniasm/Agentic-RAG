@@ -453,8 +453,9 @@ Most backend folders contain an empty `__init__.py`; it only lets Python import 
 | `test_memory.py` | Key normalisation, merge rules (replace / collect / forget / corrections), storage, the one-time migration (temporary database). |
 | `test_citations.py` | The code citation check. |
 | `test_rerank.py` | Reranker zones and the fallback when Voyage can't score. |
-| `test_conversations.py` | Renaming chats; `/stats` from the message columns; a fresh database has no old `user_memory` table and no chat tables (they are the Conversation service's). |
+| `test_conversations.py` | Renaming chats; `/stats` from the message columns; a fresh database has no `user_memory`/`user_facts` table and no chat tables (they are the Conversation service's). |
 | `services/test_user_service.py` | The User service over real gRPC: sign-up, log-in, log-out, token validation and expiry, legacy bcrypt, case-insensitive names, nothing secret stored or logged, concurrent usage counts, the orchestrator failing closed (503, WebSocket 1013) with the service down, `scripts/migrate_users.py`. |
+| `services/test_memory_service.py` | The Memory service over real gRPC: facts (multi-value keys, user isolation), episodes with stub embeddings (dedupe ids, search per person, delete by conversation), the collection created at start, request id, `scripts/migrate_memory.py` with vectors. |
 | `services/test_conversation_service.py` | The Conversation service over real gRPC: every call, user isolation and `NOT_FOUND`, `meta` round trip, request id in the service's log lines, the orchestrator's functions, `scripts/migrate_conversations.py`. |
 | `test_documents.py` | Uploads are titled, stored in the user's folder and indexed in the background; failed / removed-while-waiting / uploaded-twice outcomes; indexing cut off by a restart is resumed. |
 | `test_stream.py` | A chat turn's events reach the WebSocket in order and end with `final`; the answer is saved with nobody connected. |
@@ -1011,6 +1012,15 @@ RPCs: `CountUsers`, `SignUp`, `LogIn`, `LogOut`, `ValidateToken`, `ListUsers`, `
 Fail closed: `auth.user_for` raises `UserServiceDown` when the call fails for any reason other than an answer about the
 person, and the app turns that (and any other gRPC failure) into `503`; the WebSocket closes with `1013`. The per-address
 throttle, the invite code and the admin-name check stay in the orchestrator.
+
+### Memory service (`backend/data/services/memory.db` and `memory_qdrant/`)
+
+Facts and episodes live in the Memory service (gRPC `agentic_rag.v1.MemoryService`, port 50063; `python -m services.memory`,
+started by `scripts/run_all.py`). `backend/models/memory.py` (facts) and `backend/memory/store.py` (episodes) call it, so
+`database.list_memories(...)`, `save_memory(...)` and the others return what they always did; fact extraction and exchange
+summaries stay in the orchestrator (`backend/tools/memory.py`, the batcher in `chat.py`). `app.db` no longer has `user_facts`.
+Tests stub the shared Voyage client in `conftest.py` (words hashed into a vector). Move the old data with
+`python scripts/migrate_memory.py` (backend stopped, service running; backs up first, safe to repeat, verifies, deletes nothing).
 
 ### Conversation service (`backend/data/services/conversation.db`)
 

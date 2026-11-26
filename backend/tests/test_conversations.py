@@ -97,7 +97,7 @@ class Stats(unittest.TestCase):
 
 
 class FreshDatabase(unittest.TestCase):
-    def test_no_old_memory_table_and_migration_marked_done(self):
+    def test_no_old_memory_table_and_no_facts_table(self):
         path = os.path.join(tempfile.mkdtemp(), "fresh.db")
         old_path, old_conn = settings.database_path, db._conn
         settings.database_path, db._conn = path, None
@@ -112,8 +112,8 @@ class FreshDatabase(unittest.TestCase):
         self.assertFalse({"conversations", "messages"} & tables)   # they live in the Conversation service
         done = con.execute("SELECT name FROM migrations").fetchall()
         con.close()
-        self.assertNotIn("user_memory", tables)
-        self.assertEqual(sorted(done), [("user_facts_v1",)])
+        self.assertFalse({"user_memory", "user_facts"} & tables)   # the facts live in the Memory service
+        self.assertEqual(done, [])
 
 
 if __name__ == "__main__":

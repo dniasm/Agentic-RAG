@@ -51,7 +51,7 @@ class Proc:
 
 
 # Names of the services to start, in order, each run as `python -m services.<name>`.
-SERVICES: list[str] = ["user", "conversation"]
+SERVICES: list[str] = ["user", "conversation", "memory"]
 
 
 def service_proc(name: str) -> Proc:
