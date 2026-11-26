@@ -198,7 +198,7 @@ Runtime data is created automatically:
 | `backend/data/library/<user_id>/` | The stored documents, named after their current titles |
 | `backend/data/versions/<doc_id>/` | Each edit's backup (what Undo puts back) and redo copy |
 | `backend/data/fonts/fetched/` | Fonts downloaded for PDF edits (§22) |
-| `backend/data/logs/` | `events.log` (major events) and `all.log` (everything), rotating |
+| `logs/` (repo root, `LOG_DIR`) | `<service>/<date>.log` and `audit/<service>-<date>.log`, daily (README, Logging) |
 | `backend/vector_db/qdrant_data/` | Embedded Qdrant storage (documents and memory collections) |
 
 To reset everything: stop the backend and delete those paths.
@@ -369,7 +369,7 @@ Most backend folders contain an empty `__init__.py`; it only lets Python import 
 | `limits.py` | Groq's tokens-per-minute window, shared by the chat and the queue. |
 | `activity.py` | Which documents a conversation changed (its replies' and queued tasks' actions), for the chat's side panel. |
 | `export.py` | A document's text laid out as a PDF for download. |
-| `logs.py` | `data/logs/events.log` and `all.log`. |
+| `logs.py` | `event()`: major events as audit lines (see README, Logging; `data/logs/` is gone). |
 | `config.py` | The library's constants and its `library_*` settings. |
 
 #### `backend/config/` — settings and model clients

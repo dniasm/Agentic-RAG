@@ -15,7 +15,7 @@ jobs:
     uses: ./.github/workflows/_python-tests.yml
     with:
       name: "Ops tests"
-      tests: backend/tests/test_backup.py backend/tests/library/test_merge_library.py
+      tests: backend/tests/test_backup.py backend/tests/library/test_merge_library.py backend/tests/test_logs_core.py backend/tests/test_logs_context.py backend/tests/test_logs_viewer.py
 
   coverage-guard:
     name: Test coverage guard

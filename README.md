@@ -226,6 +226,36 @@ python scripts/run_all.py               # starts the registered services, then u
 python scripts/grpc_healthcheck.py 50061   # exit 0 when that port answers grpc.health.v1 with SERVING
 ```
 
+## Logging
+
+The orchestrator and every service write one line format to the console and to files in `logs/` (git-ignored):
+
+- `logs/<service>/<YYYY-MM-DD>.log` holds every line (`logs/orchestrator/` for the backend), a new file each day.
+- `logs/audit/<service>-<YYYY-MM-DD>.log` holds the business events only (uploads, renames, edits, chats, ...; `backend/library/logs.py` `event()` writes them).
+
+A line is `HH:MM:SS LEVEL [service] [request_id] logger: message`. Each HTTP request gets an id (the caller's `X-Request-Id` when it is
+letters, digits, `.`, `_`, `-`, up to 64 long; otherwise a new one). It is echoed in the `X-Request-Id` response header, logged on one
+access line (`GET /api/x -> 200 12ms`), sent to the services as `x-request-id` gRPC metadata, and copied into the chat answer's
+background thread, so one id shows the whole trace. Unhandled errors log one traceback. API keys (Groq, Gemini, Voyage, Tavily),
+login cookies, passwords and tokens are masked; logged values are cut at 300 characters.
+
+| Variable | Default | Effect |
+|---|---|---|
+| `LOG_DIR` | `<repo>/logs` | where the files go |
+| `LOG_LEVEL` | `INFO` | console and service files; audit lines are always written |
+| `LOG_RETENTION_DAYS` | `30` | service files older than this are deleted; audit files are kept |
+
+If a log file cannot be written, one message goes to stderr and the app carries on.
+
+```bash
+python scripts/logs.py --since 30m --level WARNING     # all services merged by time
+python scripts/logs.py --request <id>                  # every line of one request, across services
+python scripts/logs.py --audit --user <id> --since 1d  # business events
+python scripts/logs.py --follow --service orchestrator --grep upload
+```
+
+The shared module is `services/common/log.py` (both `backend/` and `services/` already import from `services/common/`).
+
 ## Benchmark
 
 Scripts in `benchmark/` measure retrieval, passage selection, reranker calibration, end-to-end answers and
