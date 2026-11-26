@@ -202,6 +202,30 @@ e.g. `python -m scripts.experiments.test_gate`.
 > The embedded Qdrant store allows only one process at a time. `--reload` is fine, but don't run
 > several workers against the same `backend/vector_db/qdrant_data`. Set `QDRANT_URL` to use a Qdrant server instead.
 
+## Services
+
+Work in progress: the backend is becoming an orchestrator that talks gRPC to four services (user, conversation,
+memory, document), each owning its own SQLite database. Phase 0 (this) is groundwork only; no service holds data yet.
+
+| Path | Holds |
+|---|---|
+| `protos/agentic_rag_proto/` | The `.proto` sources |
+| `agentic_rag_proto/` | Generated Python code (committed; never edit by hand) |
+| `services/common/` | `config.py` (addresses, data dir), `server.py` (gRPC server with health and graceful shutdown), `sqlite_db.py` (one SQLite file per service) |
+| `backend/clients.py` | The orchestrator's gRPC clients: a channel per service, a deadline on every call |
+
+Ports (override with the env variable, which both the service and the orchestrator read): user `50061`
+(`USER_SERVICE_ADDR`), conversation `50062` (`CONVERSATION_SERVICE_ADDR`), memory `50063` (`MEMORY_SERVICE_ADDR`),
+document `50064` (`DOCUMENT_SERVICE_ADDR`). Each service's database is `backend/data/services/<name>.db`
+(`SERVICES_DATA_DIR` changes the folder).
+
+```bash
+python scripts/gen_protos.py            # regenerate agentic_rag_proto/ after editing a .proto
+python scripts/gen_protos.py --check    # fails when the committed generated code is stale (CI runs it)
+python scripts/run_all.py               # starts the registered services, then uvicorn app:app; Ctrl+C stops all
+python scripts/grpc_healthcheck.py 50061   # exit 0 when that port answers grpc.health.v1 with SERVING
+```
+
 ## Benchmark
 
 Scripts in `benchmark/` measure retrieval, passage selection, reranker calibration, end-to-end answers and

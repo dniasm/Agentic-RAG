@@ -4,6 +4,8 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from services.common.config import default_address
+
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 PROJECT_ROOT = BACKEND_DIR.parent
 
@@ -140,6 +142,14 @@ class Settings(BaseSettings):
     # hold a fact are extracted together after this many idle seconds, or once this many are waiting.
     memory_batch_idle_seconds: float = 90
     memory_batch_max: int = 3
+
+    # --- gRPC services (backend/clients.py; defaults and env names live in services/common/config.py) ---
+    user_service_addr: str = default_address("user")
+    conversation_service_addr: str = default_address("conversation")
+    memory_service_addr: str = default_address("memory")
+    document_service_addr: str = default_address("document")
+    grpc_timeout_seconds: float = 5.0          # deadline on every unary call to a service
+    grpc_health_timeout_seconds: float = 2.0   # deadline on a health probe
 
     # --- Auth / persistence ---
     database_path: str = str(BACKEND_DIR / "data" / "app.db")
