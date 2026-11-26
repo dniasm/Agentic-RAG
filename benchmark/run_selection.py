@@ -67,8 +67,8 @@ def collect(cached_only: bool = False) -> None:
     from common import bench_user, ensure_corpus
 
     from backend.config.settings import settings
-    from backend.rag import embedding_cache, rerank, vectorstore
-    from backend.rag.retrieval import retrieve
+    from services.document import embedding_cache, rerank, vectorstore
+    from services.document.retrieval import retrieve
 
     user = bench_user()
     if not cached_only:
@@ -78,8 +78,7 @@ def collect(cached_only: bool = False) -> None:
     before = embedding_cache.stats["misses"]
     pools, vectors = {}, {}
     for q in load_questions():
-        if cached_only and not embedding_cache._db().execute(
-                "SELECT 1 FROM query_embeddings WHERE key = ?", (embedding_cache._key(q["question"]),)).fetchone():
+        if cached_only and not embedding_cache.lookup(embedding_cache._key(q["question"])):
             print(f"  {q['id']:<24} skipped (question not embedded yet)")
             continue
         hits = retrieve([q["question"]], user["id"], k=settings.rerank_candidates - 2, min_score=0.0, mode="hybrid")

@@ -13,19 +13,15 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from qdrant_client import models
-
 from backend.library import catalog, config, limits, naming, titles
 from backend.library.logs import event
 from backend.realtime.hub import hub
 from services.common.log import in_context
-from backend.config import voyage
-from backend.rag import ingestion, rerank, retrieval, vectorstore
-from backend.config.settings import settings as day7_settings
+from backend.documents import rag
 
 log = logging.getLogger(__name__)
 
-SUPPORTED_EXTENSIONS = ingestion.SUPPORTED_EXTENSIONS
+SUPPORTED_EXTENSIONS = rag.SUPPORTED_EXTENSIONS
 
 
 class LibraryError(Exception):
@@ -125,7 +121,7 @@ def add_file(original_name: str, data: bytes, owner: str = config.OWNER) -> tupl
     if len(data) > config.MAX_UPLOAD_MB * 1024 * 1024:
         raise LibraryError(f"The file is larger than {config.MAX_UPLOAD_MB} MB.")
 
-    digest = ingestion.file_sha256(data)
+    digest = rag.file_sha256(data)
     existing = catalog.find_by_hash(digest, owner)
     if existing and existing["status"] != "failed":   # the same file, or the one it was before it was edited
         event("upload_duplicate", file=original_name, same_as=existing["title"], doc=existing["id"],
@@ -190,7 +186,7 @@ def process(doc_id: str, ask_title=None) -> dict:
         result = ingestion.ingest_file(config.LIBRARY_DIR / file_name, user_id=doc["owner"], doc_id=doc_id,
                                        filename=title)
         if catalog.get_document(doc_id) is None:   # deleted while it was being indexed
-            vectorstore.delete_document_vectors(doc["owner"], doc_id)
+            rag.delete_document_vectors(doc["owner"], doc_id)
             return None
         _set_chunk_fields(doc_id, doc["owner"], title=title, file_name=file_name)
         from backend.library import export   # imported here: export imports editing, which imports this module
@@ -201,7 +197,7 @@ def process(doc_id: str, ask_title=None) -> dict:
     except Exception as e:
         log.exception("Ingesting %s failed", doc["original_name"])
         try:
-            vectorstore.delete_document_vectors(doc["owner"], doc_id)
+            rag.delete_document_vectors(doc["owner"], doc_id)
         except Exception:
             pass
         catalog.update_document(doc_id, status="failed", error=str(e)[:300])
@@ -220,7 +216,7 @@ def delete(doc_id: str) -> None:
     doc = catalog.get_document(doc_id)
     if not doc:
         raise LibraryError("Document not found.")
-    vectorstore.delete_document_vectors(doc["owner"], doc_id)
+    rag.delete_document_vectors(doc["owner"], doc_id)
     _path(doc).unlink(missing_ok=True)
     shutil.rmtree(config.DATA_DIR / "versions" / doc_id, ignore_errors=True)
     catalog.delete_document(doc_id)

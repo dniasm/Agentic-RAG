@@ -10,7 +10,7 @@ import time
 import grpc
 from grpc_health.v1 import health_pb2, health_pb2_grpc
 
-from agentic_rag_proto import conversation_pb2_grpc, memory_pb2_grpc, user_pb2_grpc
+from agentic_rag_proto import conversation_pb2_grpc, document_pb2_grpc, memory_pb2_grpc, user_pb2_grpc
 from backend.config.settings import Settings, settings as default_settings
 from services.common.config import SERVICE_ADDRESSES
 from services.common.log import REQUEST_ID_HEADER, get_request_id
@@ -30,6 +30,7 @@ class Clients:
         self.conversation = conversation_pb2_grpc.ConversationServiceStub(self._channels["conversation"])
         self.user = user_pb2_grpc.UserServiceStub(self._channels["user"])
         self.memory = memory_pb2_grpc.MemoryServiceStub(self._channels["memory"])
+        self.document = document_pb2_grpc.DocumentServiceStub(self._channels["document"])
 
     def channel(self, name: str) -> grpc.Channel:
         return self._channels[name]
@@ -41,6 +42,13 @@ class Clients:
         if rid != "-":   # "-" is "no request" (a background job): the service then starts its own trace
             metadata = (*(metadata or ()), (REQUEST_ID_HEADER, rid))
         return rpc(request, timeout=self._timeout, metadata=metadata)
+
+    def call_stream(self, rpc, requests, timeout: float | None = None):
+        """Start a streaming RPC (an iterator of requests in, an iterator of replies out) with the current request id.
+        The deadline is the caller's: a file can take minutes to read or index."""
+        rid = get_request_id()
+        metadata = ((REQUEST_ID_HEADER, rid),) if rid != "-" else None
+        return rpc(requests, timeout=timeout, metadata=metadata)
 
     def probe(self, name: str) -> dict:
         """Ask one service's standard grpc.health.v1 endpoint; down means no SERVING answer within the deadline."""

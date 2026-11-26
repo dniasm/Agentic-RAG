@@ -53,10 +53,12 @@ def used_by_user(day: str) -> dict[str, int]:
 def key_states(now: datetime | None = None) -> list[dict]:
     """Per Gemini key: requests sent today (our count), what is left of EMBED_PER_KEY_DAY, and whether Google refused
     it for the day."""
+    from backend.documents import rag   # (imported here: rag imports this module for the allowance)
     counted, per_key = gemini.used_today(now), settings.embed_per_key_day
+    pool = {s["index"]: s for s in rag.key_states()}   # the key pool lives in the Document service, next to the embedding
     states = []
     for k in range(gemini.key_count()):
-        out = gemini.pool.out_for_day(k, now)
+        out = pool.get(k, {}).get("out_for_day", False)
         used_k = counted.get(k, 0)
         states.append({"index": k, "used": used_k, "out_for_day": out,
                        "left": 0 if out else (max(per_key - used_k, 0) if per_key > 0 else None)})
@@ -84,6 +86,22 @@ def index_limit(day: dict | None = None) -> int | None:
     """How many passages the site may index today (EMBED_INDEX_SHARE of its day); None: no limit."""
     day = day or site_day()
     return None if day["total"] is None else int(day["total"] * settings.embed_index_share)
+
+
+def allowance(user_id: str, safety: bool = False) -> int | None:
+    """The most passages that could be embedded for this account right now (None: no limit). It is what check() accepts,
+    as a number: the Document service gets it as max_passages and refuses a file that needs more, before embedding."""
+    day = site_day()
+    if safety:
+        return day["left"]
+    lefts = []
+    per_user = settings.embed_per_user_day
+    if per_user > 0:
+        lefts.append(max(per_user - used(user_id), 0))
+    limit = index_limit(day)
+    if limit is not None:
+        lefts.append(max(min(limit - used(), day["left"]), 0))
+    return min(lefts) if lefts else None
 
 
 def check(user_id: str, needed: int, safety: bool = False) -> None:

@@ -5,7 +5,7 @@ say so, and editing those pages stays refused. Each page is rendered at no more 
 oversized page is rendered smaller) and read by the tesseract program, one page at a time with a time limit. Pages are
 read on the upload worker, outside the library lock.
 
-Results are cached by the rendered image (ocr_cache.db next to the app database): an edit re-reads the whole file
+Results are cached by the rendered image (page_text in the service's document.db): an edit re-reads the whole file
 (editing._reindex, under the library lock), and an unchanged scanned page then costs a render, not another OCR run.
 
 No tesseract installed (or OCR turned off): the PDF is indexed as before, from its text layer only, and one event is
@@ -15,21 +15,18 @@ import hashlib
 import logging
 import math
 import shutil
-import sqlite3
 import subprocess
 import tempfile
-import threading
 from pathlib import Path
 
 import pymupdf
 
 from backend.config.settings import settings
+from services.document import db
 
 log = logging.getLogger(__name__)
 
 _WINDOWS_DEFAULT = Path("C:/Program Files/Tesseract-OCR/tesseract.exe")
-_lock = threading.Lock()
-_conn: sqlite3.Connection | None = None
 _warned = False
 
 
@@ -47,18 +44,7 @@ def _unavailable(reason: str) -> None:
     global _warned
     if not _warned:
         _warned = True
-        from backend.library.logs import event
-        event("ocr_unavailable", reason=reason)
-
-
-def _db() -> sqlite3.Connection:
-    global _conn
-    if _conn is None:
-        path = Path(settings.database_path).parent / "ocr_cache.db"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        _conn = sqlite3.connect(path, check_same_thread=False)
-        _conn.execute("CREATE TABLE IF NOT EXISTS page_text (key TEXT PRIMARY KEY, text TEXT NOT NULL)")
-    return _conn
+        log.warning("ocr_unavailable: %s", reason)
 
 
 def render_dpi(page: pymupdf.Page) -> int:
@@ -85,8 +71,8 @@ def page_text(page: pymupdf.Page, program: str, cached_only: bool = False) -> st
     cached_only, when it isn't in the cache."""
     pix = page.get_pixmap(dpi=render_dpi(page), colorspace=pymupdf.csGRAY, alpha=False)
     key = hashlib.sha256(f"{pix.width}x{pix.height}|{settings.ocr_language}|".encode() + pix.samples).hexdigest()
-    with _lock:
-        row = _db().execute("SELECT text FROM page_text WHERE key = ?", (key,)).fetchone()
+    with db.shared().tx() as c:
+        row = c.execute("SELECT text FROM page_text WHERE key = ?", (key,)).fetchone()
     if row:
         return row[0]
     if cached_only:
@@ -102,14 +88,14 @@ def page_text(page: pymupdf.Page, program: str, cached_only: bool = False) -> st
         except (subprocess.CalledProcessError, OSError) as e:
             log.warning("OCR of page %d failed: %s", page.number + 1, str(e)[:200])
             return ""
-    with _lock:
-        _db().execute("INSERT OR REPLACE INTO page_text (key, text) VALUES (?, ?)", (key, text))
-        _db().commit()
+    with db.shared().tx() as c:
+        c.execute("INSERT OR REPLACE INTO page_text (key, text) VALUES (?, ?)", (key, text))
     return text
 
 
-def read_pages(path: Path, numbers: list[int], cached_only: bool = False) -> dict[int, str]:
-    """OCR text for the given 1-based pages that need it (no text layer, an image on them), at most OCR_MAX_PAGES."""
+def read_pages(path: Path, numbers: list[int], cached_only: bool = False, progress=None) -> dict[int, str]:
+    """OCR text for the given 1-based pages that need it (no text layer, an image on them), at most OCR_MAX_PAGES.
+    progress(done, total) is called before each page is read (the Ingest stream's "ocr page n of N")."""
     if not numbers or not settings.ocr_enabled:
         return {}
     program = tesseract()
@@ -122,7 +108,9 @@ def read_pages(path: Path, numbers: list[int], cached_only: bool = False) -> dic
         if len(todo) > settings.ocr_max_pages:
             log.info("OCR: %d pages need it; reading the first %d", len(todo), settings.ocr_max_pages)
             todo = todo[:settings.ocr_max_pages]
-        for n in todo:
+        for done, n in enumerate(todo, start=1):
+            if progress and not cached_only:
+                progress(done, len(todo))
             text = page_text(doc[n - 1], program, cached_only)
             if text.strip():
                 out[n] = text

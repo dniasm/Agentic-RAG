@@ -11,7 +11,7 @@ import shutil
 import pytest
 
 from backend.library import catalog, config, library, titles
-from backend.rag import ingestion, rerank, retrieval, sparse, vectorstore  # noqa: F401
+from services.document import ingestion, rerank, retrieval, sparse, vectorstore  # noqa: F401
 from backend.models import database as db
 
 db.init_db()   # day7's tables too (the app's startup does this; TestClient without `with` skips it)

@@ -12,9 +12,9 @@ import pytest
 from backend.config import api_meter, gemini, redact
 from backend.config.settings import settings
 from backend.library import catalog, embed_budget, library
-from backend.rag import ingestion
-from backend.rag.embedding_cache import embed_query as real_embed_query   # (the library tests' fixture fakes both)
-from backend.rag.ingestion import embed_paced as real_embed_paced
+from services.document import ingestion
+from services.document.embedding_cache import embed_query as real_embed_query   # (the library tests' fixture fakes both)
+from services.document.ingestion import embed_paced as real_embed_paced
 
 KEYS = ["AIzaFAKE_key_number_one_000", "AIzaFAKE_key_number_two_000",
         "AIzaFAKE_key_number_three_00", "AIzaFAKE_key_number_four_000"]

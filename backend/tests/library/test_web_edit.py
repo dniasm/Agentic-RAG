@@ -180,7 +180,7 @@ def test_conversion_is_offered_only_when_it_would_find_the_passage():
 
 
 def test_conversion_takes_the_cleaner_reading_and_offers_what_it_would_convert(monkeypatch):
-    from backend.rag import ingestion
+    from services.document import ingestion
 
     class Page:
         def __init__(self, text):

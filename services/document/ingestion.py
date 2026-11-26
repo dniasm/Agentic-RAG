@@ -11,7 +11,7 @@ from qdrant_client import models
 
 from backend.config import gemini
 from backend.config.settings import settings
-from backend.rag import sparse, vectorstore
+from services.document import sparse, vectorstore
 
 log = logging.getLogger(__name__)
 
@@ -34,9 +34,10 @@ def _clean(text: str) -> str:
     return text.strip()
 
 
-def load_file(path: Path) -> tuple[list[Document], int]:
+def load_file(path: Path, progress=None) -> tuple[list[Document], int]:
     """Return one Document per page (PDF) or per file (others), plus the page count. Only a PDF's passages carry a
-    page: a Word or text file has no fixed pages, and "page 1" on every citation from it was wrong."""
+    page: a Word or text file has no fixed pages, and "page 1" on every citation from it was wrong.
+    progress(done, total) is called before each scanned page is read by OCR."""
     ext = path.suffix.lower()
     if ext == ".pdf":
         from pypdf import PdfReader
@@ -55,8 +56,8 @@ def load_file(path: Path) -> tuple[list[Document], int]:
             else:
                 empty.append(i)
         if empty:   # scanned pages: their text read by OCR, for the index only (the file isn't changed)
-            from backend.rag import ocr
-            for i, text in ocr.read_pages(path, empty).items():
+            from services.document import ocr
+            for i, text in ocr.read_pages(path, empty, progress=progress).items():
                 if text := _clean(text):
                     docs.append(Document(page_content=text, metadata={"page": i, "ocr": True}))
             docs.sort(key=lambda d: d.metadata["page"])
@@ -127,25 +128,52 @@ def embed_paced(texts: list[str], title: str) -> list[list[float]]:
     return vectors
 
 
-def ingest_file(path: Path, *, user_id: str, doc_id: str, filename: str) -> dict:
-    """Index a stored file for a user. Returns {"pages": int, "chunks": int}."""
-    pages, page_count = load_file(path)
+class BudgetExceeded(IngestionError):
+    """More passages need embedding than the caller allowed (max_passages); nothing was embedded or written."""
+
+    def __init__(self, needed: int, allowed: int):
+        super().__init__(f"{needed} passages need embedding but {allowed} are allowed")
+        self.needed, self.allowed = needed, allowed
+
+
+def _noop(*_args, **_kwargs) -> None:
+    return None
+
+
+def ingest_file(path: Path, *, user_id: str, doc_id: str, filename: str, file_name: str | None = None,
+                max_passages: int | None = None, progress=None) -> dict:
+    """Index a file for a user: load, clean, chunk, embed, store. Returns {"pages", "chunks", "embedded"}.
+
+    A chunk whose text the document already has in the index keeps its stored vector (an edit changes a few chunks,
+    and every embedded chunk is one Gemini request), so re-indexing a document embeds only what is new. The new
+    chunks are embedded before anything is written, so a failed embedding leaves the index as it was. The caller's
+    allowance arrives as max_passages (None: no limit): more new chunks than that is BudgetExceeded, before anything is
+    embedded. progress(stage, done, total) reports reading / ocr / chunked / embedding / stored.
+    """
+    progress = progress or _noop
+    progress("reading", 0, 0)
+    pages, page_count = load_file(path, progress=lambda done, total: progress("ocr", done, total))
     if not pages:
         raise IngestionError("No extractable text found (the file may be scanned images).")
 
     chunks = split_documents(pages)
-    texts = [c.page_content for c in chunks]
-    from backend.library import embed_budget   # (imported here: the library imports this module)
-    embed_budget.check(user_id, len(texts))     # refused whole, before anything is embedded
-    vectors = embed_paced(texts, filename)
-    embed_budget.charge(user_id, len(texts))
+    progress("chunked", len(chunks), len(chunks))
+    vectors = vectorstore.stored_vectors(user_id, doc_id)
+    new_texts = list(dict.fromkeys(c.page_content for c in chunks if c.page_content not in vectors))
+    if max_passages is not None and len(new_texts) > max_passages:   # refused whole, before anything is embedded
+        raise BudgetExceeded(len(new_texts), max_passages)
+    for start in range(0, len(new_texts), EMBED_BATCH):
+        batch = new_texts[start:start + EMBED_BATCH]
+        vectors.update(zip(batch, embed_paced(batch, filename)))
+        progress("embedding", start + len(batch), len(new_texts))
 
     points = []
-    for idx, (chunk, vector) in enumerate(zip(chunks, vectors)):
+    for idx, chunk in enumerate(chunks):
         metadata = {
             "user_id": user_id,
             "doc_id": doc_id,
             "source": filename,
+            **({"title": filename, "file_name": file_name} if file_name else {}),
             "page": chunk.metadata.get("page"),
             **({"ocr": True} if chunk.metadata.get("ocr") else {}),
             "chunk_index": idx,
@@ -153,9 +181,12 @@ def ingest_file(path: Path, *, user_id: str, doc_id: str, filename: str) -> dict
         }
         points.append(models.PointStruct(
             id=str(uuid.uuid5(uuid.NAMESPACE_URL, f"{doc_id}:{idx}")),
-            vector={vectorstore.DENSE: vector, vectorstore.SPARSE: sparse.document_vector(chunk.page_content)},
+            vector={vectorstore.DENSE: vectors[chunk.page_content],
+                    vectorstore.SPARSE: sparse.document_vector(chunk.page_content)},
             payload={"page_content": chunk.page_content, "metadata": metadata},
         ))
 
     vectorstore.upsert(points)
-    return {"pages": page_count, "chunks": len(points)}
+    vectorstore.delete_chunks_from(user_id, doc_id, len(points))   # chunks of an older, longer version
+    progress("stored", len(points), len(points))
+    return {"pages": page_count, "chunks": len(points), "embedded": len(new_texts)}

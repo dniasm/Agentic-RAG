@@ -17,7 +17,7 @@ from backend.api.routes import documents
 from backend.config.settings import settings
 from backend.library import api as library_api, catalog, config, library, titles
 from backend.models import database as db
-from backend.rag.ingestion import IngestionError
+from services.document.ingestion import IngestionError
 
 
 class LibraryBackedDocuments(unittest.TestCase):

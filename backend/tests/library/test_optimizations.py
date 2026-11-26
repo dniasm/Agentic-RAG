@@ -129,7 +129,7 @@ def test_the_queue_reserves_refresh_room_only_for_larger_edits(library_docs):
 
 # ---------------------------------------------------------------- Voyage and the find cache
 def counting_rerank(monkeypatch):
-    from backend.rag import rerank
+    from services.document import rerank
     calls, real = [], rerank.score
 
     def score(query, hits, priority=None):
@@ -153,7 +153,7 @@ def test_find_leaves_the_rerank_reserve_free_and_falls_back_to_cosine(library_do
     """find shares day7's Voyage limiter (3 a minute, 1 kept for answer reranking) and never waits for it."""
     from backend.config import voyage
     from backend.library import library
-    from backend.rag import rerank
+    from services.document import rerank
     limiter = voyage.RateLimiter(3, reserve=1)
     monkeypatch.setattr(voyage, "limiter", lambda: limiter)
     calls, real = [], rerank.score

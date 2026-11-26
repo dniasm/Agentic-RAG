@@ -306,7 +306,7 @@ def test_a_paragraph_that_needs_a_line_more_moves_what_is_below_down(stacked_pdf
         rules = sorted((d["rect"] for d in doc[0].get_drawings()), key=lambda r: r.y0)
     assert len(rules) == 2                                                          # moved, not copied
     assert abs(rules[0].y0 - 154) < 0.3 and abs(rules[1].y0 - 184) < 0.3            # both one line lower
-    from backend.rag import ingestion
+    from services.document import ingestion
     text = " ".join(ingestion.load_file(out)[0][0].page_content.split())
     assert text.count("Next Section") == 1 and "needs another line." in text        # read once, in order
     assert text.index("needs another line.") < text.index("Next Section")
@@ -402,7 +402,7 @@ def test_a_failed_check_leaves_no_file(layout_pdf, monkeypatch):
 
 def test_an_edit_keeps_the_reading_order(layout_pdf):
     """Text readers (search, copy and paste, the Markdown copy) read the edited page in its original order."""
-    from backend.rag import ingestion
+    from services.document import ingestion
     before = ingestion.load_file(layout_pdf)[0][0].page_content
     out = edited(layout_pdf, "Senior Analyst", "Lead Analyst")
     assert ingestion.load_file(out)[0][0].page_content == before.replace("Senior Analyst", "Lead Analyst")
@@ -429,7 +429,7 @@ def test_a_real_latex_paper_is_edited_in_its_own_fonts(tmp_path):
     copy = tmp_path / "paper.pdf"
     copy.write_bytes(src.read_bytes())
     out = edited(copy, "dominant sequence transduction models", "leading sequence transduction models")
-    from backend.rag import ingestion
+    from services.document import ingestion
     text = ingestion.load_file(out)[0][0].page_content
     assert "leading sequence transduction models" in " ".join(text.split())       # with its spaces, for search
     (new,) = [s for s in spans(out, "leading")]

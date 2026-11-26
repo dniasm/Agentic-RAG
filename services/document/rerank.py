@@ -90,7 +90,7 @@ def _cos_matrix(vectors: np.ndarray) -> np.ndarray:
 
 def mmr_select(hits: list[dict], k: int | None = None, lam: float | None = None) -> list[dict]:
     """Pick k passages from the reranked hits, trading relevance against redundancy."""
-    from backend.rag import vectorstore
+    from services.document import vectorstore
 
     k = k or settings.retrieval_k
     lam = settings.mmr_lambda if lam is None else lam

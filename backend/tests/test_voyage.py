@@ -70,7 +70,7 @@ class Call(unittest.TestCase):
 
     def test_rerank_and_memory_share_one_client_and_limiter(self):
         from backend.memory import embeddings
-        from backend.rag import rerank
+        from services.document import rerank
 
         lim, client = mock.Mock(), mock.Mock()
         lim.acquire.return_value = True
@@ -91,7 +91,7 @@ class Shares(unittest.TestCase):
                 rerank, memory = voyage.shares()
                 self.assertEqual((rerank, memory), (reserve, total - reserve))
                 self.assertEqual(rerank + memory, total)
-                for role, share in (("rerank", rerank), ("memory", memory)):
+                for role, share in (("document", rerank), ("memory", memory)):
                     with mock.patch.object(voyage, "_role", role):
                         lim = voyage.make_limiter()
                         self.assertEqual(lim.per_minute, share)

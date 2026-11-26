@@ -2,7 +2,7 @@
 import pytest
 
 from backend.library import catalog, config, editing, library
-from backend.rag import ingestion, vectorstore
+from services.document import ingestion, vectorstore
 from backend.config.settings import settings as day7_settings
 
 PARAGRAPHS = [f"Section {i}. " + " ".join(f"Topic{i} detail {j} explains part {j} of the subject." for j in range(14))

@@ -78,7 +78,9 @@ class QueueTask(_Data):
 
 class LibraryDocument(_Data):
     doc_id: str
-    stage: str          # reading | indexed | failed
+    stage: str          # reading | ocr | embedding | indexed | failed
+    done: int | None = None    # ocr: pages read so far; embedding: passages embedded so far
+    total: int | None = None
     title: str | None = None
     error: str | None = None
 

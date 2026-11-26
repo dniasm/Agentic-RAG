@@ -111,7 +111,7 @@ def test_a_word_files_page_count_is_words_own(tmp_path):
 
 
 def test_passages_of_a_text_file_carry_no_page(library_docs):
-    from backend.rag import vectorstore
+    from services.document import vectorstore
     points, _ = vectorstore.get_client().scroll(library.day7_settings.collection_name, limit=50,
                                                scroll_filter=vectorstore.user_filter(library_docs["svm.txt"]["owner"],
                                                                                      library_docs["svm.txt"]["id"]))

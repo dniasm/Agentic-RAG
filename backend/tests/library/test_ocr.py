@@ -9,7 +9,7 @@ import pytest
 
 from backend.config.settings import settings
 from backend.library import catalog, config, editing, embed_budget, library
-from backend.rag import ingestion, ocr, vectorstore
+from services.document import ingestion, ocr, vectorstore
 from backend.tools import rag as rag_tool
 
 needs_tesseract = pytest.mark.skipif(ocr.tesseract() is None, reason="tesseract isn't installed")

@@ -31,8 +31,8 @@ class RequestIdInterceptor(grpc.aio.ServerInterceptor):
 
     async def intercept_service(self, continuation, handler_call_details):
         handler = await continuation(handler_call_details)
-        if handler is None or handler.request_streaming:
-            return handler
+        if handler is None or (handler.request_streaming and not handler.response_streaming):
+            return handler   # (a call that only the client streams is passed through untouched)
         md = {k: v for k, v in (handler_call_details.invocation_metadata or ()) if isinstance(v, str)}
         method = handler_call_details.method
         name = method.rsplit(".", 1)[-1]  # "UserService/GetUser"
@@ -54,18 +54,21 @@ class RequestIdInterceptor(grpc.aio.ServerInterceptor):
                 log.error("%s failed: %s: %s", name, type(error).__name__, str(error)[:300])
 
         if handler.response_streaming:
-            async def stream(request, context):
+            inner = handler.stream_stream if handler.request_streaming else handler.unary_stream
+
+            async def stream(request, context):   # `request` is the request iterator for a call the client streams too
                 set_request_id(valid_request_id(incoming))
                 started = time.perf_counter()
                 try:
-                    async for item in handler.unary_stream(request, context):
+                    async for item in inner(request, context):
                         yield item
                 except (Exception, asyncio.CancelledError) as e:
                     failed(started, context, e)
                     raise
                 line(started, context.code() or grpc.StatusCode.OK)
 
-            return grpc.unary_stream_rpc_method_handler(stream, handler.request_deserializer, handler.response_serializer)
+            make = grpc.stream_stream_rpc_method_handler if handler.request_streaming else grpc.unary_stream_rpc_method_handler
+            return make(stream, handler.request_deserializer, handler.response_serializer)
 
         async def unary(request, context):
             set_request_id(valid_request_id(incoming))

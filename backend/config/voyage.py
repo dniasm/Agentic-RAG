@@ -1,6 +1,6 @@
 """The one Voyage AI client, behind a shared rate limit.
 
-Reranking (rag/rerank.py), conversation-memory recall and episode saves (memory/embeddings.py) all use the same
+Reranking (services/document/rerank.py, the Document service), conversation-memory recall and episode saves (memory/embeddings.py) all use the same
 Voyage account. Its free tier (no payment method) allows 3 requests a minute in total, across all of them. With a
 client each, they didn't know about one another: a recall and a save could use up the minute, and the next rerank
 got a 429 and fell back to the LLM relevance check.
@@ -77,7 +77,7 @@ class RateLimiter:
 
 
 def shares() -> tuple[int, int]:
-    """(rerank share, memory share) of the account's requests per minute: the orchestrator (rerank and find) gets
+    """(document share, memory share) of the account's requests per minute: the Document service (rerank and find) gets
     VOYAGE_RERANK_RESERVE, the Memory service (embeddings) the rest, at least 1 each. They are separate processes with
     a limiter each, so together they never exceed VOYAGE_REQUESTS_PER_MINUTE (but for a total below 2)."""
     total = settings.voyage_requests_per_minute
@@ -85,7 +85,15 @@ def shares() -> tuple[int, int]:
     return rerank, max(1, total - rerank)
 
 
-_role = "rerank"
+_role = "document"
+
+
+def use_document_share() -> None:
+    """Called by the Document service process before its first request: its limiter takes the document (rerank) share."""
+    global _role
+    _role = "document"
+    if hasattr(limiter, "cache_clear"):
+        limiter.cache_clear()
 
 
 def use_memory_share() -> None:

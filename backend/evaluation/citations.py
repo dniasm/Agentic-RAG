@@ -15,7 +15,7 @@ that uses the passage's words but reverses their meaning: those still need a mod
 import re
 from dataclasses import dataclass, field
 
-from backend.rag.sparse import tokenize
+from services.common.tokens import tokenize
 
 CITATION = re.compile(r"\[(\d{1,2}(?:\s*,\s*\d{1,2})*)\]")
 # Not after abbreviations: "10 M/2 % vs. 20 M/4 %" and "Art. 33" are one sentence each.

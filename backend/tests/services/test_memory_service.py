@@ -246,7 +246,7 @@ def test_orchestrator_functions_keep_their_dict_shapes():
 
 
 def test_the_orchestrator_no_longer_opens_the_memory_collection():
-    from backend.rag import vectorstore
+    from services.document import vectorstore
     names = {c.name for c in vectorstore.get_client().get_collections().collections}
     assert settings.voyage_memory_collection not in names
 

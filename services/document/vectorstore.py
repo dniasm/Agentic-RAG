@@ -1,6 +1,7 @@
-"""Qdrant vector store + Gemini embeddings.
+"""The Document service's passages: a Qdrant collection with dense (Gemini) and sparse (BM25) vectors.
 
-Uses a Qdrant server when QDRANT_URL is set, otherwise an embedded on-disk store.
+Uses a Qdrant server when QDRANT_URL is set, otherwise this service's own embedded on-disk folder (an embedded Qdrant
+can be opened by one process only, so the orchestrator no longer opens one).
 Each point has two named vectors:
   "dense" - Gemini embedding (meaning)
   "bm25"  - sparse BM25 keyword vector (see rag/sparse.py); Qdrant applies IDF at query time
@@ -8,20 +9,19 @@ Payloads follow the LangChain layout ({"page_content", "metadata"}).
 """
 import threading
 from functools import lru_cache
+from pathlib import Path
 
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from qdrant_client import QdrantClient, models
 
-from backend.config import gemini
 from backend.config.settings import settings
+from services.common import config
 
 # The embedded (local-path) Qdrant client is not safe for concurrent writers.
 _lock = threading.RLock()
 
 
-def get_embeddings(key: int = 0) -> GoogleGenerativeAIEmbeddings:
-    """The client for one Gemini key. Embedding requests go through backend.config.gemini.with_keys instead."""
-    return gemini.embeddings(key)
+def default_path() -> Path:
+    return config.data_dir() / "document_qdrant"
 
 
 @lru_cache
@@ -30,13 +30,12 @@ def get_client() -> QdrantClient:
         client = QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key or None)
     else:
         try:
-            client = QdrantClient(path=settings.qdrant_path)
+            client = QdrantClient(path=str(default_path()))
         except RuntimeError as e:
             if "already accessed" in str(e):
                 raise RuntimeError(
-                    "The local vector store is already in use by another backend process. "
-                    "Only one backend can run at a time: close the other uvicorn terminal "
-                    "(or end stray python.exe processes), then start again."
+                    "The local vector store is already in use by another Document service process. "
+                    "Only one can run at a time: stop the other one (or end stray python.exe processes), then start again."
                 ) from e
             raise
     _ensure_collection(client)
@@ -88,17 +87,17 @@ def upsert(points: list[models.PointStruct]) -> None:
             client.upsert(settings.collection_name, points=points[i:i + 128], wait=True)
 
 
-def search_dense(vector: list[float], user_id: str, limit: int) -> list[models.ScoredPoint]:
+def search_dense(vector: list[float], user_id: str, limit: int, doc_id: str | None = None) -> list[models.ScoredPoint]:
     """Meaning search: score = cosine similarity."""
     client = get_client()
     with _lock:
         return client.query_points(
             settings.collection_name, query=vector, using=DENSE,
-            query_filter=user_filter(user_id), limit=limit, with_payload=True,
+            query_filter=user_filter(user_id, doc_id), limit=limit, with_payload=True,
         ).points
 
 
-def search_sparse(vector: models.SparseVector, user_id: str, limit: int) -> list[models.ScoredPoint]:
+def search_sparse(vector: models.SparseVector, user_id: str, limit: int, doc_id: str | None = None) -> list[models.ScoredPoint]:
     """Keyword (BM25) search: score = BM25. Also returns each hit's dense vector, so callers can
     compute the cosine similarity of keyword-only hits."""
     if not vector.indices:
@@ -107,7 +106,7 @@ def search_sparse(vector: models.SparseVector, user_id: str, limit: int) -> list
     with _lock:
         return client.query_points(
             settings.collection_name, query=vector, using=SPARSE,
-            query_filter=user_filter(user_id), limit=limit, with_payload=True, with_vectors=[DENSE],
+            query_filter=user_filter(user_id, doc_id), limit=limit, with_payload=True, with_vectors=[DENSE],
         ).points
 
 
@@ -136,3 +135,56 @@ def close_client() -> None:
         client = get_client()
         client.close()
         get_client.cache_clear()
+
+
+def stored_vectors(user_id: str, doc_id: str) -> dict[str, list[float]]:
+    """The dense vector of each chunk the document has in the index now, by the chunk's text."""
+    client = get_client()
+    vectors, offset = {}, None
+    with _lock:
+        while True:
+            points, offset = client.scroll(settings.collection_name, scroll_filter=user_filter(user_id, doc_id),
+                                           limit=256, offset=offset, with_payload=["page_content"],
+                                           with_vectors=[DENSE])
+            for p in points:
+                vector = p.vector.get(DENSE) if isinstance(p.vector, dict) else p.vector
+                if vector is not None:
+                    vectors[p.payload["page_content"]] = vector
+            if offset is None:
+                return vectors
+
+
+def delete_chunks_from(user_id: str, doc_id: str, first_stale: int) -> None:
+    """Drop a document's chunks from index `first_stale` on (chunk ids are doc_id:index, so the rest were overwritten)."""
+    stale = user_filter(user_id, doc_id)
+    stale.must.append(models.FieldCondition(key="metadata.chunk_index", range=models.Range(gte=first_stale)))
+    client = get_client()
+    with _lock:
+        client.delete(settings.collection_name, points_selector=models.FilterSelector(filter=stale), wait=True)
+
+
+def set_chunk_fields(user_id: str, doc_id: str, fields: dict) -> None:
+    """Update metadata fields on every chunk of a document (no re-embedding)."""
+    client = get_client()
+    with _lock:
+        client.set_payload(settings.collection_name, payload=fields, key="metadata", wait=True,
+                           points=models.FilterSelector(filter=user_filter(user_id, doc_id)))
+
+
+def count(user_id: str | None = None, doc_id: str | None = None) -> int:
+    client = get_client()
+    flt = user_filter(user_id, doc_id) if user_id else None
+    with _lock:
+        return client.count(settings.collection_name, count_filter=flt, exact=True).count
+
+
+def import_points(points: list[models.PointStruct]) -> int:
+    """Points exactly as given; ids already stored are left alone. Returns how many were created."""
+    client = get_client()
+    with _lock:
+        have = {str(r.id) for r in client.retrieve(settings.collection_name, ids=[p.id for p in points],
+                                                   with_payload=False, with_vectors=False)}
+        fresh = [p for p in points if str(p.id) not in have]
+        for i in range(0, len(fresh), 128):
+            client.upsert(settings.collection_name, points=fresh[i:i + 128], wait=True)
+    return len(fresh)

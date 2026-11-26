@@ -28,7 +28,7 @@ from backend.config.settings import settings  # noqa: E402
 # ---------------------------------------------------------------- stages
 # Each stage returns (ranked hits, in_docs_decision, top_signal). Hits: dicts with "source" and "content".
 def _search(query: str, user: dict, mode: str):
-    from backend.rag.retrieval import retrieve
+    from services.document.retrieval import retrieve
     hits = retrieve([query], user["id"], k=10, min_score=0.0, mode=mode)[:10]
     top = max((h["score"] for h in hits), default=0.0)  # best meaning-similarity
     return hits, top >= settings.rag_skip_score, top
@@ -47,7 +47,7 @@ def stage1(query: str, user: dict):
 def stage1_bm25_only(query: str, user: dict):
     """Diagnostic (not a pipeline stage): BM25 keyword search alone. Needs no embeddings.
     Its 'in docs' decision is not meaningful (no cosine score), so it always says yes."""
-    from backend.rag import sparse, vectorstore
+    from services.document import sparse, vectorstore
     points = vectorstore.search_sparse(sparse.query_vector(query), user["id"], limit=10)
     hits = [{"source": p.payload.get("metadata", {}).get("source"), "content": p.payload.get("page_content", "")}
             for p in points]
@@ -55,8 +55,8 @@ def stage1_bm25_only(query: str, user: dict):
 
 
 def _reranked(query: str, user: dict, use_mmr: bool):
-    from backend.rag import rerank
-    from backend.rag.retrieval import retrieve
+    from services.document import rerank
+    from services.document.retrieval import retrieve
     if not rerank.ensure_loaded():
         raise RuntimeError("reranker unavailable: set VOYAGE_API_KEY")
     t0 = time.perf_counter()
@@ -90,7 +90,7 @@ STAGES = {"0": stage0, "1": stage1, "1-bm25": stage1_bm25_only, "2-rerank": stag
 
 # ---------------------------------------------------------------- scoring
 def evaluate(stage: str) -> dict:
-    from backend.rag import embedding_cache
+    from services.document import embedding_cache
 
     user = bench_user()
     run = STAGES[stage]

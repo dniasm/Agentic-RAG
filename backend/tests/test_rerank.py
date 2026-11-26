@@ -7,7 +7,7 @@ from unittest import mock
 
 from backend.config.settings import settings
 from backend.graph import nodes
-from backend.rag import rerank
+from services.document import rerank
 
 
 def hits(n=3):

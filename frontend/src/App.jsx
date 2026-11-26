@@ -82,7 +82,7 @@ export default function App() {
     if (!user) { realtime.close(); return undefined; }
     realtime.connect();
     return realtime.subscribe((msg) => {
-      if (msg.channel === 'library' && msg.type === 'document' && msg.data.stage !== 'reading') refreshDocuments();
+      if (msg.channel === 'library' && msg.type === 'document' && !['reading', 'ocr', 'embedding'].includes(msg.data.stage)) refreshDocuments();
     });
   }, [user, refreshDocuments]);
 

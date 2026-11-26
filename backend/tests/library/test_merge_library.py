@@ -7,7 +7,7 @@ import pytest
 from qdrant_client import QdrantClient, models
 
 from backend.config.settings import settings
-from backend.rag import sparse, vectorstore
+from services.document import sparse, vectorstore
 from backend.scripts import merge_library
 
 DAY7_DOCUMENTS = """CREATE TABLE documents (

@@ -17,7 +17,7 @@ from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 
 from backend.config.settings import settings
-from backend.rag import embedding_cache, sparse, vectorstore
+from services.document import embedding_cache, sparse, vectorstore
 from services.common.log import in_context
 
 log = logging.getLogger(__name__)
@@ -40,7 +40,7 @@ def _hit(p, query: str) -> dict:
 
 
 def retrieve(queries: list[str], user_id: str, k: int | None = None,
-             min_score: float | None = None, mode: str | None = None) -> list[dict]:
+             min_score: float | None = None, mode: str | None = None, doc_id: str | None = None) -> list[dict]:
     """Search every query variant and return the top k+2 chunks.
 
     Each hit: {"id", "content", "source", "page", "doc_id", "chunk_index", "matched_query",
@@ -81,10 +81,10 @@ def retrieve(queries: list[str], user_id: str, k: int | None = None,
 
     for query, vector in zip(queries, vectors):
         if vector is not None:
-            dense = vectorstore.search_dense(vector, user_id, limit=per_list)
+            dense = vectorstore.search_dense(vector, user_id, limit=per_list, doc_id=doc_id)
             add_ranked(dense, query, "dense")
         if hybrid:
-            keyword = vectorstore.search_sparse(sparse.query_vector(query), user_id, limit=per_list)
+            keyword = vectorstore.search_sparse(sparse.query_vector(query), user_id, limit=per_list, doc_id=doc_id)
             add_ranked(keyword, query, "bm25")
             if vector is None:
                 continue

@@ -47,7 +47,7 @@ class TokenCounter(BaseCallbackHandler):
 def configure_stage(stage: str) -> None:
     """Switch the pipeline to a given stage, in this process only (the .env is untouched)."""
     from backend.config.settings import settings
-    from backend.rag import rerank
+    from services.document import rerank
     settings.retrieval_mode = "dense" if stage == "0" else "hybrid"
     settings.rerank_enabled = stage not in ("0", "1")
     if settings.rerank_enabled and not rerank.ensure_loaded():
@@ -68,7 +68,7 @@ def _step_times(starts: list[tuple[float, str]], end: float) -> dict[str, float]
 
 
 def run_one(q: dict, user: dict, doc_names: list[str]) -> dict:
-    from backend.rag import embedding_cache
+    from services.document import embedding_cache
     from backend.tools import web_search
 
     counter = TokenCounter()

@@ -80,7 +80,7 @@ def pytest_sessionfinish(session, exitstatus):
     CONVERSATION.stop()
     MEMORY.stop()
     USER.stop()
-    from backend.rag import vectorstore
+    from services.document import vectorstore
     vectorstore.close_client()
     from backend.library import catalog
     catalog.reset_connection()

@@ -1,0 +1,229 @@
+syntax = "proto3";
+
+// The RAG half of the document system: reading files, indexing them as passages (clean, chunk with overlap, embed, store;
+// OCR for scanned PDF pages) and finding them again (query embedded, dense + keyword search fused by RRF, cross-encoder
+// rerank, MMR for diverse passages). The service owns the passage index (its own embedded Qdrant folder) and its caches
+// (document.db: OCR text of scanned pages, query embeddings), and does all the embedding and reranking. The documents
+// catalog (titles, renames, edits, undo) stays in the orchestrator for now.
+//
+// Files are sent as bytes (the service never reads the orchestrator's library folder): the first message of a stream
+// describes the file, the rest are chunks of at most 1 MiB, so a file larger than gRPC's 4 MB message limit works.
+// Every call is scoped by user_id (a User service id kept as a plain string): one person's passages are never visible to
+// another.
+//
+// The embedding allowance stays in the User service. The orchestrator checks it BEFORE Ingest and passes what is left as
+// max_passages; Ingest reports how many passages it really embedded, which the orchestrator then charges.
+//
+// Errors: INVALID_ARGUMENT (empty user id, no file), UNAVAILABLE / DEADLINE_EXCEEDED. Problems with one file (no text,
+// password-protected, not enough allowance, every Gemini key limited) are not statuses: the stream ends with a Failure
+// event, so the orchestrator can show the reason and mark the document.
+package agentic_rag.v1;
+
+service DocumentService {
+  // Client-streaming bytes in, server-streaming progress out: reading, ocr (page n of N), chunked, embedding (x of y),
+  // stored, then one Done or one Failure. Passages whose text the document already has keep their stored vectors.
+  rpc Ingest(stream IngestRequest) returns (stream IngestEvent);
+  // The text of a file as indexing would read it (OCR of scanned PDF pages included; progress while it runs), or only
+  // the OCR text of scanned pages that is already cached (used under the library lock, where OCR must never start).
+  rpc ReadPages(stream ReadRequest) returns (stream ReadEvent);
+
+  // Query variants -> the user's best passages: dense + keyword search fused by RRF; with rerank_query also scored by the
+  // reranker and chosen with MMR. reranked=false (reranker off, busy or failed) tells the caller to run its own
+  // relevance check on the candidates.
+  rpc Search(SearchRequest) returns (SearchReply);
+  // Scores arbitrary texts against a query with the reranker (the library agent also scores document profiles, which
+  // are not in the index). reranked=false when it could not.
+  rpc Rerank(RerankRequest) returns (RerankReply);
+
+  // Stored dense vectors of passages, in the order of the ids (empty vector: not found).
+  rpc GetDenseVectors(GetDenseVectorsRequest) returns (GetDenseVectorsReply);
+  // Removes every passage of one document of one user.
+  rpc DeleteDocumentVectors(DocumentRef) returns (DeleteReply);
+  // Sets metadata fields (title, file_name) on every passage of a document, without embedding anything.
+  rpc SetChunkFields(SetChunkFieldsRequest) returns (DeleteReply);
+  // Passage counts (all, one user, or one document), so a migration can check what the service holds.
+  rpc CountPassages(CountPassagesRequest) returns (CountPassagesReply);
+
+  // The state of the Gemini key pool (cooldowns, keys Google rejected, keys sharing a quota) for the admin page.
+  rpc KeyStates(KeyStatesRequest) returns (KeyStatesReply);
+
+  // Idempotent bulk copy for scripts/migrate_documents_rag.py (and tests): passages keep their ids, vectors and payloads
+  // (nothing is embedded again); the caches keep their keys. Rows already there are left as they are.
+  rpc ImportPassages(ImportPassagesRequest) returns (DocumentImportReply);
+  rpc ImportCaches(ImportCachesRequest) returns (DocumentImportReply);
+}
+
+message IngestStart {
+  string user_id = 1;
+  string doc_id = 2;
+  string filename = 3;           // the title: the "source" a citation shows
+  string file_name = 4;          // the stored file's name, kept on each passage
+  string ext = 5;                // .pdf .docx .txt .md
+  optional int64 max_passages = 6;   // most passages that may be embedded; more is refused whole, before embedding
+}
+message IngestRequest {
+  oneof part {
+    IngestStart start = 1;       // first message
+    bytes chunk = 2;             // then the file, in order
+  }
+}
+
+message IngestProgress {
+  string stage = 1;              // reading | ocr | chunked | embedding | stored
+  int64 done = 2;
+  int64 total = 3;
+}
+message IngestDone {
+  int64 pages = 1;
+  int64 chunks = 2;
+  int64 embedded = 3;            // passages that were really sent to the embedding model (what is charged)
+}
+message Failure {
+  string kind = 1;               // no_text | unsupported | budget | rate_limited | error
+  string message = 2;
+  int64 needed = 3;              // budget: passages that needed embedding
+  bool for_day = 4;              // rate_limited: every key is out until Google's next day
+}
+message IngestEvent {
+  oneof event {
+    IngestProgress progress = 1;
+    IngestDone done = 2;
+    Failure failure = 3;
+  }
+}
+
+enum ReadMode {
+  READ_ALL = 0;                  // every page, scanned ones read by OCR
+  READ_SCANNED_CACHED = 1;       // only scanned pages whose OCR text is already cached
+}
+message ReadStart {
+  string ext = 1;
+  ReadMode mode = 2;
+}
+message ReadRequest {
+  oneof part {
+    ReadStart start = 1;
+    bytes chunk = 2;
+  }
+}
+message Page {
+  optional int64 page = 1;       // set for a PDF page
+  string text = 2;
+  bool ocr = 3;
+}
+message ReadResult {
+  repeated Page pages = 1;
+  int64 page_count = 2;
+}
+message ReadEvent {
+  oneof event {
+    IngestProgress progress = 1;
+    ReadResult result = 2;
+    Failure failure = 3;
+  }
+}
+
+message SearchRequest {
+  repeated string queries = 1;
+  string user_id = 2;
+  optional int64 k = 3;
+  optional double min_score = 4;
+  optional string doc_id = 5;
+  optional string mode = 6;           // dense | hybrid; default from the service's settings
+  optional string rerank_query = 7;   // set: rerank the candidates against this question, then MMR
+  bool mmr = 8;                       // with rerank_query: choose diverse passages when the match is not "low"
+}
+message Passage {
+  string id = 1;
+  string content = 2;
+  optional string source = 3;
+  optional int64 page = 4;
+  bool ocr = 5;
+  optional string doc_id = 6;
+  optional int64 chunk_index = 7;
+  string matched_query = 8;
+  double score = 9;                   // cosine similarity
+  double rrf = 10;
+  optional int64 dense_rank = 11;
+  optional int64 bm25_rank = 12;
+  optional double bm25 = 13;
+  optional double relevance = 14;     // reranker score (0-1), when reranked
+  optional string scorer = 15;
+  bool selected = 16;                 // chosen by MMR
+}
+message SearchReply {
+  repeated Passage passages = 1;      // reranked best first when reranked, else best RRF/cosine first
+  bool reranked = 2;
+  string zone = 3;                    // high | mid | low (when reranked)
+  optional double best_relevance = 4;
+}
+
+message RerankItem {
+  string content = 1;
+}
+message RerankRequest {
+  string query = 1;
+  repeated RerankItem items = 2;
+  string priority = 3;                // rerank | find
+}
+message RerankReply {
+  bool reranked = 1;
+  repeated double relevance = 2;      // in the order of the items
+  string scorer = 3;
+}
+
+message GetDenseVectorsRequest { repeated string ids = 1; }
+message Vector { repeated float values = 1; }
+message GetDenseVectorsReply { repeated Vector vectors = 1; }
+
+message DocumentRef {
+  string user_id = 1;
+  string doc_id = 2;
+}
+message DeleteReply {}
+message SetChunkFieldsRequest {
+  string user_id = 1;
+  string doc_id = 2;
+  map<string, string> fields = 3;
+}
+
+message CountPassagesRequest {
+  optional string user_id = 1;
+  optional string doc_id = 2;
+}
+message CountPassagesReply {
+  int64 passages = 1;
+  int64 page_texts = 2;               // cached OCR pages
+  int64 query_embeddings = 3;         // cached question embeddings
+}
+
+message KeyStatesRequest {}
+message KeyState {
+  int64 index = 1;
+  bool out_for_day = 2;
+  optional double cooldown_seconds = 3;
+  bool shares_quota = 4;
+  bool rejected = 5;
+}
+message KeyStatesReply { repeated KeyState keys = 1; }
+
+message SparseVector {
+  repeated uint32 indices = 1;
+  repeated float values = 2;
+}
+message StoredPassage {
+  string id = 1;
+  repeated float dense = 2;
+  SparseVector sparse = 3;
+  string payload_json = 4;            // {"page_content": ..., "metadata": {...}}
+}
+message ImportPassagesRequest { repeated StoredPassage passages = 1; }
+message CacheRow {
+  string key = 1;
+  string value = 2;
+}
+message ImportCachesRequest {
+  repeated CacheRow page_texts = 1;
+  repeated CacheRow query_embeddings = 2;
+}
+message DocumentImportReply { int64 created = 1; }

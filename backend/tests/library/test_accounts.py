@@ -3,7 +3,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.library import agent, auth, batch, catalog, config, library
-from backend.rag import retrieval
+from services.document import retrieval
 from test_agent import Scripted
 
 INVITE = "let-me-in-42"

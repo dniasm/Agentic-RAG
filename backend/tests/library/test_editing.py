@@ -3,7 +3,7 @@ import docx
 import pytest
 
 from backend.library import agent, catalog, config, editing, library
-from backend.rag import vectorstore
+from services.document import vectorstore
 from test_agent import turn
 
 

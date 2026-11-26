@@ -88,7 +88,7 @@ class Settings(BaseSettings):
     # One limit for all Voyage calls (reranking, memory recall, episode saves; backend/config/voyage.py). The free
     # tier without a payment method allows 3 requests a minute; with one, raise this.
     voyage_requests_per_minute: int = 3
-    voyage_rerank_reserve: int = 1      # of the per-minute total, the share for the orchestrator's reranker; the Memory service gets the rest
+    voyage_rerank_reserve: int = 1      # of the per-minute total, the share for the Document service (rerank and find); the Memory service gets the rest
     voyage_rerank_max_wait: float = 10.0  # seconds a rerank waits for a slot before the LLM relevance check
     voyage_find_max_wait: float = 0.0     # the document agent's find: busy means cosine scores at once
     voyage_recall_max_wait: float = 3.0   # seconds memory recall waits, then answers without past conversations
@@ -149,6 +149,7 @@ class Settings(BaseSettings):
     memory_service_addr: str = default_address("memory")
     document_service_addr: str = default_address("document")
     grpc_timeout_seconds: float = 5.0          # deadline on every unary call to a service
+    document_stream_timeout_seconds: float = 3600.0   # reading or indexing one file (it waits for embedding limits)
     grpc_health_timeout_seconds: float = 2.0   # deadline on a health probe
 
     # --- Auth / persistence ---
