@@ -132,6 +132,11 @@ def _call(rpc_name: str, request):
     return clients.call(getattr(clients.user, rpc_name), request)
 
 
+def _why(e: Exception) -> str:
+    code = getattr(e, "code", None)
+    return code().name if callable(code) else type(e).__name__
+
+
 def flush() -> None:
     """Send the counts kept in memory to the User service; if it can't take them, keep them for the next try."""
     with _lock:
@@ -144,8 +149,10 @@ def flush() -> None:
         _call("AddApiUsage", pb.AddApiUsageRequest(rows=[
             pb.ApiUsageRow(hour=h, provider=p, key_index=k, model=m, calls=c, tokens=t, limited=li)
             for h, p, k, m, c, t, li in rows]))
-    except Exception:
-        log.exception("Couldn't store API usage counts; keeping them for the next try")
+    except Exception as e:
+        # one line, no traceback: an unreachable service is a known state, and the counts are kept for the next try
+        log.warning("Couldn't store %d API usage rows (%s); keeping them in memory for the next try", len(rows),
+                    _why(e))
         with _lock:
             for hour, provider, key, model, calls, tokens, limited in rows:
                 row = _pending[(hour, provider, key, model)]

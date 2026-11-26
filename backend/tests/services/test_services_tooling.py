@@ -85,3 +85,26 @@ def test_run_all_refuses_to_start_when_a_port_is_taken(capsys):
         assert run_all.port_in_use(port)
         assert run_all.run([run_all.orchestrator_proc(port)]) == 1
     assert str(port) in capsys.readouterr().err
+
+
+def test_stop_all_stops_the_orchestrator_before_the_services_and_waits_for_each(monkeypatch):
+    events = []
+
+    class Child:
+        def __init__(self, name):
+            self.name, self.alive = name, True
+
+        def poll(self):
+            return None if self.alive else 0
+
+        def send_signal(self, _sig):
+            events.append(f"signal {self.name}")
+
+        def wait(self, _timeout=None):
+            events.append(f"gone {self.name}")
+            self.alive = False
+
+    children = [(run_all.Proc(n, (), "grpc", 1), Child(n)) for n in ("user", "conversation", "orchestrator")]
+    run_all.stop_all(children)
+    assert events == ["signal orchestrator", "gone orchestrator", "signal conversation", "gone conversation",
+                      "signal user", "gone user"]

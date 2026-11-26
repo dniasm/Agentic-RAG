@@ -359,3 +359,18 @@ def test_migration_works_without_usage_tables_and_refuses_what_it_cannot_use(run
         migrate.migrate(empty, running.address, None)
     with pytest.raises(migrate.MigrationError, match="User service"):
         migrate.migrate(only_users, "localhost:1", None)
+
+
+def test_a_flush_that_cant_reach_the_service_warns_once_and_keeps_the_counts(service_down, caplog):
+    from backend.config import api_meter
+    with api_meter._lock:
+        api_meter._pending.clear()
+    api_meter.count("groq", 0, "m", calls=2, tokens=5)
+    caplog.set_level(logging.WARNING)
+    api_meter.flush()
+    records = [r for r in caplog.records if r.name == api_meter.log.name]
+    assert len(records) == 1 and records[0].exc_info is None and "1 API usage rows" in records[0].getMessage()
+    assert "UNAVAILABLE" in records[0].getMessage()
+    with api_meter._lock:   # kept for the next try
+        assert list(api_meter._pending.values()) == [[2, 5, 0]]
+        api_meter._pending.clear()

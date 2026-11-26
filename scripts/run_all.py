@@ -97,23 +97,28 @@ def pump(proc: Proc, child: subprocess.Popen) -> None:
         sys.stdout.flush()
 
 
-def stop_all(children: list[tuple[Proc, subprocess.Popen]]) -> None:
-    for _, child in reversed(children):  # orchestrator first, then the services it talks to
-        if child.poll() is None:
-            try:
-                child.send_signal(signal.CTRL_BREAK_EVENT if os.name == "nt" else signal.SIGTERM)
-            except OSError:
-                pass
-    deadline = time.monotonic() + STOP_GRACE_SECONDS
-    for _, child in children:
+def _stop_one(child: subprocess.Popen) -> None:
+    """Graceful stop, then terminate, then kill; waits until the child is gone."""
+    if child.poll() is None:
         try:
-            child.wait(max(0.0, deadline - time.monotonic()))
+            child.send_signal(signal.CTRL_BREAK_EVENT if os.name == "nt" else signal.SIGTERM)
+        except OSError:
+            pass
+    try:
+        child.wait(STOP_GRACE_SECONDS)
+    except subprocess.TimeoutExpired:
+        child.terminate()
+        try:
+            child.wait(2)
         except subprocess.TimeoutExpired:
-            child.terminate()
-            try:
-                child.wait(2)
-            except subprocess.TimeoutExpired:
-                child.kill()
+            child.kill()
+
+
+def stop_all(children: list[tuple[Proc, subprocess.Popen]]) -> None:
+    """Reverse start order, each one fully stopped before the next is signalled: the orchestrator's last flush of
+    usage counts can still reach the services it talks to."""
+    for _, child in reversed(children):
+        _stop_one(child)
 
 
 def run(plan: list[Proc]) -> int:

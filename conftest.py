@@ -34,6 +34,8 @@ _settings.user_service_addr = USER.address
 
 def pytest_sessionfinish(session, exitstatus):
     from backend import clients
+    from backend.config import api_meter
+    api_meter.flush()   # counts still in memory go to the User service while it is running (not at interpreter exit)
     clients.reset_clients()
     CONVERSATION.stop()
     USER.stop()
