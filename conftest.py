@@ -96,9 +96,9 @@ security.LOCAL_NAMES.add("testserver")
 
 @pytest.fixture(autouse=True)
 def _fresh_chat_allowance():
-    """Each test starts with every account's chat allowance unused (the counts live in memory, process-wide)."""
-    from backend import chat_limits
-    chat_limits.allowance._sent.clear()
+    """Each test starts with every account's chat allowance unused (the counts are in the User service's database)."""
+    with USER_DB.tx() as c:
+        c.execute("DELETE FROM chat_messages")
 
 
 @pytest.fixture(autouse=True)

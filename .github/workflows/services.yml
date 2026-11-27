@@ -20,7 +20,7 @@ jobs:
           - name: "Service bootstrap tests"
             tests: backend/tests/services/test_services_server.py backend/tests/services/test_services_tooling.py
           - name: "user"
-            tests: backend/tests/services/test_user_service.py
+            tests: backend/tests/services/test_user_service.py backend/tests/services/test_user_chat_limits.py
           - name: "conversation"
             tests: backend/tests/services/test_conversation_service.py
           - name: "memory"

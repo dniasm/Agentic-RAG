@@ -30,6 +30,12 @@ CREATE TABLE IF NOT EXISTS embed_usage (
     chunks INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (day, user_id)
 );
+CREATE TABLE IF NOT EXISTS chat_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,   -- the refund token
+    user_id TEXT NOT NULL,
+    sent_at REAL NOT NULL                   -- wall-clock seconds (time.time): a monotonic clock doesn't survive a restart
+);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_user ON chat_messages(user_id, sent_at);
 CREATE TABLE IF NOT EXISTS api_usage (
     hour TEXT NOT NULL,
     provider TEXT NOT NULL,
@@ -173,6 +179,54 @@ def calls_by_key(db: ServiceDB, provider: str, since_hour: str) -> dict[int, int
         found = c.execute("SELECT key_index, SUM(calls) FROM api_usage WHERE provider = ? AND hour >= ? "
                           "GROUP BY key_index", (provider, since_hour)).fetchall()
     return {int(k): int(n) for k, n in found}
+
+
+# ---------------------------------------------------------------- chat messages
+KEEP_SECONDS = 86400   # rows older than the longest window asked for (and never less than a day) are pruned
+
+
+def reserve_chat(db: ServiceDB, user_id: str, windows: list[tuple[int, int, bool]], now: float) -> tuple:
+    """(token, 0, False) when a message was recorded, or (None, retry_after, daily) when a window is full. Check and
+    insert are one transaction on the serialized connection."""
+    active = [(s, n, d) for s, n, d in windows if n > 0]
+    with db.tx() as c:
+        longest = max([s for s, _n, _d in active] + [KEEP_SECONDS])
+        c.execute("DELETE FROM chat_messages WHERE sent_at <= ?", (now - longest,))
+        for seconds, allowed, daily in active:
+            recent = [r[0] for r in c.execute(
+                "SELECT sent_at FROM chat_messages WHERE user_id = ? AND sent_at > ? ORDER BY sent_at",
+                (user_id, now - seconds))]
+            if len(recent) >= allowed:
+                oldest = recent[-allowed]   # the message whose aging out frees a place
+                return None, max(1, int(seconds - (now - oldest)) + 1), daily
+        cur = c.execute("INSERT INTO chat_messages (user_id, sent_at) VALUES (?, ?)", (user_id, now))
+        return str(cur.lastrowid), 0, False
+
+
+def refund_chat(db: ServiceDB, user_id: str, token: str) -> bool:
+    if not token.isdigit():
+        return False
+    with db.tx() as c:
+        return c.execute("DELETE FROM chat_messages WHERE id = ? AND user_id = ?", (int(token), user_id)).rowcount > 0
+
+
+def chat_usage(db: ServiceDB, user_id: str | None, windows: list[tuple[int, int, bool]], now: float) -> dict:
+    """{user_id: [(used, oldest_age or -1) per window]}; a given user_id always has an entry."""
+    with db.tx() as c:
+        if user_id is None:
+            users = [r[0] for r in c.execute("SELECT DISTINCT user_id FROM chat_messages ORDER BY user_id")]
+        else:
+            users = [user_id]
+        out = {}
+        for user in users:
+            times = [r[0] for r in c.execute("SELECT sent_at FROM chat_messages WHERE user_id = ? ORDER BY sent_at",
+                                             (user,))]
+            row = []
+            for seconds, _n, _d in windows:
+                recent = [t for t in times if now - t < seconds]
+                row.append((len(recent), now - recent[0] if recent else -1.0))
+            out[user] = row
+        return out
 
 
 # ---------------------------------------------------------------- import

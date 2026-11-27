@@ -94,6 +94,21 @@ class UserServiceStub:
                 request_serializer=agentic__rag__proto_dot_user__pb2.CallsByKeyRequest.SerializeToString,
                 response_deserializer=agentic__rag__proto_dot_user__pb2.CallsByKeyReply.FromString,
                 _registered_method=True)
+        self.ReserveChatMessage = channel.unary_unary(
+                '/agentic_rag.v1.UserService/ReserveChatMessage',
+                request_serializer=agentic__rag__proto_dot_user__pb2.ReserveChatMessageRequest.SerializeToString,
+                response_deserializer=agentic__rag__proto_dot_user__pb2.ReserveChatMessageReply.FromString,
+                _registered_method=True)
+        self.RefundChatMessage = channel.unary_unary(
+                '/agentic_rag.v1.UserService/RefundChatMessage',
+                request_serializer=agentic__rag__proto_dot_user__pb2.RefundChatMessageRequest.SerializeToString,
+                response_deserializer=agentic__rag__proto_dot_user__pb2.RefundChatMessageReply.FromString,
+                _registered_method=True)
+        self.ChatUsage = channel.unary_unary(
+                '/agentic_rag.v1.UserService/ChatUsage',
+                request_serializer=agentic__rag__proto_dot_user__pb2.ChatUsageRequest.SerializeToString,
+                response_deserializer=agentic__rag__proto_dot_user__pb2.ChatUsageReply.FromString,
+                _registered_method=True)
         self.ImportUsers = channel.unary_unary(
                 '/agentic_rag.v1.UserService/ImportUsers',
                 request_serializer=agentic__rag__proto_dot_user__pb2.ImportUsersRequest.SerializeToString,
@@ -187,6 +202,30 @@ class UserServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ReserveChatMessage(self, request, context):
+        """Chat messages an account has sent, kept across restarts (wall-clock times in user.db). The orchestrator passes the
+        windows (its settings own the limits); a window with allowed <= 0 is off.
+        Checks every window and, when none is full, records one message: all in one transaction, so two callers can't take
+        the last place. ok=false: retry_after seconds until a place frees up, daily if it was the day's window that was full.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RefundChatMessage(self, request, context):
+        """Gives back a reserved message that never started a run (an unknown token is ignored).
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ChatUsage(self, request, context):
+        """Read only: per window, how many messages are counted and how old the oldest is (one account, or every account).
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def ImportUsers(self, request, context):
         """Idempotent bulk copy for scripts/migrate_users.py (and tests): rows keep their ids and timestamps; ones already
         there (same id, or for a user the same name without regard to case) are left as they are.
@@ -257,6 +296,21 @@ def add_UserServiceServicer_to_server(servicer, server):
                     servicer.CallsByKey,
                     request_deserializer=agentic__rag__proto_dot_user__pb2.CallsByKeyRequest.FromString,
                     response_serializer=agentic__rag__proto_dot_user__pb2.CallsByKeyReply.SerializeToString,
+            ),
+            'ReserveChatMessage': grpc.unary_unary_rpc_method_handler(
+                    servicer.ReserveChatMessage,
+                    request_deserializer=agentic__rag__proto_dot_user__pb2.ReserveChatMessageRequest.FromString,
+                    response_serializer=agentic__rag__proto_dot_user__pb2.ReserveChatMessageReply.SerializeToString,
+            ),
+            'RefundChatMessage': grpc.unary_unary_rpc_method_handler(
+                    servicer.RefundChatMessage,
+                    request_deserializer=agentic__rag__proto_dot_user__pb2.RefundChatMessageRequest.FromString,
+                    response_serializer=agentic__rag__proto_dot_user__pb2.RefundChatMessageReply.SerializeToString,
+            ),
+            'ChatUsage': grpc.unary_unary_rpc_method_handler(
+                    servicer.ChatUsage,
+                    request_deserializer=agentic__rag__proto_dot_user__pb2.ChatUsageRequest.FromString,
+                    response_serializer=agentic__rag__proto_dot_user__pb2.ChatUsageReply.SerializeToString,
             ),
             'ImportUsers': grpc.unary_unary_rpc_method_handler(
                     servicer.ImportUsers,
@@ -588,6 +642,87 @@ class UserService:
             '/agentic_rag.v1.UserService/CallsByKey',
             agentic__rag__proto_dot_user__pb2.CallsByKeyRequest.SerializeToString,
             agentic__rag__proto_dot_user__pb2.CallsByKeyReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ReserveChatMessage(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/agentic_rag.v1.UserService/ReserveChatMessage',
+            agentic__rag__proto_dot_user__pb2.ReserveChatMessageRequest.SerializeToString,
+            agentic__rag__proto_dot_user__pb2.ReserveChatMessageReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RefundChatMessage(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/agentic_rag.v1.UserService/RefundChatMessage',
+            agentic__rag__proto_dot_user__pb2.RefundChatMessageRequest.SerializeToString,
+            agentic__rag__proto_dot_user__pb2.RefundChatMessageReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ChatUsage(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/agentic_rag.v1.UserService/ChatUsage',
+            agentic__rag__proto_dot_user__pb2.ChatUsageRequest.SerializeToString,
+            agentic__rag__proto_dot_user__pb2.ChatUsageReply.FromString,
             options,
             channel_credentials,
             insecure,

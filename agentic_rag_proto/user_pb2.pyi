@@ -252,3 +252,77 @@ class ImportUsersReply(_message.Message):
     api_usage_created: int
     skipped_users: _containers.RepeatedScalarFieldContainer[str]
     def __init__(self, users_created: _Optional[int] = ..., tokens_created: _Optional[int] = ..., embed_usage_created: _Optional[int] = ..., api_usage_created: _Optional[int] = ..., skipped_users: _Optional[_Iterable[str]] = ...) -> None: ...
+
+class ChatWindow(_message.Message):
+    __slots__ = ("seconds", "allowed", "daily")
+    SECONDS_FIELD_NUMBER: _ClassVar[int]
+    ALLOWED_FIELD_NUMBER: _ClassVar[int]
+    DAILY_FIELD_NUMBER: _ClassVar[int]
+    seconds: int
+    allowed: int
+    daily: bool
+    def __init__(self, seconds: _Optional[int] = ..., allowed: _Optional[int] = ..., daily: _Optional[bool] = ...) -> None: ...
+
+class ReserveChatMessageRequest(_message.Message):
+    __slots__ = ("user_id", "windows")
+    USER_ID_FIELD_NUMBER: _ClassVar[int]
+    WINDOWS_FIELD_NUMBER: _ClassVar[int]
+    user_id: str
+    windows: _containers.RepeatedCompositeFieldContainer[ChatWindow]
+    def __init__(self, user_id: _Optional[str] = ..., windows: _Optional[_Iterable[_Union[ChatWindow, _Mapping]]] = ...) -> None: ...
+
+class ReserveChatMessageReply(_message.Message):
+    __slots__ = ("ok", "token", "retry_after", "daily")
+    OK_FIELD_NUMBER: _ClassVar[int]
+    TOKEN_FIELD_NUMBER: _ClassVar[int]
+    RETRY_AFTER_FIELD_NUMBER: _ClassVar[int]
+    DAILY_FIELD_NUMBER: _ClassVar[int]
+    ok: bool
+    token: str
+    retry_after: int
+    daily: bool
+    def __init__(self, ok: _Optional[bool] = ..., token: _Optional[str] = ..., retry_after: _Optional[int] = ..., daily: _Optional[bool] = ...) -> None: ...
+
+class RefundChatMessageRequest(_message.Message):
+    __slots__ = ("user_id", "token")
+    USER_ID_FIELD_NUMBER: _ClassVar[int]
+    TOKEN_FIELD_NUMBER: _ClassVar[int]
+    user_id: str
+    token: str
+    def __init__(self, user_id: _Optional[str] = ..., token: _Optional[str] = ...) -> None: ...
+
+class RefundChatMessageReply(_message.Message):
+    __slots__ = ("refunded",)
+    REFUNDED_FIELD_NUMBER: _ClassVar[int]
+    refunded: bool
+    def __init__(self, refunded: _Optional[bool] = ...) -> None: ...
+
+class ChatUsageRequest(_message.Message):
+    __slots__ = ("user_id", "windows")
+    USER_ID_FIELD_NUMBER: _ClassVar[int]
+    WINDOWS_FIELD_NUMBER: _ClassVar[int]
+    user_id: str
+    windows: _containers.RepeatedCompositeFieldContainer[ChatWindow]
+    def __init__(self, user_id: _Optional[str] = ..., windows: _Optional[_Iterable[_Union[ChatWindow, _Mapping]]] = ...) -> None: ...
+
+class ChatWindowUsage(_message.Message):
+    __slots__ = ("used", "oldest_age_seconds")
+    USED_FIELD_NUMBER: _ClassVar[int]
+    OLDEST_AGE_SECONDS_FIELD_NUMBER: _ClassVar[int]
+    used: int
+    oldest_age_seconds: float
+    def __init__(self, used: _Optional[int] = ..., oldest_age_seconds: _Optional[float] = ...) -> None: ...
+
+class ChatUsageRow(_message.Message):
+    __slots__ = ("user_id", "windows")
+    USER_ID_FIELD_NUMBER: _ClassVar[int]
+    WINDOWS_FIELD_NUMBER: _ClassVar[int]
+    user_id: str
+    windows: _containers.RepeatedCompositeFieldContainer[ChatWindowUsage]
+    def __init__(self, user_id: _Optional[str] = ..., windows: _Optional[_Iterable[_Union[ChatWindowUsage, _Mapping]]] = ...) -> None: ...
+
+class ChatUsageReply(_message.Message):
+    __slots__ = ("rows",)
+    ROWS_FIELD_NUMBER: _ClassVar[int]
+    rows: _containers.RepeatedCompositeFieldContainer[ChatUsageRow]
+    def __init__(self, rows: _Optional[_Iterable[_Union[ChatUsageRow, _Mapping]]] = ...) -> None: ...
