@@ -187,6 +187,9 @@ class Settings(BaseSettings):
     # --- Document library (backend/library) ---
     library_data_dir: str = str(BACKEND_DIR / "data")   # library/<user_id>/, versions/, logs/, catalog
     signup_code: str = ""                # needed for every sign-up after the first; empty: sign-ups closed
+    # The first account needs the code too (set it where storage can be wiped, e.g. a free host with no disk: after
+    # a wipe, whoever signed up first could otherwise take an ADMIN_USERNAMES name)
+    signup_code_for_first: bool = False
     # Accounts that can open the Admin page (API key usage), comma-separated usernames; empty: no one. A listed name
     # can't be signed up for: list accounts that already exist.
     admin_usernames: str = ""

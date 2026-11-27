@@ -285,7 +285,11 @@ forwards `/api/*` to Render, so the login cookie stays first-party on the Vercel
 Vercel cannot proxy WebSockets, so the page asks `POST /api/ws/ticket` (over that proxy) for a one-time 60-second
 ticket and opens `wss://<render>/api/ws?ticket=...` directly; logging out still closes that socket. The Render service
 also serves the same site at its own `onrender.com` address, with the plain cookie path, if you want to skip Vercel.
-It starts with no data, and costs Render's *Starter* plan plus 1 GB of disk.
+It starts with no data. `render.yaml` uses Render's **free** plan (a demo): there is no disk, so everything (accounts,
+chats, documents) is wiped on each restart, redeploy and wake from sleep (free services sleep after 15 minutes idle;
+the first visit after that takes about a minute), and `SIGNUP_CODE_FOR_FIRST=true` makes even the first sign-up need
+`SIGNUP_CODE`, so nobody can claim an admin username after a wipe. To keep data, set `plan: starter` and uncomment
+the `disk:` block (Starter plus 1 GB of disk, about $7.25 a month).
 
 1. **Render, backend.** dashboard.render.com > **New** > **Blueprint** > connect the GitHub repo > branch
    `microservices` > Render reads `render.yaml`. Fill the prompted variables (the rest are set by the file):
