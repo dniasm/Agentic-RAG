@@ -53,6 +53,14 @@ export const useUploads = () => useSyncExternalStore(subscribe, () => state);
 export const removeUpload = (cid) => dispatch({ type: 'remove', cid });
 export const moveUploads = (from, to) => dispatch({ type: 'rekey', from, to });
 
+/** Sign-out: drop every chip (they name the previous account's files) and stop any fallback polling. */
+export function clearUploads() {
+  clearTimeout(timer);
+  timer = null;
+  state = initialUploads;
+  listeners.forEach((fn) => fn());
+}
+
 /** Add files to the library from the chat `key`; conversationId is set once the chat exists. */
 export async function addFiles(fileList, key, conversationId) {
   start();
