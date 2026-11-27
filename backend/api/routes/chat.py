@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from backend import chat_limits
+from backend import chat_limits, usage_limits
 from backend.api.dependencies import get_current_user
 from backend.config.settings import settings
 from backend.config.usage import UsageTracker, record as record_usage
@@ -391,6 +391,8 @@ def _changes_in(answer: dict | None) -> list[str]:
 
 def _allow(user_id: str) -> float:
     """One message from the account's allowance (backend/chat_limits.py), before anything starts: 429 when over it."""
+    if usage_limits.is_unlimited(user_id):
+        return -1.0     # an admin account: not limited, not counted (refunding this token is a no-op)
     try:
         return chat_limits.allowance.reserve(user_id)
     except chat_limits.ChatLimited as e:

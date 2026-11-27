@@ -18,7 +18,7 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.api.routes import admin, auth, chat, documents, health, ws
+from backend.api.routes import admin, auth, chat, documents, health, usage, ws
 from backend.realtime.hub import hub
 from backend.config import redact
 from backend.config.settings import settings
@@ -94,7 +94,7 @@ def _service_unavailable(request, exc):
 
 
 #ROUTES
-for module in (health, auth, chat, documents, admin, ws):
+for module in (health, auth, chat, documents, admin, usage, ws):
     app.include_router(module.router, prefix = "/api")
 app.include_router(library_api.router, prefix = "/api")  # /api/library/*
 

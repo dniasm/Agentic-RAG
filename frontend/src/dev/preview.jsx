@@ -35,6 +35,7 @@ Object.assign(apiService, {
   deleteDocument: async () => null,
   uploadDocument: async (file) => { await wait(1500); return { status: 'success', filename: file.name, chunks_indexed: 42 }; },
   getStats: async () => (empty ? fx.emptyStats : fx.stats),
+  myUsage: async () => (empty ? fx.emptyUsage : fx.usage),
   async streamMessage(text, conversationId, { onMeta, onStatus, onStep, onDraft, onFinal }) {
     onMeta?.({ conversation_id: conversationId || 'c-preview', title: text.slice(0, 40) });
     const steps = [

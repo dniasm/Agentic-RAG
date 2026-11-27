@@ -184,4 +184,8 @@ export const apiService = {
   async getStats() {
     return request('/stats');
   },
+
+  async myUsage() {
+    return request('/usage/me');
+  },
 };

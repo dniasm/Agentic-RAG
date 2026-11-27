@@ -65,6 +65,22 @@ class Allowance:
             sent.append(now)
             return now
 
+    def status(self, user_id: str, windows=None) -> list[dict]:
+        """Read only, per active window (limit above 0): {seconds, allowed, used, left, resets_in_seconds, daily}.
+        resets_in_seconds: until the oldest counted message leaves the window (None when none is counted)."""
+        with self._lock:
+            now = self._clock()
+            sent = self._sent.get(user_id, ())
+            out = []
+            for seconds, allowed, daily in (windows if windows is not None else self.windows()):
+                if allowed <= 0:
+                    continue
+                recent = [t for t in sent if now - t < seconds]
+                out.append({"seconds": seconds, "allowed": allowed, "used": len(recent),
+                            "left": max(allowed - len(recent), 0), "daily": daily,
+                            "resets_in_seconds": max(1, int(seconds - (now - recent[0])) + 1) if recent else None})
+            return out
+
     def counts(self) -> dict[str, list[int]]:
         """{user_id: [messages in each window of windows(), in order]} for the admin panel (read only)."""
         with self._lock:

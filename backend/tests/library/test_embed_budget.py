@@ -111,3 +111,17 @@ def test_a_refusal_reads_as_the_limit_not_a_failure(library_docs, monkeypatch):
     with pytest.raises(editing.EditError) as e:
         editing.edit(doc["id"], "replace", find="maximum margin hyperplane", text="widest separating boundary")
     assert str(e.value).startswith("This needs") and "failed" not in str(e.value)
+
+
+def test_an_admin_has_no_per_account_cap_but_the_site_quota_still_applies(monkeypatch):
+    monkeypatch.setattr(embed_budget.usage_limits, "is_unlimited", lambda uid: uid == "boss")
+    monkeypatch.setattr(settings, "embed_per_user_day", 10)
+    monkeypatch.setattr(settings, "embed_site_per_day", 100)
+    monkeypatch.setattr(settings, "embed_index_share", 0.8)
+    embed_budget.charge("boss", 50)
+    embed_budget.check("boss", 20)               # over the 10 a day a normal account gets: passes
+    assert embed_budget.allowance("boss") == 30  # (what the Document service is told: the site's share only)
+    with pytest.raises(embed_budget.EmbedBudgetExceeded, match="kept for answering questions"):
+        embed_budget.check("boss", 31)           # 50 + 31 > 80: the site's share still holds
+    with pytest.raises(embed_budget.EmbedBudgetExceeded, match="your account"):
+        embed_budget.check("plain", 11)          # a normal account is unchanged

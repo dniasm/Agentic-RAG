@@ -21,6 +21,7 @@ saving), not at local midnight (config/gemini.provider_day).
 from datetime import datetime
 
 from agentic_rag_proto import user_pb2 as pb
+from backend import usage_limits
 from backend.clients import get_clients
 from backend.config import gemini
 from backend.config.settings import settings
@@ -95,7 +96,7 @@ def allowance(user_id: str, safety: bool = False) -> int | None:
     if safety:
         return day["left"]
     lefts = []
-    per_user = settings.embed_per_user_day
+    per_user = usage_limits.limits_for(user_id)["index_per_day"]    # 0 for an admin account: no per-account cap
     if per_user > 0:
         lefts.append(max(per_user - used(user_id), 0))
     limit = index_limit(day)
@@ -118,7 +119,7 @@ def check(user_id: str, needed: int, safety: bool = False) -> None:
                 f"This needs {needed} passages indexed, and the site's embedding quota for today is used up "
                 f"({day['left']} left). Try again tomorrow.")
         return
-    per_user = settings.embed_per_user_day
+    per_user = usage_limits.limits_for(user_id)["index_per_day"]    # 0 for an admin account: no per-account cap
     mine = used(user_id)
     if per_user > 0 and mine + needed > per_user:
         left = max(per_user - mine, 0)
