@@ -6,6 +6,7 @@ Passwords and tokens are never logged: the request log (services.common.server) 
 """
 import asyncio
 import logging
+import time
 
 import grpc
 
@@ -31,8 +32,9 @@ def _api_row(r: dict) -> pb.ApiUsageRow:
 
 
 class UserServicer(pb_grpc.UserServiceServicer):
-    def __init__(self, db: ServiceDB):
+    def __init__(self, db: ServiceDB, clock=time.time):
         self.db = db
+        self.clock = clock   # wall-clock seconds; tests pass their own
 
     async def _run(self, context, fn, *args):
         """Run a blocking store call off the event loop; bad input and a taken name become gRPC statuses."""
@@ -99,6 +101,27 @@ class UserServicer(pb_grpc.UserServiceServicer):
         return pb.CallsByKeyReply(calls=await self._run(context, store.calls_by_key, request.provider,
                                                         request.since_hour))
 
+    @staticmethod
+    def _windows(request) -> list[tuple[int, int, bool]]:
+        return [(w.seconds, w.allowed, w.daily) for w in request.windows]
+
+    async def ReserveChatMessage(self, request, context):
+        token, retry_after, daily = await self._run(context, store.reserve_chat, request.user_id,
+                                                    self._windows(request), self.clock())
+        if token is None:
+            return pb.ReserveChatMessageReply(ok=False, retry_after=retry_after, daily=daily)
+        return pb.ReserveChatMessageReply(ok=True, token=token)
+
+    async def RefundChatMessage(self, request, context):
+        return pb.RefundChatMessageReply(refunded=await self._run(context, store.refund_chat, request.user_id,
+                                                                  request.token))
+
+    async def ChatUsage(self, request, context):
+        user_id = request.user_id if request.HasField("user_id") else None
+        found = await self._run(context, store.chat_usage, user_id, self._windows(request), self.clock())
+        return pb.ChatUsageReply(rows=[pb.ChatUsageRow(user_id=u, windows=[
+            pb.ChatWindowUsage(used=n, oldest_age_seconds=age) for n, age in row]) for u, row in found.items()])
+
     async def ImportUsers(self, request, context):
         users = [{"id": u.id, "username": u.username, "password_hash": u.password_hash, "created_at": u.created_at}
                  for u in request.users]
@@ -112,11 +135,11 @@ class UserServicer(pb_grpc.UserServiceServicer):
                                    skipped_users=done["skipped"])
 
 
-def build_service(db: ServiceDB | None = None) -> Service:
+def build_service(db: ServiceDB | None = None, clock=time.time) -> Service:
     """The service ready to bind and start; tests pass a database in a temporary folder."""
     db = db or store.open_db()
     service = Service(NAME)
-    service.register(pb_grpc.add_UserServiceServicer_to_server, UserServicer(db), GRPC_NAME)
+    service.register(pb_grpc.add_UserServiceServicer_to_server, UserServicer(db, clock), GRPC_NAME)
     service.add_closer(db.close)
     return service
 

@@ -37,6 +37,16 @@ service UserService {
   // Requests per key index for one provider from an hour on.
   rpc CallsByKey(CallsByKeyRequest) returns (CallsByKeyReply);
 
+  // Chat messages an account has sent, kept across restarts (wall-clock times in user.db). The orchestrator passes the
+  // windows (its settings own the limits); a window with allowed <= 0 is off.
+  // Checks every window and, when none is full, records one message: all in one transaction, so two callers can't take
+  // the last place. ok=false: retry_after seconds until a place frees up, daily if it was the day's window that was full.
+  rpc ReserveChatMessage(ReserveChatMessageRequest) returns (ReserveChatMessageReply);
+  // Gives back a reserved message that never started a run (an unknown token is ignored).
+  rpc RefundChatMessage(RefundChatMessageRequest) returns (RefundChatMessageReply);
+  // Read only: per window, how many messages are counted and how old the oldest is (one account, or every account).
+  rpc ChatUsage(ChatUsageRequest) returns (ChatUsageReply);
+
   // Idempotent bulk copy for scripts/migrate_users.py (and tests): rows keep their ids and timestamps; ones already
   // there (same id, or for a user the same name without regard to case) are left as they are.
   rpc ImportUsers(ImportUsersRequest) returns (ImportUsersReply);
@@ -143,4 +153,42 @@ message ImportUsersReply {
   int64 embed_usage_created = 3;
   int64 api_usage_created = 4;
   repeated string skipped_users = 5;   // "<id>: <reason>", e.g. a name that another id already has
+}
+
+message ChatWindow {
+  int64 seconds = 1;
+  int64 allowed = 2;
+  bool daily = 3;      // the day's window (decides the wording of the refusal)
+}
+message ReserveChatMessageRequest {
+  string user_id = 1;
+  repeated ChatWindow windows = 2;
+}
+message ReserveChatMessageReply {
+  bool ok = 1;
+  string token = 2;        // set when ok: what RefundChatMessage takes
+  int64 retry_after = 3;   // set when not ok
+  bool daily = 4;
+}
+message RefundChatMessageRequest {
+  string user_id = 1;
+  string token = 2;
+}
+message RefundChatMessageReply {
+  bool refunded = 1;
+}
+message ChatUsageRequest {
+  optional string user_id = 1;   // unset: every account that has a counted message
+  repeated ChatWindow windows = 2;
+}
+message ChatWindowUsage {
+  int64 used = 1;
+  double oldest_age_seconds = 2;   // age of the oldest counted message; -1 when none is counted
+}
+message ChatUsageRow {
+  string user_id = 1;
+  repeated ChatWindowUsage windows = 2;   // in the order of the request's windows
+}
+message ChatUsageReply {
+  repeated ChatUsageRow rows = 1;   // with a user_id: exactly one row (zeros when nothing is counted)
 }
