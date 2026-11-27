@@ -10,8 +10,8 @@ services:
     branch: microservices
     dockerfilePath: ./Dockerfile
     dockerContext: .
-    # the orchestrator on 0.0.0.0:$PORT (Render's router); the services stay on localhost
-    dockerCommand: sh -c "python scripts/run_all.py --host 0.0.0.0 --port ${PORT:-10000}"
+    # No dockerCommand: the image's default CMD runs run_all.py with the orchestrator on 0.0.0.0:$PORT (Render's
+    # router) and the services on localhost, through the entrypoint that makes the disk writable.
     healthCheckPath: /api/health
     autoDeploy: true
     disk:

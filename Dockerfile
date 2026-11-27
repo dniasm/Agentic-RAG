@@ -30,4 +30,6 @@ RUN useradd --system --no-create-home app \
 # Starts as root only to give the data folders (a Render disk is mounted root-owned) to `app`, then runs as `app`.
 ENTRYPOINT ["scripts/docker-entrypoint.sh"]
 EXPOSE 8000
-CMD ["python", "-m", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
+# Default: the whole backend in one container (the 4 services on localhost + the orchestrator on $PORT), as Render
+# runs it. docker-compose gives each container its own command instead.
+CMD ["sh", "-c", "exec python scripts/run_all.py --host 0.0.0.0 --port ${PORT:-8000}"]

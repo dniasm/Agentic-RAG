@@ -67,3 +67,40 @@ jobs:
       - name: Tear down
         if: always()
         run: docker compose down -v
+
+  single-container:
+    # The image as Render runs it: one container, the default CMD (all 5 processes via run_all.py on $PORT), the
+    # entrypoint handing a root-owned /data disk to the `app` user, every state path on that disk (render.yaml).
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+      - run: docker build -t agentic-rag .
+      - name: Run like Render
+        run: |
+          docker volume create rag-data
+          docker run -d --name rag -p 10000:10000 -v rag-data:/data \
+            -e PORT=10000 -e SERVICES_DATA_DIR=/data/services -e LIBRARY_DATA_DIR=/data/library \
+            -e DATABASE_PATH=/data/orchestrator/app.db -e QDRANT_PATH=/data/orchestrator/qdrant -e LOG_DIR=/data/logs \
+            -e FORWARDED_ALLOW_IPS='*' -e ALLOWED_HOSTS='localhost,127.0.0.1' \
+            -e GROQ_API_KEY=dummy -e GEMINI_API_KEY=dummy -e VOYAGE_API_KEY=dummy agentic-rag
+      - name: Wait for all services up
+        run: |
+          for i in $(seq 1 36); do
+            if curl -fsS http://localhost:10000/api/health/services 2>/dev/null | grep -Eq '"all_up": *true'; then
+              echo "all services up"; exit 0
+            fi
+            sleep 5
+          done
+          echo "not up after 3 minutes"; docker logs --tail=150 rag; exit 1
+      - name: State is on the disk, written by the app user
+        run: |
+          docker exec rag sh -c 'ls /data/services /data/logs && test "$(stat -c %U /data/services)" = app'
+      - name: Logs on failure
+        if: failure()
+        run: docker logs --tail=200 rag
+      - name: Tear down
+        if: always()
+        run: docker rm -f rag; docker volume rm rag-data || true
