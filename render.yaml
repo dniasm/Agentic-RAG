@@ -7,7 +7,7 @@ services:
     name: agentic-rag
     runtime: docker
     plan: starter
-    branch: microservices
+    branch: main
     dockerfilePath: ./Dockerfile
     dockerContext: .
     # No dockerCommand: the image's default CMD runs run_all.py with the orchestrator on 0.0.0.0:$PORT (Render's
