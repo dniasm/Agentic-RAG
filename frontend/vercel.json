@@ -5,7 +5,7 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "rewrites": [
-    { "source": "/api/:path*", "destination": "https://RENDER_HOST/api/:path*" },
+    { "source": "/api/:path*", "destination": "https://agentic-rag-21hd.onrender.com/api/:path*" },
     { "source": "/((?!api/|assets/).*)", "destination": "/index.html" }
   ]
 }
