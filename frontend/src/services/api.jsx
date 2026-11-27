@@ -58,6 +58,11 @@ export const apiService = {
     return request('/health');
   },
 
+  // A one-time ticket for the WebSocket where the page's host can't carry it (VITE_WS_URL, services/realtime.js).
+  async wsTicket() {
+    return request('/ws/ticket', { method: 'POST' });
+  },
+
   // ---------- auth (the cookie is set and cleared by the server)
   async authState() {
     return request('/auth/state'); // { user | null, signups: 'first' | 'invite' | 'closed' }

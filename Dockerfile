@@ -25,7 +25,9 @@ COPY --from=web /web/dist frontend/dist
 # writable folders for the non-root user: logs, each service's data, the orchestrator's document files
 RUN useradd --system --no-create-home app \
     && mkdir -p /app/logs /data/services /data/library \
-    && chown -R app /app/logs /data
-USER app
+    && chown -R app /app/logs /data \
+    && sed -i 's/\r$//' scripts/docker-entrypoint.sh && chmod +x scripts/docker-entrypoint.sh
+# Starts as root only to give the data folders (a Render disk is mounted root-owned) to `app`, then runs as `app`.
+ENTRYPOINT ["scripts/docker-entrypoint.sh"]
 EXPOSE 8000
 CMD ["python", "-m", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]

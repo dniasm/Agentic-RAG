@@ -32,7 +32,7 @@ jobs:
             run=true
           elif [ -z "$BASE" ] || [ "$BASE" = 0000000000000000000000000000000000000000 ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
             run=true   # new branch / unknown base: be safe
-          elif git diff --name-only "$BASE" "$HEAD" | grep -Eq '^(Dockerfile|docker-compose\.yml|\.dockerignore|requirements[^/]*\.txt|scripts/grpc_healthcheck\.py|services/.*|protos/.*|agentic_rag_proto/.*|\.github/workflows/docker\.yml)$'; then
+          elif git diff --name-only "$BASE" "$HEAD" | grep -Eq '^(Dockerfile|docker-compose\.yml|\.dockerignore|requirements[^/]*\.txt|scripts/grpc_healthcheck\.py|scripts/docker-entrypoint\.sh|render\.yaml|services/.*|protos/.*|agentic_rag_proto/.*|\.github/workflows/docker\.yml)$'; then
             run=true
           fi
           echo "run=$run" >> "$GITHUB_OUTPUT"

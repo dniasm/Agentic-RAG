@@ -3,6 +3,7 @@
     python scripts/run_all.py              # start everything; Ctrl+C stops it all
     python scripts/run_all.py --port 8000  # orchestrator port (default 8000)
     python scripts/run_all.py --reload     # uvicorn --reload for the orchestrator
+    python scripts/run_all.py --host 0.0.0.0 --port $PORT   # a host that routes to the orchestrator (Render)
 
 In order: every target port must be free (else refuse, naming it, exit 1; nothing is killed); each gRPC service
 starts as `python -m services.<name>` and must answer grpc.health.v1 with SERVING before the next one starts; then
@@ -59,20 +60,24 @@ def service_proc(name: str) -> Proc:
     return Proc(name, (sys.executable, "-m", f"services.{name}"), "grpc", port)
 
 
-def orchestrator_proc(port: int = 8000, reload: bool = False) -> Proc:
+def orchestrator_proc(port: int = 8000, reload: bool = False, host: str | None = None) -> Proc:
+    """host: the address uvicorn binds (its own default, 127.0.0.1, when None). The gRPC services never leave localhost."""
     argv = [sys.executable, "-m", "uvicorn", "app:app", "--port", str(port)]
+    if host:
+        argv += ["--host", host]
     if reload:
         argv.append("--reload")
     return Proc("orchestrator", tuple(argv), "http", port, ready_path="/api/health")
 
 
-def build_plan(services: list[str] | None = None, port: int = 8000, reload: bool = False) -> list[Proc]:
+def build_plan(services: list[str] | None = None, port: int = 8000, reload: bool = False,
+               host: str | None = None) -> list[Proc]:
     """The processes in start order: services first, the orchestrator last."""
     names = SERVICES if services is None else services
     unknown = [n for n in names if n not in config.SERVICE_ADDRESSES]
     if unknown:
         raise ValueError(f"unknown service(s): {', '.join(unknown)}")
-    return [*(service_proc(n) for n in names), orchestrator_proc(port, reload)]
+    return [*(service_proc(n) for n in names), orchestrator_proc(port, reload, host)]
 
 
 def port_in_use(port: int) -> bool:
@@ -160,9 +165,10 @@ def run(plan: list[Proc]) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--port", type=int, default=8000, help="orchestrator port")
+    parser.add_argument("--host", default=None, help="address the orchestrator binds (default 127.0.0.1)")
     parser.add_argument("--reload", action="store_true", help="run uvicorn with --reload")
     args = parser.parse_args()
-    return run(build_plan(port=args.port, reload=args.reload))
+    return run(build_plan(port=args.port, reload=args.reload, host=args.host))
 
 
 if __name__ == "__main__":

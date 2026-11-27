@@ -110,3 +110,12 @@ def test_stop_all_stops_the_orchestrator_before_the_services_and_waits_for_each(
     run_all.stop_all(children)
     assert events == ["signal orchestrator", "gone orchestrator", "signal conversation", "gone conversation",
                       "signal user", "gone user"]
+
+
+def test_run_all_binds_the_orchestrator_only_where_told_and_services_stay_local():
+    default = run_all.build_plan()
+    assert "--host" not in default[-1].argv
+    plan = run_all.build_plan(host="0.0.0.0", port=10000)
+    assert plan[-1].argv[-4:] == ("--port", "10000", "--host", "0.0.0.0")
+    assert all("--host" not in p.argv for p in plan[:-1])
+

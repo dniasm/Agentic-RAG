@@ -3,6 +3,9 @@
 
     - Auth is the login cookie the browser sends on the handshake. Closed with 4401 (not signed in) or 1008 (refused):
       no retry; connect() again after signing in.
+    - Where the page's host can't carry the socket (Vercel), makeUrl returns a Promise of the URL (it fetches a one-time
+      ticket over REST first, services/realtime.js), called before EVERY connect and reconnect. A failure with
+      status 401 there means not signed in (no retry); any other failure retries with the usual backoff.
     - Reconnects by itself with a growing, jittered delay. It remembers the last event's seq and asks for everything
       after it (`?after=`); the server answers `resync` when it can't serve that, and listeners get the message and
       read their state over REST.
@@ -30,6 +33,12 @@ export function socketUrl(apiBase, loc, after = null) {
   return after == null ? abs : `${abs}?after=${after}`;
 }
 
+/** The URL of a ticketed socket: `base` (an absolute ws(s) URL, e.g. VITE_WS_URL) + ?ticket=...[&after=seq]. */
+export function ticketUrl(base, ticket, after = null) {
+  const sep = base.includes('?') ? '&' : '?';
+  return `${base}${sep}ticket=${encodeURIComponent(ticket)}${after == null ? '' : `&after=${after}`}`;
+}
+
 export class RealtimeSocket {
   // timers default to globalThis itself: a browser throws "Illegal invocation" when its clearTimeout etc. are
   // called as methods of any other object, which blanked the whole page on mount.
@@ -47,6 +56,7 @@ export class RealtimeSocket {
     this.helloSeq = null;
     this.ws = null;
     this.retry = null;
+    this.opening = false;
     this.watch = null;
     this.lastHeard = 0;
     this.now = () => Date.now();
@@ -55,7 +65,7 @@ export class RealtimeSocket {
   /** Start (or keep) the connection. Safe to call again. */
   connect() {
     this.wanted = true;
-    if (this.ws || this.retry) return;
+    if (this.ws || this.retry || this.opening) return;
     this._open();
   }
 
@@ -65,6 +75,7 @@ export class RealtimeSocket {
     this.lastSeq = null;
     this.t.clearTimeout(this.retry);
     this.retry = null;
+    this.opening = false;   // a URL still being fetched is dropped when it arrives
     this._stopWatch();
     const ws = this.ws;
     this.ws = null;
@@ -98,8 +109,26 @@ export class RealtimeSocket {
 
   _open() {
     this._setState('connecting');
+    let url;
+    try { url = this.makeUrl(this.lastSeq); } catch { this._scheduleRetry(); return; }
+    if (typeof url?.then !== 'function') { this._start(url); return; }
+    const mine = this.opening = {};
+    url.then((u) => {
+      if (this.opening !== mine) return;   // closed meanwhile
+      this.opening = false;
+      this._start(u);
+    }, (err) => {
+      if (this.opening !== mine) return;
+      this.opening = false;
+      if (err?.status === 401) { this.wanted = false; this._setState('denied'); return; }
+      this._setState('closed');
+      if (this.wanted) this._scheduleRetry();
+    });
+  }
+
+  _start(url) {
     let ws;
-    try { ws = new this.WS(this.makeUrl(this.lastSeq)); } catch { this._scheduleRetry(); return; }
+    try { ws = new this.WS(url); } catch { this._scheduleRetry(); return; }
     this.ws = ws;
     this.lastHeard = this.now();
     ws.onmessage = (e) => this._onMessage(e.data);

@@ -5,6 +5,9 @@ Message types: backend/realtime/schema.py.
   * Auth is the HttpOnly login cookie, which the browser sends on the handshake. A page on another site is refused
     (Origin must be this site, a local page or a CORS_ORIGINS entry: the cookie alone would let any site open it).
     No valid login: the socket is accepted and closed with 4401 (so the page can read the code and stops retrying).
+  * Or `?ticket=<t>` instead of the cookie: a single-use, 60 s ticket from POST /api/ws/ticket (backend/realtime/
+    tickets.py), for a page whose host proxies REST but not WebSockets (Vercel in front of Render). It stands for the
+    login that asked for it: logging out closes the socket it opened. Same origin rule.
   * `?after=<seq>` resumes: events published since that seq are replayed first (see backend/realtime/hub.py); a
     cursor too old for the log gets system/resync and the page reads its state over REST.
   * system/heartbeat goes out every HEARTBEAT_SECONDS; the client may send {"type":"ping"} and gets system/pong.
@@ -15,12 +18,14 @@ import json
 import logging
 import time
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, Request, WebSocket, WebSocketDisconnect
 
 from backend import security
+from backend.api.dependencies import get_current_user
 from backend.library import auth
 from backend.realtime import schema
 from backend.realtime.hub import CLOSE, SIGNED_OUT, hub
+from backend.realtime.tickets import TTL_SECONDS, tickets
 from services.common.log import REQUEST_ID_HEADER, set_request_id, valid_request_id
 
 router = APIRouter()
@@ -44,15 +49,28 @@ def origin_allowed(websocket: WebSocket) -> bool:
     return security.allowed_host(host) and security.same_site(origin, host)
 
 
+@router.post("/ws/ticket")
+def ws_ticket(request: Request, user: dict = Depends(get_current_user)):
+    """A ticket to open the WebSocket with (`/api/ws?ticket=`) where the login cookie can't reach it."""
+    return {"ticket": tickets.issue(user["id"], request.cookies.get(auth.COOKIE) or ""),
+            "expires_in": int(TTL_SECONDS)}
+
+
 @router.websocket("/ws")
-async def session_socket(websocket: WebSocket, after: int | None = None):
+async def session_socket(websocket: WebSocket, after: int | None = None, ticket: str | None = None):
     rid = set_request_id(valid_request_id(websocket.headers.get(REQUEST_ID_HEADER)))
     if not origin_allowed(websocket):
         log.warning("WS refused: origin %s", websocket.headers.get("origin"))
         await websocket.close(code=POLICY_CLOSE)
         return
+    token = websocket.cookies.get(auth.COOKIE)
+    redeemed = tickets.redeem(ticket) if ticket is not None else None
+    if ticket is not None:   # a bad, used or expired ticket is not signed in, whatever cookie came with it
+        token = redeemed[1] if redeemed else None
     try:
-        user = auth.user_for(websocket.cookies.get(auth.COOKIE))
+        user = auth.user_for(token)
+        if user and redeemed and user["id"] != redeemed[0]:
+            user = None
         unavailable = False
     except auth.UserServiceDown:   # can't tell who this is: not signed in, and the browser is told to try again later
         user, unavailable = None, True
@@ -66,7 +84,7 @@ async def session_socket(websocket: WebSocket, after: int | None = None):
         await websocket.close(code=UNAUTHENTICATED_CLOSE, reason="Please log in.")
         return
     uid = user["id"]
-    queue, backlog, resync, latest = hub.attach(uid, after, websocket.cookies.get(auth.COOKIE))
+    queue, backlog, resync, latest = hub.attach(uid, after, token)
     started = time.perf_counter()
     log.info("WS open user=%s after=%s replay=%d resync=%s", uid, after, len(backlog), resync)
     sent = len(backlog)

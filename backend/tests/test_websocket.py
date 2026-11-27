@@ -241,3 +241,109 @@ def test_close_all_ends_the_sockets_with_a_normal_close(env):
         with pytest.raises(WebSocketDisconnect) as e:
             sock.receive_json()
     assert e.value.code == ws.GOING_AWAY_CLOSE
+
+
+# ---- tickets: the socket for a page whose host can't carry the cookie (Vercel in front of Render)
+
+from backend.realtime.tickets import TicketStore  # noqa: E402
+
+
+@pytest.fixture
+def ticketed(env, monkeypatch):
+    client, hub = env
+    fresh = TicketStore()
+    monkeypatch.setattr(ws, "tickets", fresh)
+    return client, hub, fresh
+
+
+def test_a_ticket_needs_a_login(ticketed):
+    client, _, _ = ticketed
+    assert client.post("/ws/ticket").status_code == 401
+    assert client.post("/ws/ticket", headers=cookie("forged")).status_code == 401
+    body = client.post("/ws/ticket", headers=cookie("tok-u1")).json()
+    assert body["expires_in"] == 60 and len(body["ticket"]) >= 40
+
+
+def test_a_ticket_opens_one_socket_without_the_cookie_and_only_once(ticketed):
+    client, hub, _ = ticketed
+    t = client.post("/ws/ticket", headers=cookie("tok-u1")).json()["ticket"]
+    with client.websocket_connect(f"/ws?ticket={t}") as sock:
+        assert sock.receive_json()["data"]["user"]["id"] == "u1"
+    with pytest.raises(WebSocketDisconnect) as e:
+        with client.websocket_connect(f"/ws?ticket={t}") as sock:
+            sock.receive_json()
+    assert e.value.code == ws.UNAUTHENTICATED_CLOSE
+
+
+def test_a_wrong_or_missing_ticket_is_not_signed_in_even_with_a_cookie(ticketed):
+    client, _, _ = ticketed
+    for query in ("ticket=nope", "ticket="):
+        with pytest.raises(WebSocketDisconnect) as e:
+            with client.websocket_connect(f"/ws?{query}", headers=cookie("tok-u1")) as sock:
+                sock.receive_json()
+        assert e.value.code == ws.UNAUTHENTICATED_CLOSE
+
+
+def test_an_expired_ticket_is_refused():
+    now = [0.0]
+    store = TicketStore(ttl=60, clock=lambda: now[0])
+    t = store.issue("u1", "tok-u1")
+    now[0] = 59
+    assert store.redeem(t) == ("u1", "tok-u1")
+    t = store.issue("u1", "tok-u1")
+    now[0] = 59 + 61
+    assert store.redeem(t) is None
+
+
+def test_a_ticket_stands_for_its_login_session_and_a_dead_login_gets_nothing(ticketed):
+    client, hub, store = ticketed
+    t = store.issue("u2", "tok-u1")               # bound to u2, but the login behind it is u1's
+    with pytest.raises(WebSocketDisconnect) as e:
+        with client.websocket_connect(f"/ws?ticket={t}") as sock:
+            sock.receive_json()
+    assert e.value.code == ws.UNAUTHENTICATED_CLOSE
+    t = store.issue("u1", "tok-ended")            # the login ended after the ticket was issued
+    with pytest.raises(WebSocketDisconnect):
+        with client.websocket_connect(f"/ws?ticket={t}") as sock:
+            sock.receive_json()
+
+
+def test_logout_closes_the_socket_a_ticket_opened(ticketed):
+    client, hub, _ = ticketed
+    t = client.post("/ws/ticket", headers=cookie("tok-u1")).json()["ticket"]
+    with client.websocket_connect(f"/ws?ticket={t}") as sock:
+        sock.receive_json()
+        assert hub.close_session("u1", "tok-u1") == 1
+        with pytest.raises(WebSocketDisconnect) as e:
+            sock.receive_json()
+        assert e.value.code == ws.UNAUTHENTICATED_CLOSE
+    t = client.post("/ws/ticket", headers=cookie("tok-u1")).json()["ticket"]
+    with client.websocket_connect(f"/ws?ticket={t}") as sock:   # another login's close leaves it open
+        sock.receive_json()
+        assert hub.close_session("u1", "tok-other") == 0
+
+
+def test_the_vercel_origin_is_let_in_only_when_cors_origins_lists_it(ticketed, monkeypatch):
+    from backend.config.settings import settings
+    client, hub, _ = ticketed
+    headers = {"origin": "https://app.vercel.app", "host": "api.onrender.com"}
+    monkeypatch.setattr(settings, "allowed_hosts", "api.onrender.com")
+    monkeypatch.setattr(settings, "cors_origins", "http://localhost:5173")
+    t = client.post("/ws/ticket", headers=cookie("tok-u1")).json()["ticket"]
+    with pytest.raises(WebSocketDisconnect) as e:
+        with client.websocket_connect(f"/ws?ticket={t}", headers=headers) as sock:
+            sock.receive_json()
+    assert e.value.code == ws.POLICY_CLOSE
+    monkeypatch.setattr(settings, "cors_origins", "http://localhost:5173,https://app.vercel.app")
+    t = client.post("/ws/ticket", headers=cookie("tok-u1")).json()["ticket"]
+    with client.websocket_connect(f"/ws?ticket={t}", headers=headers) as sock:
+        assert sock.receive_json()["type"] == "hello"
+
+
+def test_the_store_caps_what_one_account_can_hold():
+    store = TicketStore()
+    first = store.issue("u1", "t")
+    for _ in range(25):
+        store.issue("u1", "t")
+    assert store.redeem(first) is None
+

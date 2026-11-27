@@ -250,6 +250,7 @@ e.g. `python -m scripts.experiments.test_gate`.
 ```bash
 python scripts/run_all.py              # the four services, then the orchestrator on :8000; Ctrl+C stops all of them
 python scripts/run_all.py --port 8001  # another orchestrator port
+python scripts/run_all.py --host 0.0.0.0 --port $PORT   # bind the orchestrator beyond localhost (the services never are)
 ```
 
 It refuses to start if a port is taken (nothing is killed), starts each service only when the one before answers
@@ -276,6 +277,46 @@ refuses to start without `GROQ_API_KEY` and `GEMINI_API_KEY` (the Docker CI job 
 model). Moving data from an older install into the volumes means running the migrations below against the published
 service ports, which compose does not publish; run them before switching to Docker, or add `ports:` to the services.
 
+### Deploying (Render + Vercel)
+
+The backend (four gRPC services + orchestrator) runs as ONE Docker web service on Render with one persistent disk
+(`/data`: the services' databases and Qdrant folders, document files, logs); the built frontend runs on Vercel, which
+forwards `/api/*` to Render, so the login cookie stays first-party on the Vercel domain (`SameSite=Lax`, `Secure`).
+Vercel cannot proxy WebSockets, so the page asks `POST /api/ws/ticket` (over that proxy) for a one-time 60-second
+ticket and opens `wss://<render>/api/ws?ticket=...` directly; logging out still closes that socket. The Render service
+also serves the same site at its own `onrender.com` address, with the plain cookie path, if you want to skip Vercel.
+It starts with no data, and costs Render's *Starter* plan plus 1 GB of disk.
+
+1. **Render, backend.** dashboard.render.com > **New** > **Blueprint** > connect the GitHub repo > branch
+   `microservices` > Render reads `render.yaml`. Fill the prompted variables (the rest are set by the file):
+   `GROQ_API_KEY`, `GEMINI_API_KEY` (both required), optional `GROQ_API_KEY_2..4`, `GEMINI_API_KEY_2..4`,
+   `VOYAGE_API_KEY` (reranking and memory), `TAVILY_API_KEY`, `BOT_CONTACT`; `SIGNUP_CODE` (invite code for every
+   sign-up after the first; empty = closed), `ADMIN_USERNAMES` (comma-separated accounts that get the Admin page);
+   `CORS_ORIGINS`: type `https://placeholder.invalid` for now. **Apply**. The first build takes several minutes; the
+   service is live when `https://<name>.onrender.com/api/health` answers. Note that hostname.
+2. **Vercel, frontend.** Edit `frontend/vercel.json`: replace `RENDER_HOST` with the hostname from step 1
+   (`<name>.onrender.com`, no `https://`; Vercel cannot read environment variables in a rewrite destination), commit,
+   push to `microservices`. vercel.com > **Add New** > **Project** > import the repo > **Root Directory** `frontend`
+   (Vite is detected; build `npm run build`, output `dist` come from `vercel.json`) > **Environment Variables**:
+   `VITE_WS_URL` = `wss://<name>.onrender.com/api/ws` > **Deploy**. Settings > Git > **Production Branch**:
+   `microservices` (or merge it to `main`). Note the production domain (`https://<project>.vercel.app`).
+3. **Render again.** Service > **Environment**: `CORS_ORIGINS` = `https://<project>.vercel.app` (comma-separate a custom
+   domain; no trailing slash). It is what lets the browser's `Origin` through the cross-site check on every change
+   (POST/PUT/DELETE arrive from the Vercel origin) and on the WebSocket. `ALLOWED_HOSTS` is already
+   `*.onrender.com`; set it to your exact `<name>.onrender.com` to tighten it (add a custom API domain if you use one).
+   **Save, rebuild and deploy**.
+4. **First account.** Open the Vercel URL: the first sign-up needs no code and is yours; later ones need `SIGNUP_CODE`.
+   To open the Admin page, put that username in `ADMIN_USERNAMES` (after it exists) and redeploy.
+
+Behind the two proxies: uvicorn trusts `X-Forwarded-*` (`FORWARDED_ALLOW_IPS=*`, so Render's `Host`/protocol are right
+and the cookie gets `Secure`); the login limiter counts per username as well as per address, because the address
+comes from a forwarded header. Vercel's limits that matter here: a proxied (rewritten) request may take at most 120 s
+(chat answers arrive over the socket, the POST returns 202 at once), and its docs state no body limit for rewrites to
+an external origin (the 4.5 MB limit is for Vercel Functions). Direct-to-Render uploads are therefore not
+built; if a 20 MB upload is ever refused through Vercel, upload from the `onrender.com` address instead. Starter's disk
+is single-instance: don't scale beyond one instance (embedded Qdrant and the in-memory hub assume one process).
+Render redeploys restart the service; data on `/data` survives.
+
 ## WebSocket
 
 Everything the server pushes to the browser goes over **one WebSocket per tab**, `GET /api/ws`; the browser asks for
@@ -283,7 +324,8 @@ things over REST. A chat answer is started with `POST /api/chat/stream` (returns
 on the socket tagged with the `turn_id` the browser put on the POST.
 
 - **Auth**: the HttpOnly login cookie, sent by the browser on the handshake (same origin through the Vite proxy,
-  `ws: true`). A page on another site is refused (close 1008); no valid login is closed with 4401 and the page stops
+  `ws: true`), or `?ticket=` from `POST /api/ws/ticket` (single use, 60 s, bound to the login; used when the frontend
+  has `VITE_WS_URL`, see Deploying). A page on another site is refused (close 1008); no valid login is closed with 4401 and the page stops
   retrying.
 - **Messages** (`backend/realtime/schema.py`), each `{seq, channel, type, request_id, data, ts}`: `system`
   `hello | resync | heartbeat | pong`; `chat` `meta | status | step | draft | final | error`; `queue`

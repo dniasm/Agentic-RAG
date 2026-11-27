@@ -276,3 +276,35 @@ def test_a_chat_opens_at_its_latest_message_once_the_messages_are_there():
           switched: j({{ key: 'c2', positionedFor: 'c1', messageCount: 4 }}),
         }}));""")
     assert result == {"loading": False, "arrived": True, "streaming": False, "switched": True}
+
+
+def test_a_ticketed_socket_fetches_a_ticket_before_every_connect_and_a_plain_one_does_not():
+    url = (SRC / "lib" / "realtimeSocket.js").as_uri()
+    result = node(FAKE_WS + f"""
+        const m = await import({json.dumps(url)});
+        let n = 0, fail = null;
+        const s = new m.RealtimeSocket({{ makeUrl: async (a) => {{
+            if (fail) throw fail;
+            return m.ticketUrl('wss://b.example/api/ws', 't' + (++n), a); }},
+          WS: FakeWS, timers: fakeTimers, random: () => 0.5 }});
+        s.connect(); s.connect();                       // twice: still one fetch
+        const before = sockets.length;                  // nothing opens until the ticket is there
+        await Promise.resolve(); await Promise.resolve();
+        const first = sockets[0].url;
+        sockets[0].say(hello(4)); sockets[0].say(ev(5, 'queue', 'changed', {{}}));
+        sockets[0].drop();                              // dropped: the retry fetches a NEW ticket
+        timers.pop().fn(); await Promise.resolve(); await Promise.resolve();
+        const second = sockets[1].url;
+        sockets[1].say(hello(5)); fail = Object.assign(new Error('x'), {{ status: 401 }});
+        sockets[1].drop(); timers.pop().fn(); await Promise.resolve(); await Promise.resolve();
+        const denied = s.state;                         // the ticket call said not signed in: no retry
+        const plain = new m.RealtimeSocket({{ makeUrl: () => 'ws://plain', WS: FakeWS, timers: fakeTimers }});
+        plain.connect();                                // the unchanged path opens at once
+        console.log(JSON.stringify({{ before, first, second, denied, retries: timers.length,
+          plainUrl: sockets[sockets.length - 1].url, plainSync: sockets.length }}));""")
+    assert result["before"] == 0
+    assert result["first"] == "wss://b.example/api/ws?ticket=t1"
+    assert result["second"] == "wss://b.example/api/ws?ticket=t2&after=5"
+    assert result["denied"] == "denied" and result["retries"] == 0
+    assert result["plainUrl"] == "ws://plain" and result["plainSync"] == 3
+
