@@ -22,12 +22,9 @@ def _indexing(user_id: str) -> dict:
     out = {"allowed": allowed if allowed > 0 else None, "used": used, "left": left,
            "day": embed_budget.provider_day(),
            "resets_at": gemini.next_day_start().astimezone(timezone.utc).isoformat(timespec="seconds")}
-    day = embed_budget.site_day()               # the site's share for indexing, as embed_budget.check() applies it
-    limit = embed_budget.index_limit(day)
-    if limit is not None:
-        site_left = max(min(limit - embed_budget.used(), day["left"]), 0)
-        if (left is None and site_left <= 0) or (left is not None and site_left < left):
-            out["left"], out["site_limited"] = site_left, True
+    can = embed_budget.allowance(user_id)     # the lower of this account's left and the site's (what check() accepts)
+    if can is not None and (left is None and can <= 0 or left is not None and can < left):
+        out["left"], out["site_limited"] = can, True
     return out
 
 

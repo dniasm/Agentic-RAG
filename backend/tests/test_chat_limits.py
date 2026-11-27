@@ -187,3 +187,24 @@ def test_usage_me_for_an_admin_says_unlimited(usage_client, monkeypatch):
     body = client.get("/usage/me").json()
     assert body["unlimited"] is True and body["chat"] == []
     assert body["indexing"]["allowed"] is None and body["indexing"]["left"] is None and body["indexing"]["used"] == 7
+
+
+def test_admin_ids_are_asked_from_the_user_service_at_most_once_a_minute(monkeypatch):
+    from backend import usage_limits
+    from backend.library import auth
+
+    calls = []
+    users = [{"id": "a1", "username": "boss"}, {"id": "u1", "username": "someone"}]
+    monkeypatch.setattr(auth, "list_users", lambda: calls.append(1) or users)
+    monkeypatch.setattr(auth, "is_admin_name", lambda name: name == "boss")
+    usage_limits.forget_admins()
+    try:
+        assert [usage_limits.is_unlimited(u) for u in ("a1", "u1", "a1", "nobody")] == [True, False, True, False]
+        assert len(calls) == 1                                   # one ListUsers for all four checks
+        monkeypatch.setattr(usage_limits, "ADMIN_IDS_TTL", -1.0)  # expired: asks again
+        usage_limits.is_unlimited("a1")
+        assert len(calls) == 2
+        monkeypatch.setattr(auth, "list_users", lambda: (_ for _ in ()).throw(RuntimeError("down")))
+        assert usage_limits.is_unlimited("a1") is False          # User service down: treated as a normal account
+    finally:
+        usage_limits.forget_admins()

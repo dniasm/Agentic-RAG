@@ -3,14 +3,39 @@ listed in ADMIN_USERNAMES are never limited per account. (The site's own Gemini 
 
 Read by /api/usage/me, the chat message allowance (api/routes/chat.py) and the per-account indexing check
 (library/embed_budget.check)."""
+import threading
+import time
+
 from backend.config.settings import settings
+
+ADMIN_IDS_TTL = 60.0   # seconds the admin account ids are reused before the User service is asked again
+_admins: tuple[float, frozenset[str]] | None = None
+_admins_lock = threading.Lock()
+
+
+def _admin_ids() -> frozenset[str]:
+    """Ids of the admin accounts, from the User service at most once a minute (every chat message and indexing
+    check asks)."""
+    global _admins
+    with _admins_lock:
+        if _admins is None or time.monotonic() - _admins[0] > ADMIN_IDS_TTL:
+            from backend.library import auth
+            _admins = (time.monotonic(),
+                       frozenset(u["id"] for u in auth.list_users() if auth.is_admin_name(u["username"])))
+        return _admins[1]
+
+
+def forget_admins() -> None:
+    """Drop the cached ids (tests)."""
+    global _admins
+    with _admins_lock:
+        _admins = None
 
 
 def is_unlimited(user_id: str) -> bool:
     """True for an admin account. Anything unknown or failing counts as a normal (limited) account."""
     try:
-        from backend.library import auth
-        return any(u["id"] == user_id and auth.is_admin_name(u["username"]) for u in auth.list_users())
+        return user_id in _admin_ids()
     except Exception:
         return False
 
