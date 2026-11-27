@@ -6,7 +6,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import '../index.css';
-import { apiService, auth } from '../services/api';
+import { apiService } from '../services/api';
 import * as fx from './fixtures';
 
 const params = new URLSearchParams(window.location.search);
@@ -19,12 +19,17 @@ if (['dark', 'light'].includes(params.get('theme'))) {
 const empty = state === 'empty';
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
-auth.setToken(state === 'loggedout' || state === 'offline' ? '' : 'preview');
-if (state === 'loggedout' || state === 'offline') auth.clear();
+// Signed in or not is the login cookie now (no token in the page): logged out / offline is me() refusing.
+const signedOut = state === 'loggedout' || state === 'offline';
 
 Object.assign(apiService, {
   checkHealth: async () => { if (state === 'offline') { const e = new Error('offline'); e.status = 0; throw e; } return { status: 'ok' }; },
-  me: async () => fx.user,
+  me: async () => { if (signedOut) { const e = new Error('Not signed in'); e.status = 401; throw e; } return fx.user; },
+  authState: async () => {
+    if (state === 'offline') { const e = new Error('offline'); e.status = 0; throw e; }
+    return { user: signedOut ? null : fx.user, signups: 'invite' };
+  },
+  getQueue: async () => ({ batches: [] }),
   login: async () => fx.user,
   register: async () => fx.user,
   getConversations: async () => (empty ? [] : fx.conversations),
