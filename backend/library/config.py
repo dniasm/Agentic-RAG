@@ -12,6 +12,7 @@ DATA_DIR = Path(settings.library_data_dir).resolve()
 LIBRARY_DIR = DATA_DIR / "library"        # the stored files, named after their current title
 OWNER = "library"   # the owner of documents from before accounts existed (and of tests); users are their own ids
 SIGNUP_CODE = settings.signup_code   # needed for every sign-up after the first; empty: closed
+SIGNUP_CODE_FOR_FIRST = settings.signup_code_for_first   # the first sign-up needs it too (wipeable storage)
 
 MAX_UPLOAD_MB = 20
 TITLE_SOURCE_CHARS = 6000   # opening text the title writer reads

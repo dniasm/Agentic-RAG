@@ -6,7 +6,9 @@ services:
   - type: web
     name: agentic-rag
     runtime: docker
-    plan: starter
+    # FREE plan, demo only: no persistent disk, so /data is wiped on every restart, redeploy and wake from sleep
+    # (free services sleep after 15 min idle). For data that lasts: plan: starter + the disk below.
+    plan: free
     branch: main
     dockerfilePath: ./Dockerfile
     dockerContext: .
@@ -14,10 +16,10 @@ services:
     # router) and the services on localhost, through the entrypoint that makes the disk writable.
     healthCheckPath: /api/health
     autoDeploy: true
-    disk:
-      name: agentic-rag-data
-      mountPath: /data
-      sizeGB: 1
+    # disk:                     # paid plans only: uncomment with plan: starter to keep data
+    #   name: agentic-rag-data
+    #   mountPath: /data
+    #   sizeGB: 1
     envVars:
       # --- where state lives: everything on the disk ---
       - key: SERVICES_DATA_DIR    # each service's SQLite file and Qdrant folders
@@ -63,6 +65,8 @@ services:
       # --- accounts ---
       - key: SIGNUP_CODE          # invite code for every sign-up after the first (empty: sign-ups closed)
         sync: false
+      - key: SIGNUP_CODE_FOR_FIRST  # storage is wiped on the free plan: even the first account needs the code
+        value: "true"
       - key: ADMIN_USERNAMES      # comma-separated accounts that can open the Admin page
         sync: false
       - key: BOT_CONTACT          # contact URL or email Wikimedia asks automated clients to send

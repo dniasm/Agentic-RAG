@@ -73,7 +73,7 @@ def _invite_code() -> str:
 
 def signups_open() -> str:
     """'first' (no account yet), 'invite' (a code is needed) or 'closed'."""
-    if user_count() == 0:
+    if user_count() == 0 and not (config.SIGNUP_CODE_FOR_FIRST and _invite_code()):
         return "first"
     return "invite" if _invite_code() else "closed"
 

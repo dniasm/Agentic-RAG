@@ -63,6 +63,18 @@ def test_without_a_code_sign_ups_close_after_the_first(signed_in, monkeypatch):
     assert sign_up(browser(), "late", "anything").status_code == 403
 
 
+def test_the_first_account_can_be_made_to_need_the_code(invite, monkeypatch):
+    """On storage that can be wiped (a free host), the first sign-up must not be free: whoever came first after a
+    wipe could take an admin username."""
+    monkeypatch.setattr(config, "SIGNUP_CODE_FOR_FIRST", True)
+    assert auth.user_count() == 0
+    assert browser().get("/api/auth/state").json()["signups"] == "invite"
+    assert sign_up(browser(), "asmin_first").status_code == 403
+    assert sign_up(browser(), "asmin_first", INVITE).status_code == 200
+    monkeypatch.setattr(config, "SIGNUP_CODE_FOR_FIRST", False)   # off (the default): the first is free again
+    assert auth.user_count() == 1
+
+
 def test_bad_usernames_and_short_passwords_are_refused():
     c = browser()
     assert c.post("/api/auth/signup", json={"username": "a", "password": "correct horse"}).status_code == 400
