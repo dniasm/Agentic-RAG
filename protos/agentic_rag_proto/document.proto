@@ -56,6 +56,8 @@ service DocumentService {
   // ---- the library catalog (document.db). One call per atomic operation; free-form JSON columns are JSON strings.
   // Documents
   rpc AddCatalogDocument(AddCatalogDocumentRequest) returns (CatalogDocument);   // status 'processing'
+  rpc LinkUpload(LinkUploadRequest) returns (DeleteReply);   // the file was uploaded (again) in this chat
+  rpc ListConversationDocuments(ListConversationDocumentsRequest) returns (CatalogDocumentList);   // newest link first
   rpc GetCatalogDocument(CatalogDocumentRef) returns (OptionalCatalogDocument);
   rpc FindCatalogDocumentByHash(FindByHashRequest) returns (OptionalCatalogDocument);
   rpc ListCatalogDocuments(ListCatalogDocumentsRequest) returns (CatalogDocumentList);
@@ -298,7 +300,7 @@ message CatalogDocument {
   optional string error = 15;
   string created_at = 16;
   string updated_at = 17;
-  optional string conversation_id = 18;   // the chat it was uploaded in (unset: library upload)
+  reserved 18;                        // conversation_id: one chat per file; now document_uploads (many chats)
 }
 message OptionalCatalogDocument { optional CatalogDocument document = 1; }
 message CatalogDocumentList { repeated CatalogDocument documents = 1; }
@@ -311,7 +313,15 @@ message AddCatalogDocumentRequest {
   string sha256 = 5;
   int64 size_bytes = 6;
   string owner = 7;                   // empty: "library"
-  optional string conversation_id = 8;
+  optional string conversation_id = 8;   // also records the upload link (a file can be in many chats)
+}
+message LinkUploadRequest {
+  string doc_id = 1;
+  string conversation_id = 2;
+}
+message ListConversationDocumentsRequest {
+  string owner = 1;                   // empty: "library"
+  string conversation_id = 2;
 }
 message FindByHashRequest {
   string sha256 = 1;

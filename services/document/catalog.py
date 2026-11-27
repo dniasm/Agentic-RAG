@@ -11,12 +11,12 @@ from services.document import db
 OWNER = "library"   # the owner of documents, chats and batches from before accounts existed
 
 DOCUMENT_FIELDS = {"title", "original_name", "file_name", "ext", "sha256", "original_sha256", "size_bytes", "pages",
-                   "chunks", "summary", "keywords", "owner", "status", "error", "conversation_id"}
+                   "chunks", "summary", "keywords", "owner", "status", "error"}
 TASK_FIELDS = {"status", "reply", "actions", "tokens", "started_at", "finished_at", "checkpoint"}
 
 
-def now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+def now(timespec: str = "seconds") -> str:
+    return datetime.now(timezone.utc).isoformat(timespec=timespec)
 
 
 def _doc(row) -> dict | None:
@@ -24,6 +24,7 @@ def _doc(row) -> dict | None:
         return None
     d = dict(row)
     d["keywords"] = json.loads(d["keywords"] or "[]")
+    d.pop("conversation_id", None)   # the old one-chat column: links are in document_uploads
     return d
 
 
@@ -64,9 +65,36 @@ def add_document(*, title: str, original_name: str, file_name: str, ext: str, sh
     with db.shared().tx() as c:
         c.execute(
             "INSERT INTO documents (id, title, original_name, file_name, ext, sha256, original_sha256, size_bytes, "
-            "owner, status, created_at, updated_at, conversation_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'processing', ?, ?, ?)",
-            (doc_id, title, original_name, file_name, ext, sha256, sha256, size_bytes, owner, t, t, conversation_id))
+            "owner, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'processing', ?, ?)",
+            (doc_id, title, original_name, file_name, ext, sha256, sha256, size_bytes, owner, t, t))
+        if conversation_id:
+            _link(c, doc_id, conversation_id, owner)
         return _doc(c.execute("SELECT * FROM documents WHERE id = ?", (doc_id,)).fetchone())
+
+
+def _link(c, doc_id: str, conversation_id: str, owner: str) -> None:
+    c.execute("INSERT INTO document_uploads (doc_id, conversation_id, owner, uploaded_at) VALUES (?, ?, ?, ?) "
+              "ON CONFLICT (doc_id, conversation_id) DO UPDATE SET uploaded_at = excluded.uploaded_at",
+              (doc_id, conversation_id, owner, now(timespec="microseconds")))
+
+
+def link_upload(doc_id: str, conversation_id: str) -> None:
+    """Record that the file was uploaded in this chat (again: the link's time moves up). Other chats keep theirs."""
+    if not conversation_id.strip():
+        raise ValueError("a required id is empty")
+    with db.shared().tx() as c:
+        row = c.execute("SELECT owner FROM documents WHERE id = ?", (doc_id,)).fetchone()
+        if row is None:
+            raise ValueError(f"no document {doc_id}")
+        _link(c, doc_id, conversation_id, row["owner"])
+
+
+def conversation_documents(owner: str, conversation_id: str) -> list[dict]:
+    """The owner's documents uploaded in this chat, the most recent upload first."""
+    return [_doc(r) for r in _read(
+        "SELECT d.* FROM document_uploads u JOIN documents d ON d.id = u.doc_id "
+        "WHERE u.conversation_id = ? AND d.owner = ? ORDER BY u.uploaded_at DESC, u.rowid DESC",
+        (conversation_id, owner))]
 
 
 def update_document(doc_id: str, fields: dict, rename: tuple | None = None) -> None:
@@ -104,6 +132,7 @@ def delete_document(doc_id: str) -> None:
         c.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
         c.execute("DELETE FROM renames WHERE doc_id = ?", (doc_id,))
         c.execute("DELETE FROM edits WHERE doc_id = ?", (doc_id,))
+        c.execute("DELETE FROM document_uploads WHERE doc_id = ?", (doc_id,))
 
 
 def _record_rename(c, doc_id: str, old_title: str, new_title: str, reason: str) -> None:

@@ -41,9 +41,8 @@ def upload_document(file: UploadFile = File(...), conversation_id: str | None = 
     except library.LibraryError as e:
         raise HTTPException(status_code=400, detail=str(e))
     if duplicate:
-        if conversation_id and doc.get("conversation_id") != conversation_id:   # uploaded again here: it belongs to this chat now
-            catalog.update_document(doc["id"], conversation_id=conversation_id)
-            doc = catalog.get_document(doc["id"]) or doc
+        if conversation_id:   # uploaded again here: it is in this chat too, and the latest upload in it
+            catalog.link_upload(doc["id"], conversation_id)
         status = "duplicate" if doc["status"] == "indexed" else "processing"
         return UploadOut(status=status, filename=doc["original_name"], chunks_indexed=doc["chunks"] or 0,
                          document=_out(doc))

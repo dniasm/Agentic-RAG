@@ -93,6 +93,14 @@ CREATE TABLE IF NOT EXISTS undone_edits (
     undo_order INTEGER NOT NULL DEFAULT 0   -- counts up with each undo: undone_at has whole seconds, and id is the
                                             -- edit's own (an older edit undone after a newer one has the lower id)
 );
+CREATE TABLE IF NOT EXISTS document_uploads (   -- which chats a file was uploaded in (one file, many chats)
+    doc_id TEXT NOT NULL,
+    conversation_id TEXT NOT NULL,
+    owner TEXT NOT NULL,
+    uploaded_at TEXT NOT NULL,        -- the latest upload of this file in this chat
+    UNIQUE (doc_id, conversation_id)
+);
+CREATE INDEX IF NOT EXISTS uploads_conversation ON document_uploads (conversation_id, uploaded_at);
 CREATE INDEX IF NOT EXISTS documents_owner ON documents (owner);
 CREATE INDEX IF NOT EXISTS renames_doc ON renames (doc_id);
 CREATE INDEX IF NOT EXISTS edits_doc ON edits (doc_id);
@@ -109,6 +117,9 @@ def _migrate(conn) -> None:
     columns = {row[1] for row in conn.execute("PRAGMA table_info(documents)")}
     if "conversation_id" not in columns:
         conn.execute("ALTER TABLE documents ADD COLUMN conversation_id TEXT")   # the chat a file was uploaded in
+    # documents.conversation_id (one chat per file) is no longer read or written: its values become links, once each
+    conn.execute("INSERT OR IGNORE INTO document_uploads (doc_id, conversation_id, owner, uploaded_at) "
+                 "SELECT id, conversation_id, owner, created_at FROM documents WHERE conversation_id IS NOT NULL")
 
 
 def open_db(path=None) -> ServiceDB:

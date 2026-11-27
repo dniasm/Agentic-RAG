@@ -94,6 +94,16 @@ class DocumentServiceStub:
                 request_serializer=agentic__rag__proto_dot_document__pb2.AddCatalogDocumentRequest.SerializeToString,
                 response_deserializer=agentic__rag__proto_dot_document__pb2.CatalogDocument.FromString,
                 _registered_method=True)
+        self.LinkUpload = channel.unary_unary(
+                '/agentic_rag.v1.DocumentService/LinkUpload',
+                request_serializer=agentic__rag__proto_dot_document__pb2.LinkUploadRequest.SerializeToString,
+                response_deserializer=agentic__rag__proto_dot_document__pb2.DeleteReply.FromString,
+                _registered_method=True)
+        self.ListConversationDocuments = channel.unary_unary(
+                '/agentic_rag.v1.DocumentService/ListConversationDocuments',
+                request_serializer=agentic__rag__proto_dot_document__pb2.ListConversationDocumentsRequest.SerializeToString,
+                response_deserializer=agentic__rag__proto_dot_document__pb2.CatalogDocumentList.FromString,
+                _registered_method=True)
         self.GetCatalogDocument = channel.unary_unary(
                 '/agentic_rag.v1.DocumentService/GetCatalogDocument',
                 request_serializer=agentic__rag__proto_dot_document__pb2.CatalogDocumentRef.SerializeToString,
@@ -370,6 +380,20 @@ class DocumentServiceServicer:
         """---- the library catalog (document.db). One call per atomic operation; free-form JSON columns are JSON strings.
         Documents
         status 'processing'
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def LinkUpload(self, request, context):
+        """the file was uploaded (again) in this chat
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListConversationDocuments(self, request, context):
+        """newest link first
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -673,6 +697,16 @@ def add_DocumentServiceServicer_to_server(servicer, server):
                     servicer.AddCatalogDocument,
                     request_deserializer=agentic__rag__proto_dot_document__pb2.AddCatalogDocumentRequest.FromString,
                     response_serializer=agentic__rag__proto_dot_document__pb2.CatalogDocument.SerializeToString,
+            ),
+            'LinkUpload': grpc.unary_unary_rpc_method_handler(
+                    servicer.LinkUpload,
+                    request_deserializer=agentic__rag__proto_dot_document__pb2.LinkUploadRequest.FromString,
+                    response_serializer=agentic__rag__proto_dot_document__pb2.DeleteReply.SerializeToString,
+            ),
+            'ListConversationDocuments': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListConversationDocuments,
+                    request_deserializer=agentic__rag__proto_dot_document__pb2.ListConversationDocumentsRequest.FromString,
+                    response_serializer=agentic__rag__proto_dot_document__pb2.CatalogDocumentList.SerializeToString,
             ),
             'GetCatalogDocument': grpc.unary_unary_rpc_method_handler(
                     servicer.GetCatalogDocument,
@@ -1184,6 +1218,60 @@ class DocumentService:
             '/agentic_rag.v1.DocumentService/AddCatalogDocument',
             agentic__rag__proto_dot_document__pb2.AddCatalogDocumentRequest.SerializeToString,
             agentic__rag__proto_dot_document__pb2.CatalogDocument.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def LinkUpload(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/agentic_rag.v1.DocumentService/LinkUpload',
+            agentic__rag__proto_dot_document__pb2.LinkUploadRequest.SerializeToString,
+            agentic__rag__proto_dot_document__pb2.DeleteReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListConversationDocuments(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/agentic_rag.v1.DocumentService/ListConversationDocuments',
+            agentic__rag__proto_dot_document__pb2.ListConversationDocumentsRequest.SerializeToString,
+            agentic__rag__proto_dot_document__pb2.CatalogDocumentList.FromString,
             options,
             channel_credentials,
             insecure,

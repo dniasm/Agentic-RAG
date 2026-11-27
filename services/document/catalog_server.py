@@ -23,7 +23,7 @@ def document_pb(d: dict) -> pb.CatalogDocument:
         sha256=d["sha256"], size_bytes=d["size_bytes"], summary=d["summary"], owner=d["owner"], status=d["status"],
         keywords_json=json.dumps(d["keywords"], ensure_ascii=False), created_at=d["created_at"],
         updated_at=d["updated_at"])
-    _set_optional(m, d, ("original_sha256", "pages", "chunks", "error", "conversation_id"))
+    _set_optional(m, d, ("original_sha256", "pages", "chunks", "error"))
     return m
 
 
@@ -86,6 +86,15 @@ class CatalogMixin:
                 sha256=request.sha256, size_bytes=request.size_bytes, owner=request.owner or catalog.OWNER,
                 conversation_id=request.conversation_id if request.HasField("conversation_id") else None)
         return document_pb(await self._run(context, add))
+
+    async def LinkUpload(self, request, context):
+        await self._run(context, catalog.link_upload, request.doc_id, request.conversation_id)
+        return pb.DeleteReply()
+
+    async def ListConversationDocuments(self, request, context):
+        docs = await self._run(context, catalog.conversation_documents, request.owner or catalog.OWNER,
+                               request.conversation_id)
+        return pb.CatalogDocumentList(documents=[document_pb(d) for d in docs])
 
     async def GetCatalogDocument(self, request, context):
         d = await self._run(context, catalog.get_document, request.doc_id)

@@ -17,6 +17,7 @@ from services.document import db
 
 ROOT = Path(__file__).resolve().parents[3]
 TABLES = ("documents", "renames", "edits", "undone_edits", "batches", "batch_tasks", "sessions")
+CLEARED = TABLES + ("document_uploads",)
 EMPTY = pb.CatalogOwnerlessRequest()
 
 
@@ -34,7 +35,7 @@ migrate = _load_migrate()
 @pytest.fixture(autouse=True)
 def empty_catalog():
     with db.shared().tx() as c:
-        for t in TABLES:
+        for t in CLEARED:
             c.execute(f"DELETE FROM {t}")
         c.execute("DELETE FROM sqlite_sequence WHERE name IN ('renames', 'edits', 'batch_tasks')")
 
@@ -522,3 +523,64 @@ def test_a_catalog_from_before_chat_uploads_gets_the_conversation_column_once(tm
         handle.close()
         assert columns.count("conversation_id") == 1
         assert tuple(row) == ("d1", "Old", None)
+
+
+def _links(stub, owner, conv):
+    return [d.id for d in stub.ListConversationDocuments(
+        pb.ListConversationDocumentsRequest(owner=owner, conversation_id=conv)).documents]
+
+
+def test_a_file_can_be_linked_to_many_chats_and_a_relink_moves_it_up_in_that_chat_only(stub):
+    a, b = add(stub), add(stub, sha="s2", file_name="b.pdf")
+    stub.LinkUpload(pb.LinkUploadRequest(doc_id=a.id, conversation_id="c1"))
+    stub.LinkUpload(pb.LinkUploadRequest(doc_id=b.id, conversation_id="c1"))
+    stub.LinkUpload(pb.LinkUploadRequest(doc_id=a.id, conversation_id="c2"))
+    assert _links(stub, "u1", "c1") == [b.id, a.id] and _links(stub, "u1", "c2") == [a.id]
+    stub.LinkUpload(pb.LinkUploadRequest(doc_id=a.id, conversation_id="c1"))   # again: one link, newest
+    assert _links(stub, "u1", "c1") == [a.id, b.id] and _links(stub, "u1", "c2") == [a.id]
+    assert _links(stub, "someone-else", "c1") == []
+    with pytest.raises(grpc.RpcError):
+        stub.LinkUpload(pb.LinkUploadRequest(doc_id="gone", conversation_id="c1"))
+
+
+def test_adding_a_document_with_a_conversation_records_the_link(stub):
+    d = stub.AddCatalogDocument(pb.AddCatalogDocumentRequest(
+        title="T", original_name="o.pdf", file_name="t.pdf", ext=".pdf", sha256="s", size_bytes=1, owner="u1",
+        conversation_id="c1"))
+    assert _links(stub, "u1", "c1") == [d.id]
+    with db.shared().tx() as c:
+        assert c.execute("SELECT conversation_id FROM documents WHERE id = ?", (d.id,)).fetchone()[0] is None
+
+
+def test_deleting_a_document_deletes_its_links(stub):
+    a, b = add(stub), add(stub, sha="s2", file_name="b.pdf")
+    for d in (a, b):
+        stub.LinkUpload(pb.LinkUploadRequest(doc_id=d.id, conversation_id="c1"))
+    stub.DeleteCatalogDocument(pb.CatalogDocumentRef(doc_id=a.id))
+    assert _links(stub, "u1", "c1") == [b.id]
+    with db.shared().tx() as c:
+        assert [r[0] for r in c.execute("SELECT doc_id FROM document_uploads")] == [b.id]
+
+
+def test_the_old_conversation_column_is_copied_into_links_once(tmp_path):
+    path = tmp_path / "old.db"
+    conn = sqlite3.connect(path)
+    conn.executescript(db.SCHEMA)
+    conn.execute("DROP TABLE document_uploads")   # a catalog from before links: the column holds the chat
+    for doc_id, conv in (("d1", "c1"), ("d2", None), ("d3", "c2")):
+        conn.execute("INSERT INTO documents (id, title, original_name, file_name, ext, sha256, size_bytes, owner, status, "
+                     "created_at, updated_at, conversation_id) VALUES (?, 'T', 'o.pdf', ?, '.pdf', ?, 1, 'u1', 'indexed', "
+                     "'2026-01-01T00:00:00+00:00', 't', ?)", (doc_id, doc_id, doc_id, conv))
+    conn.commit()
+    conn.close()
+    seen = []
+    for run in range(2):   # opening it again adds nothing, and changes nothing
+        handle = db.open_db(path)
+        with handle.tx() as c:
+            if run == 0:   # a later re-upload moves the link's time; the second open must not undo that
+                c.execute("UPDATE document_uploads SET uploaded_at = '2027-01-01T00:00:00+00:00' WHERE doc_id = 'd1'")
+            seen.append(sorted(tuple(r) for r in c.execute(
+                "SELECT doc_id, conversation_id, owner, uploaded_at FROM document_uploads")))
+        handle.close()
+    assert seen[0] == seen[1] == [("d1", "c1", "u1", "2027-01-01T00:00:00+00:00"),
+                                  ("d3", "c2", "u1", "2026-01-01T00:00:00+00:00")]

@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 
 from backend.api.dependencies import get_current_user
 from backend.api.routes import documents
+from backend.graph import doc_reference
 from backend.library import api as library_api, catalog, config, library, titles
 from backend.models import database as db
 from backend.documents.rag import IngestionError
@@ -54,7 +55,8 @@ class LibraryBackedDocuments(unittest.TestCase):
     @staticmethod
     def _empty_catalog():   # the Document service's catalog is one for the whole test session
         with document_db.shared().tx() as c:
-            for table in ("documents", "renames", "edits", "undone_edits", "sessions", "batches", "batch_tasks"):
+            for table in ("documents", "renames", "edits", "undone_edits", "sessions", "batches", "batch_tasks",
+                          "document_uploads"):
                 c.execute(f"DELETE FROM {table}")
 
     def upload(self, text=b"Some text about BM25."):
@@ -129,12 +131,10 @@ class LibraryBackedDocuments(unittest.TestCase):
         self.assertEqual(res.status_code, 200)
         self.assertEqual(set(res.json()), {"status", "filename", "chunks_indexed", "document"})   # shape unchanged
         doc = catalog.get_document(res.json()["document"]["id"])
-        self.assertEqual(doc["conversation_id"], conv)
         self.assertEqual([d["id"] for d in catalog.conversation_documents(self.user["id"], conv)], [doc["id"]])
 
     def test_an_upload_without_a_conversation_has_none(self):
-        doc = catalog.get_document(self.upload().json()["document"]["id"])
-        self.assertIsNone(doc["conversation_id"])
+        self.upload()
         self.assertEqual(catalog.conversation_documents(self.user["id"], "nope"), [])
 
     def test_a_conversation_that_is_not_the_users_is_a_404_and_nothing_is_stored(self):
@@ -154,12 +154,45 @@ class LibraryBackedDocuments(unittest.TestCase):
         got = catalog.conversation_documents(self.user["id"], conv)
         self.assertEqual([d["original_name"] for d in got], ["b.txt", "a.txt"])
 
-    def test_uploading_the_same_file_in_another_chat_moves_it_there(self):
+    def _upload_in(self, conv, name="notes.txt", body=b"Some text about BM25."):
+        res = self.client.post("/documents/upload", data={"conversation_id": conv},
+                               files={"file": (name, body, "text/plain")})
+        self.assertEqual(res.status_code, 200)
+        return res.json()["document"]["id"]
+
+    def _ids(self, conv):
+        return [d["id"] for d in catalog.conversation_documents(self.user["id"], conv)]
+
+    def test_the_same_file_uploaded_in_two_chats_is_in_both(self):
         first, second = self._conversation(), self._conversation()
-        for conv in (first, second):
-            res = self.client.post("/documents/upload", data={"conversation_id": conv},
-                                   files={"file": ("notes.txt", b"Some text about BM25.", "text/plain")})
-        self.assertEqual(catalog.get_document(res.json()["document"]["id"])["conversation_id"], second)
+        doc_id = self._upload_in(first)
+        self.assertEqual(self._upload_in(second), doc_id)
+        self.assertEqual(len(catalog.list_documents(owner=self.user["id"])), 1)
+        self.assertEqual((self._ids(first), self._ids(second)), ([doc_id], [doc_id]))
+        catalog.update_document(doc_id, status="indexed")
+        with mock.patch.object(doc_reference.catalog, "latest_document", return_value=None):
+            for conv in (first, second):   # the first chat's "just uploaded" still finds it
+                found = doc_reference.resolve("tell me about the document I just uploaded", self.user["id"], conv)
+                self.assertEqual([d["id"] for d in found[0]], [doc_id])
+
+    def test_uploading_an_older_file_again_makes_it_the_chats_latest_upload(self):
+        conv = self._conversation()
+        older = self._upload_in(conv, "a.txt", b"aaaaa")
+        newer = self._upload_in(conv, "b.txt", b"bbbbb")
+        self.assertEqual(self._ids(conv), [newer, older])
+        self.assertEqual(self._upload_in(conv, "a.txt", b"aaaaa"), older)   # a duplicate: one link, refreshed
+        self.assertEqual(self._ids(conv), [older, newer])
+        for doc_id in (older, newer):
+            catalog.update_document(doc_id, status="indexed")
+        found = doc_reference.resolve("summarize the file I just uploaded", self.user["id"], conv)
+        self.assertEqual([d["id"] for d in found[0]], [older])
+
+    def test_deleting_a_document_removes_it_from_every_chat(self):
+        first, second = self._conversation(), self._conversation()
+        doc_id = self._upload_in(first)
+        self._upload_in(second)
+        self.assertEqual(self.client.delete(f"/documents/{doc_id}").status_code, 204)
+        self.assertEqual((self._ids(first), self._ids(second)), ([], []))
 
     def test_another_users_document_is_not_found(self):
         doc_id = self.upload().json()["document"]["id"]

@@ -57,8 +57,7 @@ def _doc(m: pb.CatalogDocument) -> dict:
             "sha256": m.sha256, "original_sha256": _opt(m, "original_sha256"), "size_bytes": m.size_bytes,
             "pages": _opt(m, "pages"), "chunks": _opt(m, "chunks"), "summary": m.summary,
             "keywords": json.loads(m.keywords_json or "[]"), "owner": m.owner, "status": m.status,
-            "error": _opt(m, "error"), "created_at": m.created_at, "updated_at": m.updated_at,
-            "conversation_id": _opt(m, "conversation_id")}
+            "error": _opt(m, "error"), "created_at": m.created_at, "updated_at": m.updated_at}
 
 
 def _optional_doc(reply: pb.OptionalCatalogDocument) -> dict | None:
@@ -105,8 +104,14 @@ def list_documents(status: str | None = None, owner: str | None = None) -> list[
 
 
 def conversation_documents(owner: str, conversation_id: str) -> list[dict]:
-    """The owner's documents uploaded in this conversation, newest first."""
-    return [d for d in reversed(list_documents(owner=owner)) if d.get("conversation_id") == conversation_id]
+    """The owner's documents uploaded in this conversation, the most recent upload (a re-upload counts) first."""
+    request = pb.ListConversationDocumentsRequest(owner=owner, conversation_id=conversation_id)
+    return [_doc(d) for d in _call("ListConversationDocuments", request).documents]
+
+
+def link_upload(doc_id: str, conversation_id: str) -> None:
+    """Record that the file was uploaded (again) in this conversation."""
+    _call("LinkUpload", pb.LinkUploadRequest(doc_id=doc_id, conversation_id=conversation_id))
 
 
 def latest_document(owner: str, status: str | None = "indexed") -> dict | None:
