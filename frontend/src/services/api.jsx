@@ -129,9 +129,11 @@ export const apiService = {
   async getDocuments() {
     return request('/documents');
   },
-  async uploadDocument(file) {
+  /** conversationId (optional): the chat the file is added from; sent only when the chat exists. */
+  async uploadDocument(file, { conversationId } = {}) {
     const form = new FormData();
     form.append('file', file);
+    if (conversationId) form.append('conversation_id', conversationId);
     return request('/documents/upload', { method: 'POST', body: form });
   },
   async deleteDocument(docId) {
