@@ -35,13 +35,14 @@ class Clients:
     def channel(self, name: str) -> grpc.Channel:
         return self._channels[name]
 
-    def call(self, rpc, request, metadata: tuple | None = None):
-        """Run one unary RPC with the standard deadline, carrying the current request id so the service's log lines
-        join the request's trace. gRPC errors propagate as grpc.RpcError."""
+    def call(self, rpc, request, metadata: tuple | None = None, timeout: float | None = None):
+        """Run one unary RPC with the standard deadline (or `timeout`, for a call the service may spend longer on,
+        such as one waiting for a Voyage slot), carrying the current request id so the service's log lines join the
+        request's trace. gRPC errors propagate as grpc.RpcError."""
         rid = get_request_id()
         if rid != "-":   # "-" is "no request" (a background job): the service then starts its own trace
             metadata = (*(metadata or ()), (REQUEST_ID_HEADER, rid))
-        return rpc(request, timeout=self._timeout, metadata=metadata)
+        return rpc(request, timeout=self._timeout if timeout is None else timeout, metadata=metadata)
 
     def call_stream(self, rpc, requests, timeout: float | None = None):
         """Start a streaming RPC (an iterator of requests in, an iterator of replies out) with the current request id.

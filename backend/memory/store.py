@@ -8,11 +8,18 @@ from typing import Any
 
 from agentic_rag_proto import memory_pb2 as pb
 from backend.clients import get_clients
+from backend.config.settings import settings
 
 
-def _call(rpc_name: str, request):
+def _call(rpc_name: str, request, timeout: float | None = None):
     clients = get_clients()
-    return clients.call(getattr(clients.memory, rpc_name), request)
+    return clients.call(getattr(clients.memory, rpc_name), request, timeout=timeout)
+
+
+def _voyage_deadline(max_wait: float) -> float:
+    """Deadline for a call the service embeds with Voyage: its wait for a slot, the call itself, and a margin.
+    Shorter, and the orchestrator gave up while the service was still inside its own budget (a save never stored)."""
+    return max_wait + settings.voyage_rerank_timeout + settings.grpc_search_margin_seconds
 
 
 def save_memory(
@@ -25,7 +32,7 @@ def save_memory(
     request = pb.StoreEpisodeRequest(user_id=user_id, text=text, kind=kind)
     if conversation_id is not None:
         request.conversation_id = conversation_id
-    return _call("StoreEpisode", request).id
+    return _call("StoreEpisode", request, timeout=_voyage_deadline(settings.voyage_save_max_wait)).id
 
 
 def search_memories(
@@ -43,7 +50,8 @@ def search_memories(
     return [{"id": e.id, "text": e.text, "kind": e.kind or "episodic",
              "conversation_id": e.conversation_id if e.HasField("conversation_id") else None,
              "updated_at": e.updated_at if e.HasField("updated_at") else None, "score": e.score}
-            for e in _call("SearchEpisodes", request).episodes]
+            for e in _call("SearchEpisodes", request,
+                           timeout=_voyage_deadline(settings.voyage_recall_max_wait)).episodes]
 
 
 def delete_conversation_memories(user_id: str, conversation_id: str) -> None:

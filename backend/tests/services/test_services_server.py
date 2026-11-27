@@ -125,3 +125,40 @@ def test_service_db_is_its_own_file_with_foreign_keys_and_rollback(monkeypatch, 
         assert db.path == tmp_path / "nested" / "demo.db" and db.path.exists()
     finally:
         db.close()
+
+
+def test_calls_that_wait_for_voyage_get_a_deadline_longer_than_the_wait(monkeypatch):
+    """Search, Rerank, SearchEpisodes and StoreEpisode may wait in the service for a Voyage slot: the orchestrator's
+    deadline must outlast that wait, or it cancels the call and the answer loses its documents (seen live: 5 s cut
+    off a search waiting up to 10 s for a rerank slot). Plain calls keep the short standard deadline."""
+    from agentic_rag_proto import document_pb2, memory_pb2
+    from backend.config.settings import settings
+    from backend.documents import rag
+    from backend.memory import store
+
+    seen = {}
+
+    class FakeClients:
+        def __getattr__(self, service):
+            return type("Stub", (), {"__getattr__": lambda _self, rpc: rpc})()
+
+        def call(self, rpc, request, metadata=None, timeout=None):
+            seen[rpc] = timeout
+            return {"Search": document_pb2.SearchReply(), "Rerank": document_pb2.RerankReply(),
+                    "SearchEpisodes": memory_pb2.SearchEpisodesReply(),
+                    "StoreEpisode": memory_pb2.StoreEpisodeReply(id="e1"),
+                    "CountPassages": document_pb2.CountPassagesReply()}[rpc]
+
+    monkeypatch.setattr(rag, "get_clients", FakeClients)
+    monkeypatch.setattr(store, "get_clients", FakeClients)
+    rag.search(["q"], "u1")
+    rag.rerank_texts("q", ["a"])
+    store.search_memories("u1", "q")
+    store.save_memory("u1", "text")
+    rag.count_passages("u1")
+
+    assert seen["Search"] > settings.voyage_rerank_max_wait + settings.voyage_rerank_timeout
+    assert seen["Rerank"] > settings.voyage_rerank_max_wait + settings.voyage_rerank_timeout
+    assert seen["SearchEpisodes"] > settings.voyage_recall_max_wait + settings.voyage_rerank_timeout
+    assert seen["StoreEpisode"] > settings.voyage_save_max_wait + settings.voyage_rerank_timeout
+    assert seen["CountPassages"] is None          # the standard deadline

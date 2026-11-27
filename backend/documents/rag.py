@@ -34,9 +34,17 @@ def available() -> bool:
     return settings.rerank_enabled and bool(settings.voyage_api_key)
 
 
-def _call(rpc_name: str, request):
+def _call(rpc_name: str, request, timeout: float | None = None):
     clients = get_clients()
-    return clients.call(getattr(clients.document, rpc_name), request)
+    return clients.call(getattr(clients.document, rpc_name), request, timeout=timeout)
+
+
+def rerank_deadline() -> float:
+    """Deadline for a call that may rerank (Search, Rerank): the service may wait VOYAGE_RERANK_MAX_WAIT for a Voyage
+    slot and VOYAGE_RERANK_TIMEOUT for the call, then falls back to the LLM relevance check by itself; plus room for
+    the question's embedding and the search. The standard 5 s cut it off while it waited, and the answer lost
+    the documents altogether."""
+    return settings.voyage_rerank_max_wait + settings.voyage_rerank_timeout + settings.grpc_search_margin_seconds
 
 
 def _file_messages(message_type, start, path: Path):
@@ -147,7 +155,7 @@ def search(queries: list[str], user_id: str, *, k: int | None = None, min_score:
         request.doc_id = doc_id
     if rerank_query:
         request.rerank_query = rerank_query
-    reply = _call("Search", request)
+    reply = _call("Search", request, timeout=rerank_deadline())
     return {"passages": [_hit(p) for p in reply.passages], "reranked": reply.reranked, "zone": reply.zone,
             "best_relevance": reply.best_relevance if reply.HasField("best_relevance") else None}
 
@@ -155,7 +163,7 @@ def search(queries: list[str], user_id: str, *, k: int | None = None, min_score:
 def rerank_texts(query: str, texts: list[str], priority: str = "rerank") -> list[float] | None:
     """The reranker's relevance of each text to the query, in order; None when it could not score."""
     reply = _call("Rerank", pb.RerankRequest(query=query, items=[pb.RerankItem(content=t) for t in texts],
-                                             priority=priority))
+                                             priority=priority), timeout=rerank_deadline())
     return list(reply.relevance) if reply.reranked else None
 
 

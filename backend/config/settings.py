@@ -149,6 +149,7 @@ class Settings(BaseSettings):
     memory_service_addr: str = default_address("memory")
     document_service_addr: str = default_address("document")
     grpc_timeout_seconds: float = 5.0          # deadline on every unary call to a service
+    grpc_search_margin_seconds: float = 10.0   # on top of the Voyage wait + call for Search, Rerank and memory calls
     document_stream_timeout_seconds: float = 3600.0   # reading or indexing one file (it waits for embedding limits)
     grpc_health_timeout_seconds: float = 2.0   # deadline on a health probe
 
