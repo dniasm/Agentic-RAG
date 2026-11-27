@@ -31,7 +31,9 @@ export function socketUrl(apiBase, loc, after = null) {
 }
 
 export class RealtimeSocket {
-  constructor({ makeUrl, WS, timers = { setTimeout, clearTimeout, setInterval, clearInterval }, random = Math.random }) {
+  // timers default to globalThis itself: a browser throws "Illegal invocation" when its clearTimeout etc. are
+  // called as methods of any other object, which blanked the whole page on mount.
+  constructor({ makeUrl, WS, timers = globalThis, random = Math.random }) {
     this.makeUrl = makeUrl;
     this.WS = WS;
     this.t = timers;

@@ -122,6 +122,25 @@ FAKE_WS = """
 """
 
 
+def test_the_socket_calls_the_real_timers_on_the_global_object():
+    # Browsers throw "Illegal invocation" when setTimeout/clearTimeout run with any `this` but the window:
+    # make node's timers just as strict and use the socket with its default timers.
+    url = (SRC / "lib" / "realtimeSocket.js").as_uri()
+    result = node(FAKE_WS + f"""
+        for (const name of ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval']) {{
+          const real = globalThis[name];
+          globalThis[name] = function (...a) {{
+            if (this !== globalThis && this !== undefined) throw new TypeError('Illegal invocation');
+            return real(...a);
+          }};
+        }}
+        const m = await import({json.dumps(url)});
+        const s = new m.RealtimeSocket({{ makeUrl: () => 'ws://x', WS: FakeWS }});
+        s.connect(); sockets[0].say(hello(1)); s.close();
+        console.log(JSON.stringify({{ state: s.state }}));""")
+    assert result["state"] == "closed"
+
+
 def test_the_socket_resumes_from_its_last_event_and_gives_up_on_a_refusal():
     url = (SRC / "lib" / "realtimeSocket.js").as_uri()
     result = node(FAKE_WS + f"""
