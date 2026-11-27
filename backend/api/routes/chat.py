@@ -1,16 +1,14 @@
-import json
 from contextlib import contextmanager
 import logging
 import re
 import time
-import queue
+import uuid
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import StreamingResponse
 
-from backend import chat_limits
+from backend import chat_limits, usage_limits
 from backend.api.dependencies import get_current_user
 from backend.config.settings import settings
 from backend.config.usage import UsageTracker, record as record_usage
@@ -30,6 +28,8 @@ from backend.models.schemas import (
     MessageOut,
 )
 from backend.memory.batching import MemoryBatcher
+from backend.realtime.hub import hub
+from services.common.log import in_context
 from backend.tools.memory import extract_and_save_batch, summarize_exchange
 
 log = logging.getLogger(__name__)
@@ -66,7 +66,7 @@ _memory_batcher = MemoryBatcher(
     # The answer writer sees the last history_turns messages; flush before a waiting fact leaves that window
     # (one exchange early, since memory work runs after the reply).
     max_age=max(1, settings.history_turns // 2 - 1),
-    schedule=lambda flush, user_id: _memory_worker.submit(flush, user_id),
+    schedule=lambda flush, user_id: _memory_worker.submit(in_context(flush), user_id),
 )
 
 # user_id -> conversation ids whose memory work is still queued or running on the worker
@@ -94,7 +94,6 @@ def flush_pending_memory(timeout: float = 60) -> None:
         _memory_worker.submit(_memory_batcher.flush_all).result(timeout=timeout)
     except Exception:
         log.exception("Flushing pending memory on shutdown failed")
-_STREAM_END = object()  # marks the end of an answer's event stream
 
 
 # ----------------------------------------------------------------
@@ -185,6 +184,7 @@ def _persist(
     history: list[dict],
     tracker: UsageTracker,
     memory_count: int,
+    turn_id: str | None = None,
 ) -> dict:
     latency_ms = int((time.perf_counter() - started) * 1000)
 
@@ -199,6 +199,8 @@ def _persist(
         "latency_ms": latency_ms,
         "usage": tracker.summary(),  # the answer's tokens; memory extraction runs after this is saved
     }
+    if turn_id:   # lets a tab whose socket dropped find this answer among the saved messages
+        meta["turn_id"] = turn_id
 
     msg = db.add_message(
         conv["id"],
@@ -224,7 +226,7 @@ def _persist(
     )
     with _queued_lock:
         _queued_memory.setdefault(user_id, []).append(conv["id"])
-    _memory_worker.submit(_remember, user_id, conv["id"], user_message, history, dict(state), tracker,
+    _memory_worker.submit(in_context(_remember), user_id, conv["id"], user_message, history, dict(state), tracker,
                           usage_context)
 
     return {
@@ -274,7 +276,7 @@ def _remember_exchange(user_id: str, conv_id: str, user_message: str, history: l
             short = len(question) + len(answer) <= EPISODE_RAW_MAX_CHARS
             summary = None if short else summarize_exchange(question, answer, callbacks=[tracker])
             episode = summary or raw
-            _episode_worker.submit(_save_episode, user_id, episode, conv_id)
+            _episode_worker.submit(in_context(_save_episode), user_id, episode, conv_id)
         except Exception:
             log.exception("Semantic memory persistence failed")
 
@@ -389,6 +391,8 @@ def _changes_in(answer: dict | None) -> list[str]:
 
 def _allow(user_id: str) -> float:
     """One message from the account's allowance (backend/chat_limits.py), before anything starts: 429 when over it."""
+    if usage_limits.is_unlimited(user_id):
+        return -1.0     # an admin account: not limited, not counted (refunding this token is a no-op)
     try:
         return chat_limits.allowance.reserve(user_id)
     except chat_limits.ChatLimited as e:
@@ -437,10 +441,19 @@ def chat(req: ChatRequest, user: dict = Depends(get_current_user)):
         return _persist(conv, state, started, user["id"], req.message, history, tracker, len(memories))
 
 
-@router.post("/chat/stream")
+TURN_ID = re.compile(r"[A-Za-z0-9_-]{8,64}")
+
+
+@router.post("/chat/stream", status_code=202)
 def chat_stream(req: ChatRequest, user: dict = Depends(get_current_user)):
-    """Stream metadata, status, trace steps, answer drafts, and final result."""
-    token = _allow(user["id"])   # before the stream opens and before the chat's lock
+    """Start an answer and return at once: 202 {conversation_id, title, turn_id}. The answer's events (meta, status,
+    step, draft, final, error) are pushed to the account's WebSocket (backend/api/routes/ws.py), each tagged with
+    the conversation and the turn_id (the browser's own, else one made here). A tab that wasn't connected, or
+    dropped, gets them replayed when it reconnects; the saved answer is also in the conversation's messages."""
+    turn_id = req.turn_id or uuid.uuid4().hex
+    if not TURN_ID.fullmatch(turn_id):
+        raise HTTPException(status_code=422, detail="turn_id must be 8-64 letters, digits, - or _.")
+    token = _allow(user["id"])   # before anything starts and before the chat's lock
     lock = _conversation_lock(req.conversation_id)
     try:
         _take(lock)   # released by the worker thread when the answer is saved
@@ -455,18 +468,17 @@ def chat_stream(req: ChatRequest, user: dict = Depends(get_current_user)):
         raise
     started = time.perf_counter()
     tracker = UsageTracker()
+    tag = {"conversation_id": conv["id"], "turn_id": turn_id}
 
-    def sse(event: str, data: dict) -> str:
-        return f"event: {event}\ndata: {json.dumps(data, default=str)}\n\n"
+    def push(type_: str, data: dict) -> None:
+        hub.publish(user["id"], "chat", type_, {**data, **tag})
 
-    # The agent runs in its own thread and always finishes and saves its answer. The response only relays its
-    # events, so a client that disconnects (a page reload, a closed tab) loses the live view, not the answer:
-    # it is in the conversation when the chat is opened again.
-    events_q: queue.Queue = queue.Queue()
-
+    # The agent runs in its own thread and always finishes and saves its answer, whoever is listening: a closed tab
+    # loses the live view, not the answer (it is in the conversation when the chat is opened again).
     def produce():
         final = None
         try:
+            push("meta", {"title": conv["title"]})
             for kind, payload in stream_agent(
                 req.message,
                 user,
@@ -479,11 +491,12 @@ def chat_stream(req: ChatRequest, user: dict = Depends(get_current_user)):
                 if kind == "final":
                     final = payload
                 else:
-                    events_q.put((kind, payload))
+                    push(kind, payload)
 
         except Exception as e:
             final = _error_state(e)
-            events_q.put(("step", final["trace"][0]))
+            push("error", {"message": str(e)[:300]})
+            push("step", final["trace"][0])
 
         if final is None:
             final = {
@@ -501,48 +514,25 @@ def chat_stream(req: ChatRequest, user: dict = Depends(get_current_user)):
             }
 
         try:
-            events_q.put((
-                "final",
-                _persist(
-                    conv,
-                    final,
-                    started,
-                    user["id"],
-                    req.message,
-                    history,
-                    tracker,
-                    len(memories),
-                ),
+            push("final", _persist(
+                conv,
+                final,
+                started,
+                user["id"],
+                req.message,
+                history,
+                tracker,
+                len(memories),
+                turn_id,
             ))
+        except Exception as e:
+            log.exception("Saving the answer failed")
+            push("error", {"message": f"Couldn't save the answer: {str(e)[:200]}", "fatal": True})
         finally:
             lock.release()
-            events_q.put(_STREAM_END)
 
-    threading.Thread(target=produce, name=f"chat-{conv['id'][:8]}", daemon=True).start()
-
-    def events():
-        yield sse(
-            "meta",
-            {
-                "conversation_id": conv["id"],
-                "title": conv["title"],
-            },
-        )
-        while True:
-            item = events_q.get()
-            if item is _STREAM_END:
-                return
-            kind, payload = item
-            yield sse(kind, payload)
-
-    return StreamingResponse(
-        events(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-        },
-    )
+    threading.Thread(target=in_context(produce), name=f"chat-{conv['id'][:8]}", daemon=True).start()
+    return {"conversation_id": conv["id"], "title": conv["title"], "turn_id": turn_id}
 
 
 # ----------------------------------------------------------------

@@ -9,8 +9,10 @@ import Overview from './pages/Overview';
 // Its own chunk: only admins ever load it.
 const Admin = lazy(() => import('./pages/Admin'));
 import { apiService, setUnauthorizedHandler } from './services/api';
+import { realtime } from './services/realtime';
 import { hrefFor, navigate, useRoute } from './lib/route';
 import { forgetConversation } from './state/chatStore';
+import { clearUploads } from './state/chatUploads';
 import { onDocumentsChanged } from './state/documentEvents';
 
 const PAGE_TITLES = { chat: 'Chat', documents: 'Documents', overview: 'Overview', admin: 'Admin' };
@@ -74,6 +76,16 @@ export default function App() {
       refreshDocuments();
     }
   }, [user, refreshConversations, refreshDocuments]);
+
+  // The tab's one WebSocket (services/realtime.js) lives while someone is signed in; a file finishing indexing, or
+  // failing, is pushed here, so the document list updates without anyone asking.
+  useEffect(() => {
+    if (!user) { realtime.close(); clearUploads(); return undefined; }   // the next account on this tab starts clean
+    realtime.connect();
+    return realtime.subscribe((msg) => {
+      if (msg.channel === 'library' && msg.type === 'document' && !['reading', 'ocr', 'embedding'].includes(msg.data.stage)) refreshDocuments();
+    });
+  }, [user, refreshDocuments]);
 
   // an edit saved in the preview: the titles and types the app shows may have changed
   useEffect(() => onDocumentsChanged(() => refreshDocuments()), [refreshDocuments]);

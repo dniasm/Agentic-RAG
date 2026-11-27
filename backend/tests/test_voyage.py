@@ -70,7 +70,7 @@ class Call(unittest.TestCase):
 
     def test_rerank_and_memory_share_one_client_and_limiter(self):
         from backend.memory import embeddings
-        from backend.rag import rerank
+        from services.document import rerank
 
         lim, client = mock.Mock(), mock.Mock()
         lim.acquire.return_value = True
@@ -82,6 +82,25 @@ class Call(unittest.TestCase):
             embeddings.embed_memory_query("q")
             embeddings.embed_memory("text")
         self.assertEqual([c.args[0] for c in lim.acquire.call_args_list], [RERANK, RECALL, SAVE])
+
+
+class Shares(unittest.TestCase):
+    def test_the_two_shares_sum_to_the_total_and_each_limiter_enforces_its_own(self):
+        for total, reserve in ((3, 1), (10, 4), (3, 2)):
+            with mock.patch.object(voyage.settings, "voyage_requests_per_minute", total),                  mock.patch.object(voyage.settings, "voyage_rerank_reserve", reserve):
+                rerank, memory = voyage.shares()
+                self.assertEqual((rerank, memory), (reserve, total - reserve))
+                self.assertEqual(rerank + memory, total)
+                for role, share in (("document", rerank), ("memory", memory)):
+                    with mock.patch.object(voyage, "_role", role):
+                        lim = voyage.make_limiter()
+                        self.assertEqual(lim.per_minute, share)
+                        self.assertEqual([lim.acquire(RERANK, 0) for _ in range(share + 1)],
+                                         [True] * share + [False])
+
+    def test_each_share_is_at_least_one(self):
+        with mock.patch.object(voyage.settings, "voyage_requests_per_minute", 1):
+            self.assertEqual(voyage.shares(), (1, 1))
 
 
 if __name__ == "__main__":

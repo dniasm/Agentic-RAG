@@ -63,26 +63,31 @@ What makes it *agentic* rather than a fixed pipeline:
 
 ## 2. Architecture
 
+```mermaid
+flowchart LR
+    B["Browser (React)"] -- "REST /api/*" --> O["Orchestrator :8000<br/>FastAPI + LangGraph, no database"]
+    O -- "WebSocket /api/ws" --> B
+    O <-- "gRPC" --> U["User :50061"]
+    O <-- "gRPC" --> V["Conversation :50062"]
+    O <-- "gRPC" --> M["Memory :50063"]
+    O <-- "gRPC" --> D["Document :50064"]
+    U --- UD[("user.db")]
+    V --- VD[("conversation.db")]
+    M --- MD[("memory.db + Qdrant")]
+    D --- DD[("document.db + Qdrant")]
+    O -. files .-> F[("LIBRARY_DATA_DIR")]
+    O --> L["Groq, Gemini, Voyage, web search"]
 ```
-┌──────────────────────── Browser (React, Vite :5173) ──────────────────────────┐
-│  Login ─ Chat (SSE stream) ─ Documents ─ Overview        hash routes, themes  │
-└───────────────┬───────────────────────────────────────────────────────────────┘
-                │  /api/*  (Vite dev proxy → 127.0.0.1:8000, login cookie)
-┌───────────────▼──────────────────── FastAPI (:8000) ──────────────────────────┐
-│  routes/auth ─ routes/chat ─ routes/documents ─ routes/health ─ library/api   │
-│        │            │   └── memory worker (background) ── tools/memory        │
-│  library/auth  graph/workflow.py (LangGraph agent)      rag/ingestion.py      │
-│        │            │   │   │                                │                │
-│        ▼            │   │   └── tools/web_search ──► Tavily / DuckDuckGo / Wikipedia
-│  SQLite (app.db)    │   └────── rag/retrieval + rerank ──┐                    │
-│  users, user_facts, │                                    ▼                    │
-│  documents,         │                    Qdrant: documents (dense + BM25)     │
-│  conversations,     │                            user_memories (Voyage)       │
-│  messages           ├── Groq: gpt-oss-120b, gpt-oss-20b, qwen3.8-27b          │
-│                     ├── Gemini embeddings (documents) · Voyage (memory)       │
-│                     └── Voyage rerank-2.5                                     │
-└───────────────────────────────────────────────────────────────────────────────┘
-```
+
+**The design.** The browser sends REST requests to
+the orchestrator (`backend/`, FastAPI + LangGraph, no database) and receives everything pushed back over one WebSocket
+(`/api/ws`). The orchestrator calls four gRPC services over `agentic_rag.v1` (`protos/`): User :50061 (13 RPCs, `user.db`),
+Conversation :50062 (10, `conversation.db`), Memory :50063 (10, `memory.db` + its own Qdrant folder) and Document :50064
+(49, `document.db` + its own Qdrant folder; RAG ingestion and retrieval and the library catalog). Document files stay on
+disk in `LIBRARY_DATA_DIR`. A gRPC call costs about 0.75 ms median on loopback (`python scripts/grpc_overhead.py`).
+`python scripts/run_all.py` starts everything; `docker compose up -d --build` runs the same stack in containers (one image,
+a volume per service); `GET /api/health/services` reports each service's health. The README has the protocol table,
+the migration order and the CI workflows. Logging out closes (code 4401) the sockets opened with that login; another login of the same account keeps its own.
 
 **Request lifecycle (chat):**
 
@@ -90,8 +95,10 @@ What makes it *agentic* rather than a fixed pipeline:
 2. `get_current_user` looks the token up (§13). `_prepare` loads or creates the conversation, the last 6 messages, the
    user's remembered facts, up to 3 relevant past-conversation summaries and the user's indexed document names, and
    saves the user message.
-3. The agent runs in its own thread (`stream_agent`), with a `UsageTracker` counting tokens. Its events (`status`,
-   `step`, `draft`) are relayed to the browser as Server-Sent Events.
+3. The route returns `202 {conversation_id, title, turn_id}` at once. The agent runs in its own thread
+   (`stream_agent`), with a `UsageTracker` counting tokens. Its events (`meta`, `status`, `step`, `draft`) are
+   published to the account's WebSocket (`/api/ws`, §15) through the event hub, tagged with the conversation and
+   the `turn_id`.
 4. The final state is saved as an assistant message (sources, notices, trace, evaluation, latency, token usage) and
    sent as the `final` event. Because the agent runs in its own thread, the answer is saved even if the browser
    disconnects.
@@ -105,7 +112,7 @@ What makes it *agentic* rather than a fixed pipeline:
 | Layer | Technology | Notes |
 |---|---|---|
 | Frontend | React 18, Vite 5, Tailwind 3, lucide-react, react-markdown + remark-gfm | Hash routes, light/dark/system theme, Geist font |
-| API | FastAPI, Uvicorn, Starlette `StreamingResponse` (SSE) | Sync routes run in a threadpool |
+| API | FastAPI, Uvicorn, Starlette WebSockets (`/api/ws`) | Sync routes run in a threadpool |
 | Agent | LangGraph `StateGraph` | Conditional edges implement the loops and fallback |
 | LLMs | Groq (see below) | Strict `json_schema` output for gpt-oss decisions |
 | Document embeddings | Google Gemini `models/gemini-embedding-001`, 768 dims | Question embeddings cached on disk |
@@ -192,29 +199,31 @@ Runtime data is created automatically:
 
 | Path | Contents |
 |---|---|
-| `backend/data/app.db` | SQLite database |
+| `backend/data/app.db` | Only on an installation from before the services: the old SQLite database. The orchestrator no longer creates or opens it; the `scripts/migrate_*.py` scripts read it, and it can be deleted once they have run. |
+| `backend/data/services/*.db` | The services' own SQLite files: `user.db`, `conversation.db`, `memory.db`, and `document.db` (OCR and embedding caches **and the library catalog**: documents, renames, edits, batches, chat sessions). |
 | `backend/data/embedding_cache.db` | Cached question embeddings |
 | `backend/data/token_usage.jsonl` | One line per request: tokens per model and step, route, path |
 | `backend/data/library/<user_id>/` | The stored documents, named after their current titles |
 | `backend/data/versions/<doc_id>/` | Each edit's backup (what Undo puts back) and redo copy |
 | `backend/data/fonts/fetched/` | Fonts downloaded for PDF edits (§22) |
-| `backend/data/logs/` | `events.log` (major events) and `all.log` (everything), rotating |
+| `logs/` (repo root, `LOG_DIR`) | `<service>/<date>.log` and `audit/<service>-<date>.log`, daily (README, Logging) |
 | `backend/vector_db/qdrant_data/` | Embedded Qdrant storage (documents and memory collections) |
 
 To reset everything: stop the backend and delete those paths.
 
 ### Backups
 `python -m backend.scripts.backup` copies the data to a new folder `D:\onboarding_tasks\backups\day7-<date>_<time>`
-(`--dest` for another place): `app.db` through SQLite's backup API (consistent even while the backend runs), the
-stored documents (`library/`) and their edit history (`versions/`), and, **only while the backend is stopped**, the
-search index (`qdrant_data/`). Each backup says FULL or PARTIAL in its `BACKUP.txt`. It never overwrites a folder or
+(`--dest` for another place): an old `app.db` if one is still there (through SQLite's backup API), the
+stored documents (`library/`) and their edit history (`versions/`), each service's database (`services/*.db`, through
+the same API) and, **only while the services are stopped**, their Qdrant folders (`services/document_qdrant/`, the
+search index, and `services/memory_qdrant/`). Each backup says FULL or PARTIAL in its `BACKUP.txt`. It never overwrites a folder or
 deletes old backups. It holds documents and password hashes: keep it private, and keep a copy off this disk too.
 
 Restoring is manual, since it overwrites live data:
 1. Stop the backend.
-2. Copy `app.db`, `library/` and `versions/` from the backup into `backend/data/`, replacing what is there (move the
+2. Copy `library/` and `versions/` (and `app.db`, if the backup has one) from the backup into `backend/data/`, replacing what is there (move the
    current ones aside first if in doubt).
-3. From a FULL backup, copy `qdrant_data/` into `backend/vector_db/`. From a PARTIAL one, the search index no longer
+3. Copy `services/` into `backend/data/services/` (or your `SERVICES_DATA_DIR`). From a PARTIAL backup (no Qdrant folders), the search index no longer
    matches the documents: re-index them (it costs embedding quota).
 4. Start the backend.
 
@@ -261,7 +270,7 @@ overridden by an environment variable / `.env` entry with the same name (case-in
 | `VERIFY_DECISIONS` / `MAX_REVIEW_ROUNDS` / `REVIEW_ONLY_UNCERTAIN` | `True` / `2` / `True` | 120B reviews the 20B's uncertain decisions. |
 | `WEB_RESULTS` / `TAVILY_SEARCH_DEPTH` / `WEB_CACHE_TTL_SECONDS` | `5` / `basic` / `3600` | Web search. |
 | `HISTORY_TURNS` | `6` | Past messages passed to the agent. |
-| `DATABASE_PATH` | `backend/data/app.db` | SQLite file. |
+| `DATABASE_PATH` | `backend/data/app.db` | The old SQLite file, which the `scripts/migrate_*.py` scripts read by default (`--source`) and the backup copies if it exists. The orchestrator opens no database and never creates it. |
 | `SIGNUP_CODE` | `""` | Invite code for every sign-up after the first; empty: sign-ups closed. |
 | `ADMIN_USERNAMES` | `""` | Accounts that can open the Admin page (API key usage), comma-separated, without case. A listed name can't be signed up for, so list accounts that already exist. Empty: no one. |
 | `LIBRARY_DATA_DIR` | `backend/data` | The library's files, versions, fonts and logs (§22). |
@@ -301,6 +310,11 @@ day7/
 │   ├── scripts/          one-off maintenance scripts
 │   ├── tests/            unit tests (no API calls)
 │   └── data/ vector_db/  created at runtime (not committed)
+├── services/             the four gRPC services (user, conversation, memory, document) and common/
+├── protos/               .proto sources; agentic_rag_proto/ holds the generated Python (committed)
+├── scripts/              run_all, gen_protos, grpc_healthcheck, grpc_overhead, logs, migrate_*, ci_test_coverage
+├── Dockerfile, docker-compose.yml, .dockerignore   the container stack
+├── .github/workflows/    CI, one workflow per area plus docker.yml
 ├── frontend/             React + Vite + Tailwind single-page app
 ├── benchmark/            benchmark scripts, question sets, corpus and saved results
 └── scripts/experiments/  one-off model experiments (call the live APIs)
@@ -333,7 +347,7 @@ Most backend folders contain an empty `__init__.py`; it only lets Python import 
 | File | What it does |
 |---|---|
 | `app.py` | The FastAPI application: checks required keys at startup, creates the database and Qdrant collections, starts the library's indexing queue and batch worker, sets CORS, mounts the routers and, when `frontend/dist` exists, the front end. |
-| `compression.py` | Gzip for scripts, styles, pages and JSON; never for the chat's stream, a ranged request, PDFs, Word files, images or fonts, or bodies under 1 KB. |
+| `compression.py` | Gzip for scripts, styles, pages and JSON; never for a ranged request (the WebSocket isn't an HTTP response, so it is untouched), PDFs, Word files, images or fonts, or bodies under 1 KB. |
 | `security.py` | Host and cross-site checks and security headers on every response (§13). |
 | `web.py` | Serves `frontend/dist`: `index.html` with `no-cache` (also for the app's own routes such as `/documents`), hashed `assets/` cached for a year, a JSON 404 for unknown `/api` paths, nothing outside the folder. |
 
@@ -343,7 +357,7 @@ Most backend folders contain an empty `__init__.py`; it only lets Python import 
 |---|---|
 | `dependencies.py` | `get_current_user`: reads the login cookie on each request and returns the user, or a 401. |
 | `routes/auth.py` | `GET /auth/state`, `POST /auth/signup`, `/auth/login`, `/auth/logout`, `GET /auth/me`, on `backend/library/auth.py`. |
-| `routes/chat.py` | `POST /chat` and `POST /chat/stream` (SSE): loads history, facts, past-conversation summaries and document names, runs the agent in its own thread, saves the answer, and queues memory work and token logging in the background. Document requests go to the `manage` node (the document agent). Also lists, renames and deletes conversations, lists the documents a conversation changed and its queued tasks, and serves `/stats`. |
+| `routes/chat.py` | `POST /chat` and `POST /chat/stream` (starts the answer, `202`; its events go to the WebSocket): loads history, facts, past-conversation summaries and document names, runs the agent in its own thread, saves the answer, and queues memory work and token logging in the background. Document requests go to the `manage` node (the document agent). Also lists, renames and deletes conversations, lists the documents a conversation changed and its queued tasks, and serves `/stats`. |
 | `routes/documents.py` | Lists (with the edit Undo and Redo apply to), uploads (size check, dedup by hash; indexing on the library's queue) and deletes documents. |
 | `routes/health.py` | `GET /health`: reports the configured models and web-search providers. |
 
@@ -353,7 +367,7 @@ Most backend folders contain an empty `__init__.py`; it only lets Python import 
 |---|---|
 | `api.py` | `/api/library/*`: rename, undo, redo, file / PDF / preview downloads, the queue and batch cancel; starts and stops the library's workers. |
 | `auth.py` | Accounts: PBKDF2 passwords, login tokens (only their hashes stored), throttling of wrong passwords, the invite code (§13). |
-| `catalog.py` | SQLite tables of the library (documents, renames, edits, undone edits, batches, tasks, agent sessions, users, login tokens) in `app.db`. |
+| `catalog.py` | The library's catalog (documents, renames, edits, undone edits, batches, tasks, agent sessions) as gRPC calls to the Document service, which owns the tables in `document.db`; keeps the catalog version, the indexed-titles cache and the queue pushes. |
 | `library.py` | Add a file, index it (queue), title it, find a document by name or content, rename (file, catalog and chunks at once), delete. |
 | `titles.py` | A title, summary and keywords for each new document, written by the model from its opening text. |
 | `naming.py` | Cleaning titles, stored file names, and how closely a phrase matches a document's name. |
@@ -369,7 +383,7 @@ Most backend folders contain an empty `__init__.py`; it only lets Python import 
 | `limits.py` | Groq's tokens-per-minute window, shared by the chat and the queue. |
 | `activity.py` | Which documents a conversation changed (its replies' and queued tasks' actions), for the chat's side panel. |
 | `export.py` | A document's text laid out as a PDF for download. |
-| `logs.py` | `data/logs/events.log` and `all.log`. |
+| `logs.py` | `event()`: major events as audit lines (see README, Logging; `data/logs/` is gone). |
 | `config.py` | The library's constants and its `library_*` settings. |
 
 #### `backend/config/` — settings and model clients
@@ -385,7 +399,7 @@ Most backend folders contain an empty `__init__.py`; it only lets Python import 
 
 | File | What it does |
 |---|---|
-| `database.py` | SQLite schema, migrations and every query: users, facts, documents, conversations, messages and stats, all filtered by user. |
+| `database.py` | Re-exports the thin gRPC clients (no database, no connection): conversations and messages (`conversations.py`, Conversation service), facts (`memory.py`), test accounts (`users.py`); the document counts in `/stats` come from the catalog (§14). |
 | `schemas.py` | Pydantic models for requests and responses (`Credentials`, `DocumentOut`, `ChatRequest`, `ChatResponse`, …). |
 
 #### `backend/graph/` — the agent
@@ -407,7 +421,7 @@ Most backend folders contain an empty `__init__.py`; it only lets Python import 
 | `web_search.py` | Web search through Tavily → DuckDuckGo → Wikipedia (recency handling, one-hour cache), the web-answer prompt, and source cards. |
 | `memory.py` | Saves facts about the user (cheap pre-check, Qwen extraction, merge rules in code) and writes the short summary of each exchange. |
 
-#### `backend/rag/` — documents in, passages out
+#### `services/document/` (was `backend/rag/`) — documents in, passages out (the Document service, `python -m services.document`)
 
 | File | What it does |
 |---|---|
@@ -440,7 +454,7 @@ Most backend folders contain an empty `__init__.py`; it only lets Python import 
 | `migrate_hybrid.py` | One-off migration that copied the old dense-only collection into the hybrid (dense + BM25) collection without re-embedding. |
 | `merge_library.py` | One-off merge of the renaming pipeline's data into this app (users, documents with their vectors, chats). |
 | `recount_pages.py` | Recounts the pages of Word, text and Markdown documents. |
-| `backup.py` | Copies the data to a timestamped folder (the search index only while the backend is stopped); see §4, Backups. |
+| `backup.py` | Copies the data to a timestamped folder (the services' databases always, their Qdrant folders only while the services are stopped); see §4, Backups. |
 | `build_font_manifest.py` | Writes `backend/library/fonts/manifest.json` from hand-checked font downloads. |
 
 #### `backend/tests/` — unit tests and reasoning cases
@@ -451,16 +465,21 @@ Most backend folders contain an empty `__init__.py`; it only lets Python import 
 | `test_memory.py` | Key normalisation, merge rules (replace / collect / forget / corrections), storage, the one-time migration (temporary database). |
 | `test_citations.py` | The code citation check. |
 | `test_rerank.py` | Reranker zones and the fallback when Voyage can't score. |
-| `test_conversations.py` | Renaming chats; `/stats` from the message columns and the one-time backfill; a fresh database has no old `user_memory` table. |
+| `test_conversations.py` | Renaming chats; `/stats` from the message columns; a fresh database has no `user_memory`/`user_facts` table and no chat tables (they are the Conversation service's). |
+| `services/test_user_service.py` | The User service over real gRPC: sign-up, log-in, log-out, token validation and expiry, legacy bcrypt, case-insensitive names, nothing secret stored or logged, concurrent usage counts, the orchestrator failing closed (503, WebSocket 1013) with the service down, `scripts/migrate_users.py`. |
+| `services/test_document_service.py` | The Document service over real gRPC: ingest progress and chunked bytes over 4 MB, hybrid search with user and document filters, the reranked flag and the LLM fallback, delete, user isolation, request id, `scripts/migrate_documents_rag.py` |
+| `services/test_memory_service.py` | The Memory service over real gRPC: facts (multi-value keys, user isolation), episodes with stub embeddings (dedupe ids, search per person, delete by conversation), the collection created at start, request id, `scripts/migrate_memory.py` with vectors. |
+| `services/test_conversation_service.py` | The Conversation service over real gRPC: every call, user isolation and `NOT_FOUND`, `meta` round trip, request id in the service's log lines, the orchestrator's functions, `scripts/migrate_conversations.py`. |
 | `test_documents.py` | Uploads are titled, stored in the user's folder and indexed in the background; failed / removed-while-waiting / uploaded-twice outcomes; indexing cut off by a restart is resumed. |
-| `test_stream.py` | The SSE stream ends with `final`, and the answer is saved even if the client disconnects. |
+| `test_stream.py` | A chat turn's events reach the WebSocket in order and end with `final`; the answer is saved with nobody connected. |
+| `test_websocket.py` | The WebSocket and the hub: login and origin checks, two tabs, replay and resync, threads publishing, queue and indexing pushes. |
 | `library/` | The document library: accounts, the agent and its guard, routing to it, renames, edits, undo / redo, the queue, PDF editing (layout, growth onto a new page, fonts), the API and the Documents page's routes. |
 
 #### Runtime folders (created automatically, not committed)
 
 | Folder | Contents |
 |---|---|
-| `backend/data/` | `app.db` (SQLite), `embedding_cache.db`, `token_usage.jsonl`; `library/`, `versions/`, `fonts/`, `logs/` (§4). |
+| `backend/data/` | `token_usage.jsonl`; no `app.db` any more (the services' databases are in `services/`); `library/`, `versions/`, `fonts/`, `logs/` (§4). |
 | `backend/vector_db/qdrant_data/` | Embedded Qdrant storage (same note). |
 
 #### `frontend/` — the web app
@@ -481,7 +500,7 @@ Most backend folders contain an empty `__init__.py`; it only lets Python import 
 | `main.jsx` | Mounts `App` into the page. |
 | `App.jsx` | Top-level shell: session restore, health polling, routing between pages, sidebar layout (top bar on phones). |
 | `index.css` | Colour tokens for light and dark themes, component classes and Markdown styles. |
-| `services/api.jsx` | HTTP client: requests with the login cookie, error handling (401 → login), the SSE stream reader, document actions (rename, undo, redo, queue). |
+| `services/api.jsx` | HTTP client: requests with the login cookie, error handling (401 → login), the turn follower for chat answers (`lib/turn.js`), document actions (rename, undo, redo, queue). |
 | `state/chatDocuments.js` | The documents a conversation changed, re-read after each answer and while its queued tasks run. |
 | `state/previewStore.js` | The one open document preview, holding one browser-history entry so a phone's Back closes it (an open editor first) instead of leaving the site. |
 | `lib/chatActions.js` | What a chat's document actions allow (which edits Undo / Redo apply to) and their descriptions. |
@@ -546,6 +565,43 @@ Data:
 | `reasoning_cases.py` / `run_reasoning_baseline.py` | 16 direct-answer reasoning cases (opinions, follow-ups, challenges) with the expected behaviour, and a script that runs them through `direct_answer.answer` (calls the API); saved answers in `results/reasoning_baseline_results*.json`. |
 | `corpus/wikipedia/*.md` | 18 Wikipedia articles on information retrieval and NLP (CC BY-SA 4.0, source URL in each file). The corpus PDFs are not committed (see the README). |
 | `results/` | Saved output of every benchmark run, named after its script: `retrieval_stage*`, `selection_*` (including the saved candidate pools `selection_pool.json` / `.npz`), `rerank_calibration`, `e2e_stage*`, `perf`, `router_eval*`, `direct_gate_*`, `gate_*`, `direct_prompt_*`, `memory_eval*`, `checker_eval*`, `web_prompt_*`. Files ending in `_before` or `_old` keep the run or prompt from before a change. |
+
+#### `services/` — the gRPC services (each `python -m services.<name>`)
+
+| File | What it does |
+|---|---|
+| `common/config.py` | Service addresses (`<NAME>_SERVICE_ADDR`), the listen-host override (`GRPC_LISTEN_HOST`) and the data folder (`SERVICES_DATA_DIR`). |
+| `common/server.py` | The gRPC server base: health service, request-id and logging interceptors, graceful shutdown. |
+| `common/inprocess.py` | Runs a real service inside a test process on an ephemeral port. |
+| `common/sqlite_db.py`, `log.py`, `tokens.py` | One SQLite file per service; the shared log format; the keyword tokenizer. |
+| `user/` | `server.py` (13 RPCs), `db.py` (users, auth_tokens, embed_usage, api_usage), `accounts.py` (hashing, tokens). |
+| `conversation/` | `server.py` (10 RPCs), `db.py` (conversations, messages). |
+| `memory/` | `server.py` (10 RPCs), `db.py` (user_facts), `vectors.py` (episodes in Qdrant). |
+| `document/` | `server.py` (ingest, read-pages, search), `catalog.py` and `catalog_server.py` (the library catalog), `ingestion.py`, `ocr.py`, `retrieval.py`, `rerank.py`, `vectorstore.py`, `sparse.py`, `embedding_cache.py`, `db.py` (document.db). |
+
+#### `protos/` and `agentic_rag_proto/`
+
+`protos/agentic_rag_proto/{common,user,conversation,memory,document}.proto` are the contracts; `agentic_rag_proto/` is the generated Python
+(never edited by hand; `python scripts/gen_protos.py` regenerates it, `--check` fails when it is stale).
+
+#### `scripts/`
+
+| File | What it does |
+|---|---|
+| `run_all.py` | Starts the four services (each ready on `grpc.health.v1`) and then the orchestrator; Ctrl+C stops them. |
+| `grpc_healthcheck.py` | Exit 0 when a port answers SERVING; the containers' health check. |
+| `grpc_overhead.py` | Times gRPC round-trips in one process (median and p95). |
+| `gen_protos.py` | Generates or checks `agentic_rag_proto/`. |
+| `logs.py` | Reads `logs/` across services by time, level, request id or user. |
+| `migrate_users.py`, `migrate_conversations.py`, `migrate_memory.py`, `migrate_documents_rag.py`, `migrate_library_catalog.py` | Copy an old `app.db` and Qdrant folder into the services, in this order, with the backend stopped and a backup first (README, "Migrating an older install"). |
+| `ci_test_coverage.py` | Fails when a test file is in no CI workflow, or in more than one. |
+| `fetch_test_corpus.py` | Downloads the third-party test documents. |
+
+#### Docker files
+
+`Dockerfile` (Node stage builds `frontend/dist`; `python:3.14-slim` runtime with tesseract and DejaVu fonts, non-root), `docker-compose.yml`
+(four services with a named volume each and a health check, the orchestrator on :8000 with a volume for `LIBRARY_DATA_DIR`, a shared `logs` volume,
+keys from an optional `.env`), `.dockerignore` (no `.env`, data, logs, `node_modules`, `.venv`).
 
 #### `scripts/experiments/` — one-off model experiments
 
@@ -835,7 +891,7 @@ the answer). It sums input, output and hidden-reasoning tokens per model and per
   warning when Google refused a key for the day well under its count (it probably shares a project with another).
 - **Voyage:** requests in `voyage.call`, by use (rerank, find, recall, save).
 
-Counts are kept in memory and added to `app.db` (`api_usage`, one row per UTC hour, provider, key and model) every
+Counts are kept in memory and added to the User service's `api_usage` table (`api_usage`, one row per UTC hour, provider, key and model) every
 30 s and when the page reads them; a crash loses at most those seconds. Keys are shown as "Key 1–4", never their
 text. The page gives Groq counts as "today (UTC)" and "last 24 hours", since it isn't confirmed which one Groq's
 daily limits use; the headers' remaining numbers are the authoritative ones. Per account it shows chat and indexing
@@ -846,8 +902,7 @@ counts against their allowances, never message content or document titles.
 ## 12. Backend module reference
 
 ### `app.py`
-Adds the project root to `sys.path`; `lifespan` checks the required keys, runs `init_db()` (and migrations), opens the
-Qdrant collection, starts the library (`library/api.startup`: logs, unfinished indexing, the batch worker), and on
+Adds the project root to `sys.path`; `lifespan` checks the required keys, starts the library (`library/api.startup`: logs, unfinished indexing, the batch worker), and on
 shutdown stops it and extracts any facts still waiting in the memory batch. Mounts `frontend/dist` when it exists. CORS: `CORS_ORIGINS` plus any localhost port.
 
 ### `config/gemini.py`, `config/redact.py`
@@ -869,15 +924,13 @@ replaces every configured API key in a text with `[key]`, and its log filter doe
 | `structured(model_cls, fast=True, backup=False, memory=False)` | Schema-constrained runnable (see 7.8). |
 
 ### `models/database.py`
-One shared SQLite connection guarded by a re-entrant lock; `tx()` gives a serialized transaction. All queries use
-placeholders and filter by `user_id`.
+No database: the orchestrator opens no SQLite file (the old `connection.py`, `tx()` and `init_db` are gone). The module re-exports the gRPC clients below.
 
 | Group | Functions |
 |---|---|
-| Setup | `init_db`, `_migrate_memory_to_facts`, `_decode_values`, `tx`, `_now`, `_one`, `_all` |
-| Users | `create_user`, `get_user_by_username`, `get_user` |
+| Users (tests and scripts) | `create_user`, `get_user` |
 | Facts | `list_memories` (grouped: `memory_key`, `values`, `memory_value`, `updated_at`), `add_fact`, `set_fact`, `delete_fact(value=None)` |
-| Documents | `add_document`, `update_document`, `find_document_by_hash`, `list_documents`, `get_document`, `delete_document` |
+| Documents | in `library/catalog.py`: `add_document`, `update_document`, `find_by_hash`, `list_documents`, `get_document`, `delete_document` and the rest of the catalog, all calls to the Document service |
 | Conversations | `create_conversation`, `get_conversation`, `list_conversations`, `rename_conversation` (title only; the chat keeps its place), `delete_conversation` |
 | Messages | `add_message`, `list_messages(conv_id, limit)` |
 | Stats | `user_stats` (SQL aggregates over the `messages` stat columns; no JSON parsing) |
@@ -911,7 +964,7 @@ placeholders and filter by `user_id`.
 ### `api/routes/chat.py`
 `_prepare` (conversation, history, facts + episodes, document names, save user message), `_persist` (save the answer
 with meta and usage, queue memory work), `_remember` (background: facts, episode, token log), `_error_state`
-(rate-limit-aware failure answer), `chat`, `chat_stream` (agent thread + relay; `_STREAM_END` ends the stream).
+(rate-limit-aware failure answer), `chat`, `chat_stream` (starts the agent thread, which publishes to the hub; returns 202).
 
 ---
 
@@ -962,32 +1015,81 @@ failure returns `401 Please log in.`; the frontend then shows the login screen.
 
 ## 14. Data model
 
-### SQLite (`backend/data/app.db`)
+### Document service: the library catalog (`backend/data/services/document.db`)
+
+The orchestrator holds no database. The library catalog is the Document service's: the same `agentic_rag.v1.DocumentService` that
+indexes and searches (38 catalog RPCs, one per atomic operation; `services/document/catalog.py` and `catalog_server.py`). The
+files stay in `LIBRARY_DIR`; `file_name`, `backup` and `redo` are paths relative to it. `owner` is a user's id (a plain id, no
+foreign key: accounts are the User service's). An old installation's catalog is copied across once with
+`python scripts/migrate_library_catalog.py` (backend stopped, service running; backs up `app.db`, keeps ids and timestamps,
+verifies the counts, safe to repeat, deletes nothing).
 
 ```
-users ──< documents ──< renames, edits, undone_edits
-  ├──< user_facts
-  ├──< conversations ──< messages
-  ├──< batches ──< batch_tasks
-  ├──< sessions          (the document agent's state per conversation)
-  └──< auth_tokens
+documents ──< renames, edits, undone_edits
+batches ──< batch_tasks
+sessions          (the document agent's state per conversation)
 ```
 
 | Table | Columns | Constraints |
 |---|---|---|
-| `users` | `id`, `username`, `password_hash`, `created_at` | `username` unique, case-insensitive |
-| `user_facts` | `id`, `user_id`, `memory_key`, `value`, `created_at`, `updated_at` | `UNIQUE(user_id, memory_key, value)`, `value` case-insensitive |
-| `migrations` | `name`, `applied_at` | One-off data migrations applied |
-| `user_memory` | `id`, `user_id`, `memory_key`, `memory_value`, … | Pre-migration backup, no longer written; only in databases from before 1 November |
 | `documents` | `id`, `title`, `original_name`, `file_name`, `ext`, `sha256`, `original_sha256`, `size_bytes`, `pages`, `chunks`, `summary`, `keywords`, `owner`, `status`, `error`, `created_at`, `updated_at` | `owner` is the user's id; a re-upload of the same file (as uploaded, or as it is now) is a duplicate |
 | `renames` | `doc_id`, `old_title`, `new_title`, `reason`, `at` | A document's rename history |
 | `edits` | `id`, `doc_id`, `operation`, `detail`, `backup`, `at` | `backup`: the file before the edit, in `data/versions/<doc_id>/` |
 | `undone_edits` | as `edits`, plus `redo`, `ext`, `undone_at`, `undo_order` | Undone edits Redo can bring back (cleared by a new edit) |
 | `batches`, `batch_tasks` | a batch's tasks: `instruction`, `payload`, `checkpoint`, `status`, `reply`, `actions`, `tokens` | The queue (§22) |
 | `sessions` | the document agent's messages and guard, per conversation | |
-| `auth_tokens` | the login token's hash, its user, when it expires | Logins (§13) |
-| `conversations` | `id`, `user_id`, `title`, `created_at`, `updated_at` | cascade on user delete |
-| `messages` | `id`, `conversation_id`, `role`, `content`, `tool`, `meta` (JSON), `created_at`, `latency_ms`, `rewritten`, `sufficient` | cascade on conversation delete; the last three are copied out of `meta` when an answer is saved, so `/stats` is plain SQL (filled from `meta` once in databases from before 14 November) |
+
+### User service (`backend/data/services/user.db`)
+
+Accounts, logins and usage counts live in the User service's own database (gRPC `agentic_rag.v1.UserService`, port
+50061; `python -m services.user`, started first by `scripts/run_all.py`). `app.db` no longer has `users`, `auth_tokens`,
+`embed_usage` or `api_usage`; databases from before keep them, unused. Copy them across once with
+`python scripts/migrate_users.py` (service running; backs up `app.db` first, is safe to repeat, verifies, deletes
+nothing).
+
+| Table | Columns | Notes |
+|---|---|---|
+| `users` | `id`, `username` (unique, case-insensitive), `password_hash`, `created_at` | PBKDF2-SHA256 (600,000 rounds), or day7's bcrypt; the hash never leaves the service |
+| `auth_tokens` | `token_hash` (SHA-256 of the cookie), `user_id`, `created_at`, `expires_at` | 30 days; expired ones are swept when a login is made; cascade with the user |
+| `embed_usage` | `day` (Gemini's Pacific day), `user_id`, `chunks` | added atomically |
+| `api_usage` | `hour` (UTC), `provider`, `key_index`, `model`, `calls`, `tokens`, `limited` | the orchestrator flushes its in-memory counts every 30 s |
+
+RPCs: `CountUsers`, `SignUp`, `LogIn`, `LogOut`, `ValidateToken`, `ListUsers`, `GetEmbedUsage`, `AddEmbedUsage`,
+`ListEmbedUsage`, `AddApiUsage`, `ListApiUsage`, `CallsByKey`, `ImportUsers` (for the migration script).
+Fail closed: `auth.user_for` raises `UserServiceDown` when the call fails for any reason other than an answer about the
+person, and the app turns that (and any other gRPC failure) into `503`; the WebSocket closes with `1013`. The per-address
+throttle, the invite code and the admin-name check stay in the orchestrator.
+
+### Memory service (`backend/data/services/memory.db` and `memory_qdrant/`)
+
+Facts and episodes live in the Memory service (gRPC `agentic_rag.v1.MemoryService`, port 50063; `python -m services.memory`,
+started by `scripts/run_all.py`). `backend/models/memory.py` (facts) and `backend/memory/store.py` (episodes) call it, so
+`database.list_memories(...)`, `save_memory(...)` and the others return what they always did; fact extraction and exchange
+summaries stay in the orchestrator (`backend/tools/memory.py`, the batcher in `chat.py`). `app.db` no longer has `user_facts`.
+Tests stub the shared Voyage client in `conftest.py` (words hashed into a vector). Move the old data with
+`python scripts/migrate_memory.py` (backend stopped, service running; backs up first, safe to repeat, verifies, deletes nothing).
+
+### Conversation service (`backend/data/services/conversation.db`)
+
+Chats live in the Conversation service's own database (gRPC `agentic_rag.v1.ConversationService`, port 50062;
+`python -m services.conversation`, started by `scripts/run_all.py`). `backend/models/conversations.py` calls it through
+`backend/clients.py`, so `database.add_message(...)` and the other functions return what they always did. `app.db` no
+longer creates or reads these tables; databases from before keep them, unused. Copy the old chats across once with
+`python scripts/migrate_conversations.py` (service running; backs up `app.db` first, is safe to repeat, verifies the
+counts, deletes nothing).
+
+```
+conversations ──< messages        (user_id is a plain id: users are in the User service, so there is no foreign key)
+```
+
+| Table | Columns | Constraints |
+|---|---|---|
+| `conversations` | `id`, `user_id`, `title`, `created_at`, `updated_at` | every query is scoped by `user_id`: another user's chat is `NOT_FOUND` |
+| `messages` | `id`, `conversation_id`, `role`, `content`, `tool`, `meta` (JSON text), `created_at`, `latency_ms`, `rewritten`, `sufficient` | cascade on conversation delete; the last three are copied out of `meta` when an answer is saved, so `/stats` is plain SQL |
+
+RPCs: `CreateConversation`, `GetConversation`, `ListConversations`, `RenameConversation`, `DeleteConversation`,
+`AddMessage`, `ListMessages` (with `limit`), `ListToolMessages`, `GetStats`, `ImportConversation` (for the migration
+script). Creating and deleting a chat each write an audit line; every call is logged with the caller's request id.
 
 `messages.meta` for assistant messages:
 
@@ -1032,7 +1134,7 @@ need the login cookie. Errors have the shape `{"detail": "message"}` (a rename's
 | `POST /documents/upload` | multipart `file` | `{"status": "processing" \| "duplicate", "filename", "chunks_indexed", "document"}` — `400`, `413`; indexing errors appear on the document (`status: "failed"`, `error`) |
 | `DELETE /documents/{id}` | — | `204` |
 | `POST /chat` | `{"message", "conversation_id"?}` | `ChatResponse` (below) |
-| `POST /chat/stream` | same | SSE (below) |
+| `POST /chat/stream` | `{"message", "conversation_id"?, "turn_id"?}` | `202 {conversation_id, title, turn_id}`; events on the WebSocket (below) |
 | `GET /conversations` | — | `[{id, title, created_at, updated_at}]` |
 | `GET /conversations/{id}/messages` | — | `[{id, role, content, tool, meta, created_at}]` oldest first |
 | `PATCH /conversations/{id}` | `{"title"}` (1–60 characters) | the conversation; `updated_at` unchanged, so it keeps its place in the list — `404`, `422` |
@@ -1053,17 +1155,35 @@ need the login cookie. Errors have the shape `{"detail": "message"}` (a rename's
 | `GET /library/limits` | — | Groq tokens used in the last minute and the user's queue |
 
 `ChatResponse`: `{conversation_id, message_id, answer, tool, intent, sources, notices, rewritten_queries, evaluation,
-trace, latency_ms}` (the stream's `final` event also carries `usage`); `tool` is `rag | web_search | direct | greeting | no_results`.
+trace, latency_ms}` (the WebSocket's `final` event also carries `usage` and `turn_id`); `tool` is `rag | web_search | direct | greeting | no_results`.
 
-**Stream events** (`POST /chat/stream`):
+**The WebSocket** (`GET /api/ws`, `backend/api/routes/ws.py`; messages in `backend/realtime/schema.py`; hub in
+`backend/realtime/hub.py`). One per browser tab; everything the server pushes goes through it, the browser's requests
+go over REST. Auth is the HttpOnly login cookie on the handshake; another site's Origin is refused (1008), no login is
+closed with 4401. Every message is `{seq, channel, type, request_id, data, ts}`; `seq` rises per account and
+`request_id` is the REST request that started the work. `?after=<seq>` replays what the hub kept (500 events or an
+hour per account, only the newest draft of a turn) or answers `system/resync`. `system/heartbeat` every 20 s; the
+client may send `{"type":"ping"}` and gets `system/pong`. `publish()` is thread-safe: the chat thread, the batch worker
+and the indexing queue publish from their own threads and the event loop does the sending.
 
-| Event | Payload | Meaning |
+| Channel / type | Data | Meaning |
 |---|---|---|
-| `meta` | `{conversation_id, title}` | Sent first, so a new chat appears immediately |
-| `status` | `{node, label}` | A step started, e.g. "Searching your documents…" |
-| `step` | `{id, node, detail, data}` | A trace entry, as soon as it exists |
-| `draft` | `{node, text}` | The answer so far (throttled to ~30 chars / 0.15 s) |
-| `final` | `ChatResponse` | The saved answer |
+| `system/hello` | `{user, seq}` | First message: who, and the account's latest seq |
+| `system/resync` | `{}` | The cursor can't be served: read state over REST |
+| `chat/meta` | `{conversation_id, turn_id, title}` | Sent first, so a new chat appears immediately |
+| `chat/status` | `{…, node, label}` | A step started, e.g. "Searching your documents…" |
+| `chat/step` | `{…, id, node, detail, data}` | A trace entry, as soon as it exists |
+| `chat/draft` | `{…, node, text}` | The answer so far (throttled to ~30 chars / 0.15 s) |
+| `chat/final` | `ChatResponse` + `turn_id` | The saved answer |
+| `chat/error` | `{…, message, fatal}` | The agent failed (a `final` with the error answer follows) or the answer couldn't be saved (`fatal`) |
+| `queue/task` | `{batch_id, task_id, status, reply}` | A queued task changed state |
+| `queue/changed` | `{}` | A batch was added or cancelled: read `GET /library/queue` again |
+| `library/document` | `{doc_id, stage, title?, error?}` | A file's indexing: `reading` (includes OCR), `indexed`, `failed` |
+
+Missed events: a tab that was offline or dropped reconnects with its last seq and gets the replay; when it can't (older
+than the log, or the server restarted) it gets `resync` and the page reads the saved answer from
+`GET /conversations/{id}/messages` (`meta.turn_id`), so the answer is never lost. The front end follows a turn with
+`lib/turn.js` over the tab's one `RealtimeSocket` (`lib/realtimeSocket.js`: reconnect with backoff, cursor, ping).
 
 ---
 
@@ -1091,7 +1211,7 @@ App.jsx ── session, health polling, conversations, documents, routing
 | `state/chatStore.js` | Conversations and in-flight answers live outside the pages (`useSyncExternalStore`), so an answer keeps streaming when you switch pages or chats. A new chat is stored under `NEW_KEY` until the `meta` event gives its id. |
 | `lib/theme.js` | `useTheme()`: System / Light / Dark, saved in `localStorage` (`agentic_rag_theme`) and applied as `<html data-theme>`. `index.html` applies it before the first paint. |
 | `lib/format.js` | Counts, sizes, seconds, percentages, recency groups, source labels. |
-| `services/api.jsx` | `request()` sends the login cookie (`credentials: 'include'`) and handles errors (401 → login; an object `detail` is kept on `err.data`); `streamMessage()` reads the SSE stream (`onMeta`, `onStatus`, `onStep`, `onDraft`, `onFinal`). |
+| `services/api.jsx` | `request()` sends the login cookie (`credentials: 'include'`) and handles errors (401 → login; an object `detail` is kept on `err.data`); `streamMessage()` POSTs, then follows the turn on the WebSocket (`onMeta`, `onStatus`, `onStep`, `onDraft`, `onFinal`). |
 | `pages/Login.jsx` | Sign-in / sign-up with the backend's rules, offline notice, and an example answer. |
 | `pages/Chat.jsx` | New chat with suggestions based on your documents; otherwise the conversation and composer. |
 | `pages/Documents.jsx` | Drop zone + picker, type/size checks, upload progress, status list (re-checked every 2 s while a file is indexing). Each document's name opens the preview (where it can be edited); its "⋯" menu has Rename (inline), Undo latest edit and Redo, Download, Download as PDF and Remove, each change asking first in the row. The queue panel above the list. |
@@ -1119,11 +1239,11 @@ then `python -m pytest` from the project root. `conftest.py` blocks font downloa
 |---|---|
 | `test_routing.py` | Source orders, documents skipped without uploads, single fallback, auto → model knowledge, retry budgets, partial RAG answers, unchecked answers kept, web recency rules, knowledge-gate rules, memory pre-check |
 | `test_memory.py` | Key normalisation, merge rules (replace / collect / forget / corrections), storage, one-time migration |
-| `test_stream.py` | The stream ends with `final`; the answer is saved after the client disconnects |
+| `test_stream.py`, `test_websocket.py` | A turn's events reach the socket in order and end with `final`, the answer is saved with nobody connected; login/origin, tabs, replay, threads, queue pushes |
 | `test_citations.py` | The code citation check: uncited claims, invalid `[n]`, unsupported claims, numbers, lists under a cited lead-in |
 | `test_rerank.py` | Reranker zones; fallback to the LLM check when Voyage can't score |
 | `test_conversations.py` | Renaming chats (title trimmed, empty or too long rejected, other users' chats not found); fresh databases skip the old memory table |
-| `test_security.py`, `test_compression.py` | Host / cross-site checks, headers, the page's policy, the login cookie; gzip and what it leaves alone (the chat's stream checked over a real server) |
+| `test_security.py`, `test_compression.py` | Host / cross-site checks, headers, the page's policy, the login cookie; gzip and what it leaves alone (the WebSocket passes through the compression middleware untouched) |
 | `test_frontend_logic.py` | Through node: what the chat's Undo / Redo apply to, the preview's history entry |
 | `library/` | The document library: accounts and privacy, the agent's guard, routing to it and follow-ups, renames, edits (TXT, DOCX, PDF in place, growth onto a new page, fonts, size), undo / redo, the queue, the API, the Documents page's routes and the served build |
 | `test_documents.py` | Background indexing: upload returns `processing`, then indexed or failed; no second job for the same file; vectors removed if the document was deleted meanwhile; indexing cut off by a restart is resumed |

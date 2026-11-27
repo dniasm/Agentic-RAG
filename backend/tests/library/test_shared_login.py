@@ -6,7 +6,8 @@ import bcrypt
 from fastapi.testclient import TestClient
 
 from backend.app import app
-from backend.library import auth, catalog
+from backend.models import database as db
+from services.user import accounts
 
 
 def day7_hash(password: str) -> str:
@@ -15,7 +16,7 @@ def day7_hash(password: str) -> str:
 
 
 def test_a_day7_bcrypt_user_logs_in():
-    catalog.create_user("bcrypt_person", day7_hash("correct horse 1"))
+    db.create_user("bcrypt_person", day7_hash("correct horse 1"))
     c = TestClient(app)
     assert c.post("/api/auth/login", json={"username": "bcrypt_person", "password": "wrong one"}).status_code == 401
     r = c.post("/api/auth/login", json={"username": "bcrypt_person", "password": "correct horse 1"})
@@ -23,7 +24,7 @@ def test_a_day7_bcrypt_user_logs_in():
 
 
 def test_a_pbkdf2_user_logs_in():
-    catalog.create_user("pbkdf2_person", auth.hash_password("correct horse 2"))
+    db.create_user("pbkdf2_person", accounts.hash_password("correct horse 2"))
     c = TestClient(app)
     assert c.post("/api/auth/login", json={"username": "pbkdf2_person", "password": "nope nope"}).status_code == 401
     r = c.post("/api/auth/login", json={"username": "pbkdf2_person", "password": "correct horse 2"})

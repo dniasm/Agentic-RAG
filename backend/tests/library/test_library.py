@@ -1,5 +1,5 @@
 from backend.library import catalog, config, library
-from backend.rag import vectorstore
+from services.document import vectorstore
 from backend.config.settings import settings
 
 
@@ -90,7 +90,7 @@ def test_empty_library():
 
 
 def test_find_without_the_reranker_uses_cosine(library_docs, monkeypatch):
-    from backend.rag import rerank
+    from services.document import rerank
     monkeypatch.setattr(rerank, "score", lambda query, hits, priority=None: None)
     result = library.find("Mikolov skip-gram continuous bag of words")
     assert result["scorer"] == "cosine"

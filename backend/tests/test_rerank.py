@@ -7,7 +7,7 @@ from unittest import mock
 
 from backend.config.settings import settings
 from backend.graph import nodes
-from backend.rag import rerank
+from services.document import rerank
 
 
 def hits(n=3):
@@ -51,8 +51,8 @@ class Voyage(unittest.TestCase):
 class GradeFallback(unittest.TestCase):
     def test_failed_rerank_falls_back_to_the_llm_check_on_a_few_candidates(self):
         state = {"standalone_query": "q", "documents": hits(20)}
-        with mock.patch.object(nodes.rerank, "available", return_value=True), \
-             mock.patch.object(nodes.rerank, "score", return_value=None), \
+        # (the Document service could not rerank: its candidates come back without a "relevance")
+        with mock.patch.object(nodes.doc_rag, "available", return_value=True), \
              mock.patch.object(nodes, "grade_documents", side_effect=lambda q, d: (d[:2], [])) as grade:
             update = nodes.grade_node(state)
         self.assertEqual(len(grade.call_args[0][1]), settings.retrieval_k + 2)
@@ -60,13 +60,13 @@ class GradeFallback(unittest.TestCase):
         self.assertEqual(update["match_zone"], "")
 
     def test_voyage_scores_use_voyage_thresholds(self):
-        ranked = [dict(h, relevance=r, scorer="voyage") for h, r in zip(hits(), (0.45, 0.3, 0.2))]
+        # (candidates as the Document service returns them: reranked best first, the MMR picks numbered)
+        ranked = [dict(h, relevance=r, scorer="voyage", **({"selected": n} if n else {}))
+                  for h, r, n in zip(hits(), (0.45, 0.3, 0.2), (1, 2, 0))]
         with mock.patch.object(settings, "voyage_relevance_high", 0.6), \
              mock.patch.object(settings, "voyage_relevance_low", 0.4), \
-             mock.patch.object(nodes.rerank, "available", return_value=True), \
-             mock.patch.object(nodes.rerank, "score", return_value=ranked), \
-             mock.patch.object(nodes.rerank, "mmr_select", side_effect=lambda r: r[:2]):
-            update = nodes.grade_node({"standalone_query": "q", "documents": hits()})
+             mock.patch.object(nodes.doc_rag, "available", return_value=True):
+            update = nodes.grade_node({"standalone_query": "q", "documents": ranked})
         self.assertEqual(update["match_zone"], "mid")
         self.assertEqual(update["documents"], [])
         self.assertIn("with Voyage", update["trace"][0]["detail"])

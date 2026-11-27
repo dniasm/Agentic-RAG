@@ -66,8 +66,8 @@ def main():
     st["import backend: seconds"] = round(time.perf_counter() - s, 1)
     st["after import, memory MB"] = rss_mb()
 
-    from backend.rag import rerank, sparse, vectorstore
-    from backend.rag.ingestion import load_file, split_documents
+    from services.document import rerank, sparse, vectorstore
+    from services.document.ingestion import load_file, split_documents
     s = time.perf_counter()
     vectorstore.get_client()
     st["open Qdrant: seconds"] = round(time.perf_counter() - s, 1)

@@ -9,7 +9,7 @@ import pytest
 
 from backend.config.settings import settings
 from backend.library import catalog, config, editing, embed_budget, library
-from backend.rag import ingestion, ocr, vectorstore
+from services.document import db, ingestion, ocr, vectorstore
 from backend.tools import rag as rag_tool
 
 needs_tesseract = pytest.mark.skipif(ocr.tesseract() is None, reason="tesseract isn't installed")
@@ -48,9 +48,8 @@ def _chunks(doc_id: str, owner: str) -> list[dict]:
 @pytest.fixture(autouse=True)
 def fresh(monkeypatch):
     monkeypatch.setattr(ocr, "_warned", False)
-    with ocr._lock:
-        ocr._db().execute("DELETE FROM page_text")
-        ocr._db().commit()
+    with db.shared().tx() as c:
+        c.execute("DELETE FROM page_text")
 
 
 @needs_tesseract

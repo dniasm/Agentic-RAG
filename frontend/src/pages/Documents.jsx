@@ -7,8 +7,8 @@ import QueuePanel from '../components/QueuePanel';
 import { openPreview } from '../state/previewStore';
 import { onDocumentsChanged } from '../state/documentEvents';
 
-const ACCEPTED = ['.pdf', '.docx', '.txt', '.md'];
-const MAX_MB = 20;
+import { ACCEPTED, MAX_MB, checkFile } from '../lib/uploadRules';
+
 const POLL_MS = 2000;
 function Notice({ notice, onClose }) {
   const tone = notice.type === 'error'
@@ -65,9 +65,8 @@ export default function Documents({ onChanged }) {
   }, [indexing, documents]);
 
   const uploadOne = async (file) => {
-    const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
-    if (!ACCEPTED.includes(ext)) return { ok: false, text: `${file.name}: only PDF, DOCX, TXT and MD files can be added.` };
-    if (file.size > MAX_MB * 1024 * 1024) return { ok: false, text: `${file.name}: larger than ${MAX_MB} MB.` };
+    const problem = checkFile(file);
+    if (problem) return { ok: false, text: problem };
     try {
       const data = await apiService.uploadDocument(file);
       return {

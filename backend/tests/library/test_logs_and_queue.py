@@ -1,10 +1,13 @@
-"""The two log files, and queued changes that run in code (no model)."""
+"""The log files (service and audit), and queued changes that run in code (no model)."""
 import logging
+from datetime import date
 
 import pytest
 
-from backend.library import batch, catalog, config, library, logs
+from backend.library import batch, catalog, library
+from services.document import db as document_db
 from test_agent import turn
+from services.common.log import setup_logging
 from test_editing import stored
 
 
@@ -14,38 +17,45 @@ class NoModel:
 
 
 @pytest.fixture
-def log_files():
-    logs._done = False
+def log_files(tmp_path, monkeypatch):
+    """The app-wide log system pointed at a temporary folder (LOG_DIR)."""
+    monkeypatch.setenv("LOG_DIR", str(tmp_path))
     root = logging.getLogger()
     before = list(root.handlers)
-    logs.setup()
-    added = [h for h in root.handlers if h not in before]
-    yield config.DATA_DIR / "logs"
-    for h in added:
-        h.flush()
+    setup_logging("orchestrator")
+    lib = logging.getLogger("backend.library")
+    old_level = lib.level
+    lib.setLevel(logging.DEBUG)       # as backend/app.py does
+    yield tmp_path
+    lib.setLevel(old_level)
+    for h in list(root.handlers):
         h.close()
         root.removeHandler(h)
-    logs._done = False
+    for h in before:
+        root.addHandler(h)
 
 
-def read(folder, name):
+def read(folder, kind):
+    """The text of today's service file ("service") or audit file ("audit")."""
     for h in logging.getLogger().handlers:
         h.flush()
-    return (folder / name).read_text(encoding="utf-8")
+    today = date.today().isoformat()
+    path = folder / "orchestrator" / f"{today}.log" if kind == "service" else folder / "audit" / f"orchestrator-{today}.log"
+    return path.read_text(encoding="utf-8")
 
 
 # ---------------------------------------------------------------- logs
-def test_major_events_go_to_both_logs_and_details_only_to_all(library_docs, log_files):
+def test_major_events_go_to_both_logs_and_details_only_to_the_service_log(library_docs, log_files):
     svm = library_docs["svm.txt"]["id"]
     turn("l1", [("find_documents", {"description": "svm.txt"})],
          [("rename_document", {"doc_id": svm, "new_title": "SVM Primer"})])
     logging.getLogger("backend.library.something").error("boom")
-    events, everything = read(log_files, "events.log"), read(log_files, "all.log")
-    assert 'rename doc="' in events and '"SVM Primer"' in events
-    assert "chat session=" in events and "chat_done" in events and "boom" in events
-    assert "tool find_documents args=" not in events               # tool calls are detail, not major
+    audit_text, everything = read(log_files, "audit"), read(log_files, "service")
+    assert "rename doc=" in audit_text and '"SVM Primer"' in audit_text
+    assert "chat session=" in audit_text and "chat_done" in audit_text
+    assert "tool find_documents args=" not in audit_text           # tool calls are detail, not events
     assert "tool find_documents args=" in everything and "tool rename_document" in everything
-    assert 'rename doc="' in everything and "boom" in everything     # all.log has everything
+    assert "rename doc=" in everything and "boom" in everything    # the service file has everything
 
 
 def test_indexing_edits_and_deletes_are_logged(tmp_path, log_files):
@@ -56,7 +66,7 @@ def test_indexing_edits_and_deletes_are_logged(tmp_path, log_files):
     editing.edit(doc["id"], "replace", find="approved", text="rejected")
     editing.undo(doc["id"])
     library.delete(doc["id"])
-    events = read(log_files, "events.log")
+    events = read(log_files, "audit")
     for name in ("upload doc=", "indexed doc=", "edit doc=", "undo doc=", "deleted doc="):
         assert name in events, name
 
@@ -152,7 +162,7 @@ def test_the_queue_panel_gets_only_active_and_recent_batches(library_docs):
     recent = catalog.add_batch("s", ["c"])
     catalog.update_task(old_done["tasks"][0]["id"], status="done")
     catalog.update_task(recent["tasks"][0]["id"], status="done")
-    with catalog.tx() as c:                                   # two of them were queued two hours ago
+    with document_db.shared().tx() as c:                      # two of them were queued two hours ago (in the service's file)
         c.execute("UPDATE batches SET created_at = '2000-01-01T00:00:00+00:00' WHERE id IN (?, ?)",
                   (old_done["id"], old_waiting["id"]))
     shown = {b["id"] for b in batch.status()["batches"]}
@@ -160,6 +170,6 @@ def test_the_queue_panel_gets_only_active_and_recent_batches(library_docs):
 
 
 def test_the_searched_columns_are_indexed():
-    with catalog.tx() as c:
+    with document_db.shared().tx() as c:   # the Document service's file
         names = {r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type = 'index'")}
     assert {"renames_doc", "edits_doc", "tasks_status", "tasks_batch"} <= names

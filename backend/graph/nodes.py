@@ -13,9 +13,9 @@ from backend.config.settings import settings
 from backend.evaluation import citations
 from backend.evaluation.evaluator import evaluate_answer, grade_documents
 from backend.evaluation.reviewer import verified_decision
+from backend.graph import doc_reference, guards
 from backend.graph.state import AgentState
-from backend.rag import rerank
-from backend.rag.retrieval import retrieve
+from backend.documents import rag as doc_rag
 from backend.tools import direct_answer, greeting, rag, web_search
 from backend.tools import history_to_text, memories_for_decision, memory_lines, today
 
@@ -177,7 +177,9 @@ answer it. Today is {today}.
 
 MESSAGE TYPE
 - small_talk: no information need: greetings, thanks, goodbyes, casual chat, the user sharing something about
-  themselves, and questions about the assistant itself ("who are you?", "what can you do?").
+  themselves, and questions about the assistant itself ("who are you?", "what can you do?"). A statement or
+  question about the user's uploaded documents ("there is only one document", "did my file go through?") is
+  NOT small talk: it is an information_request.
 - information_request: everything else, including follow-ups, coding, calculations, how-tos, and challenges
   such as "why?" or "are you sure?" that ask for clarification or verification.
 
@@ -255,6 +257,8 @@ def asks_for_documents(query: str, doc_names: list[str]) -> bool:
     text = query.lower()
     return any(name.lower() in text for name in doc_names if len(name) > 4)
 
+
+_ABOUT_DOCUMENTS = re.compile(rf"\b(?:{_DOC_NOUN}|documents?)\b", re.I)
 
 ROUTER_DOC_NAMES = 20  # file names listed in the router prompt; the rest are counted
 
@@ -372,8 +376,29 @@ def manage_in_code(state: AgentState) -> str | None:
     return None
 
 
+def _document_reference(state: AgentState) -> dict | None:
+    """The route for a message that points at a document ("the document I just uploaded", "my latest upload", a
+    title or file name): the documents, found by id, without the relevance gate (see graph/doc_reference.py)."""
+    query = state["query"].strip()
+    if not state.get("user_id") or manage_in_code(state) or _ACTION_WORD.search(query):
+        return None
+    found = doc_reference.resolve(query, state["user_id"], state.get("conversation_id"))
+    if not found:
+        return None
+    docs, why = found
+    update = _route_update(state, "information_request", "documents", True, True, query,
+                           f"The message points at a document: {why} (decided in code).", [], decided_in_code=True)
+    update["intent"] = "rag"
+    update["doc_ref_ids"] = [d["id"] for d in docs]
+    update["doc_ref_titles"] = [d["title"] for d in docs]
+    return update
+
+
 def router_node(state: AgentState) -> dict:
     docs = state.get("doc_names", [])
+    ref = _document_reference(state)
+    if ref:
+        return ref
     shortcut = _code_route(state)
     if shortcut:
         return _route_update(state, *shortcut, review_steps=[], decided_in_code=True)
@@ -438,6 +463,12 @@ def _route_update(state: AgentState, kind: str, pref: str, clear: bool, confiden
     docs = state.get("doc_names", [])
     standalone = standalone or state["query"]
     notices: list[str] = []
+
+    if kind == "small_talk" and docs and _ABOUT_DOCUMENTS.search(state["query"]) and not _PLAIN_SMALL_TALK.match(
+            state["query"].strip()):
+        log.info("Router called a message about the user's documents small talk; answering it from them")
+        reason = f"A message about the user's documents is not small talk. {reason}"
+        kind, pref = "information_request", "documents"
 
     if kind == "information_request" and pref != "documents" and asks_for_documents(state["query"], docs):
         log.info("Router chose %s, but the message explicitly asks for the user's documents", pref)
@@ -565,13 +596,16 @@ def manage_node(state: AgentState) -> dict:
 # ============================================================
 
 def greeting_node(state: AgentState) -> dict:
-    text = greeting.respond(
-        state["query"],
-        state.get("history", []),
-        state.get("username", "there"),
-        len(state.get("doc_names", [])),
-        state.get("memories", []),
-    )
+    def write():
+        return greeting.respond(
+            state["query"],
+            state.get("history", []),
+            state.get("username", "there"),
+            len(state.get("doc_names", [])),
+            state.get("memories", []),
+        )
+
+    text, _ = guards.guarded(write(), write)
 
     return {
         "answer": text,
@@ -596,6 +630,11 @@ def direct_node(state: AgentState) -> dict:
         state.get("confidence_required", True),
         state.get("memories", []),
     )
+
+    if text and not needs_web:
+        text, _ = guards.guarded(text, lambda: direct_answer.answer(
+            state["standalone_query"], state.get("history", []), state.get("confidence_required", True),
+            state.get("memories", []))[0])
 
     tried = _with(state.get("tried_sources"), "direct")
     notices = _notices_after_writing(state)
@@ -843,12 +882,56 @@ def rewrite_node(state: AgentState) -> dict:
 # 5. RAG: retrieve -> grade -> generate
 # ============================================================
 
+def _retrieve_referenced(state: AgentState) -> dict:
+    """Read the documents the message points at, by id, with no relevance threshold: "the document I just
+    uploaded" shares no words with its passages, so the gate would reject exactly the right document."""
+    ids = state["doc_ref_ids"]
+    titles = state.get("doc_ref_titles") or []
+    query = state.get("standalone_query") or state["query"]
+    attempt = state.get("attempts", 0) + 1
+    per_doc = max(2, settings.retrieval_k // len(ids)) if len(ids) > 1 else settings.retrieval_k + 2
+    hits: list[dict] = []
+    failure = None
+    for i, doc_id in enumerate(ids):
+        queries = [query] + ([titles[i]] if i < len(titles) and titles[i] else [])
+        for wait in (0, 2):
+            if wait:
+                time.sleep(wait)
+            try:
+                found = doc_rag.search(queries, state["user_id"], k=per_doc, min_score=0.0, doc_id=doc_id)
+                hits.extend(found["passages"])
+                failure = None
+                break
+            except Exception as exc:
+                failure = exc
+                log.warning("Document search failed%s: %s", ", retrying" if not wait else "", exc)
+        if failure:
+            break
+    if failure and not hits:
+        return {
+            "documents": [], "attempts": attempt, "docs_off_topic": True, "docs_search_failed": True,
+            "tried_sources": _with(state.get("tried_sources"), "rag"),
+            "trace": [_step("retrieve", "The referenced document could not be searched because the search service "
+                                        "was unavailable.", error=str(failure)[:200])],
+        }
+    return {
+        "documents": hits, "attempts": attempt, "docs_off_topic": not hits, "docs_search_failed": False,
+        "tried_sources": _with(state.get("tried_sources"), "rag"),
+        "trace": [_step("retrieve", f"Read the document the message points at ({', '.join(titles) or ', '.join(ids)}): "
+                                    f"{len(hits)} passage(s), relevance gate skipped.",
+                        doc_ids=ids, candidates=len(hits))],
+    }
+
+
 def retrieve_node(state: AgentState) -> dict:
+    if state.get("doc_ref_ids"):
+        return _retrieve_referenced(state)
+
     queries = state.get("search_queries") or [
         state["standalone_query"]
     ]
     attempt = state.get("attempts", 0) + 1
-    use_rerank = rerank.available()
+    use_rerank = doc_rag.available()
 
     k = settings.rerank_candidates - 2 if use_rerank else None
 
@@ -859,12 +942,15 @@ def retrieve_node(state: AgentState) -> dict:
             time.sleep(wait)
 
         try:
-            hits = retrieve(
+            found = doc_rag.search(
                 queries,
                 state["user_id"],
                 k=k,
                 min_score=0.0 if use_rerank else None,
+                rerank_query=state["standalone_query"] if use_rerank else None,
+                mmr=True,
             )
+            hits = found["passages"]
             break
         except Exception as exc:
             failure = exc
@@ -969,11 +1055,28 @@ _ZONE_TEXT = {
 }
 
 
+def _zone(best_relevance: float | None) -> str:
+    """The confidence zone of the best rerank score (thresholds calibrated on the benchmark; the service uses the same)."""
+    high, low = settings.voyage_relevance_high, settings.voyage_relevance_low
+    if best_relevance is None or best_relevance < low:
+        return "low"
+    return "high" if best_relevance >= high else "mid"
+
+
 def grade_node(state: AgentState) -> dict:
     candidates = state.get("documents", [])
+    if state.get("doc_ref_ids") and candidates:   # the user named the document: every passage of it is evidence
+        return {
+            "documents": candidates,
+            "match_zone": "high",
+            "trace": [_step("grade_documents", f"The message points at a specific document: its {len(candidates)} "
+                                               "passage(s) are used without a relevance check.")],
+        }
+    # The Document service already reranked the candidates (and chose the diverse passages with MMR) when it could;
+    # candidates without a "relevance" mean it could not score, and the LLM checks them below.
     ranked = (
-        rerank.score(state["standalone_query"], candidates)
-        if rerank.available() and candidates
+        candidates
+        if candidates and all("relevance" in h for h in candidates)
         else None
     )
 
@@ -993,8 +1096,8 @@ def grade_node(state: AgentState) -> dict:
 
         best = ranked[0]["relevance"]
         scorer = ranked[0].get("scorer")
-        zone = rerank.zone(best)
-        chosen = rerank.mmr_select(ranked) if zone != "low" else []
+        zone = _zone(best)
+        chosen = sorted((h for h in ranked if h.get("selected")), key=lambda h: h["selected"]) if zone != "low" else []
 
         detail = (
             f"Reranked {len(ranked)} candidates with Voyage: "
@@ -1032,7 +1135,7 @@ def grade_node(state: AgentState) -> dict:
 
     # No reranker could score (disabled, or Voyage failed with no local backup): the LLM checks the
     # passages instead. The search fetched extra candidates for the reranker; the LLM gets the top few.
-    if rerank.available():
+    if doc_rag.available():
         candidates = candidates[: settings.retrieval_k + 2]
 
     relevant, review_steps = grade_documents(
@@ -1070,6 +1173,9 @@ def generate_rag_node(state: AgentState) -> dict:
     )
 
     notices = _notices_after_writing(state)
+
+    if text:
+        text, _ = guards.guarded(text, lambda: rag.generate(state["standalone_query"], docs, state.get("history", [])))
 
     if not text:
         return {
@@ -1207,6 +1313,10 @@ def generate_web_node(state: AgentState) -> dict:
         results,
         state.get("history", []),
     )
+
+    if text:
+        text, _ = guards.guarded(text, lambda: web_search.generate(
+            state["standalone_query"], results, state.get("history", [])))
 
     if not text:
         return {

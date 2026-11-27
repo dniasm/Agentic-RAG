@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
 from backend.api.dependencies import get_current_user
-from backend.library import batch, catalog, config, export, library, logs, naming
+from backend.library import auth, batch, catalog, config, export, library, naming
 from backend.library.logs import event
 
 router = APIRouter(prefix="/library", tags=["Library"])
@@ -33,11 +33,14 @@ def _resume_unfinished() -> None:
 
 
 def startup() -> None:
-    """Called from day7's lifespan: logs, unfinished files, the queue worker."""
-    logs.setup()   # data/logs/events.log (major events) and data/logs/all.log (everything)
+    """Called from day7's lifespan: unfinished files, the queue worker."""
     _resume_unfinished()
     batch.start()
-    event("server_started", documents=len(catalog.list_documents()), users=catalog.count_users())
+    try:
+        users = auth.user_count()
+    except auth.UserServiceDown:   # the server starts anyway: until the service answers, nobody can sign in
+        users = "unknown"
+    event("server_started", documents=len(catalog.list_documents()), users=users)
 
 
 def shutdown() -> None:
@@ -80,7 +83,7 @@ def upload(files: list[UploadFile] = File(...), user: dict = Depends(current_use
         if not duplicate:
             library.queue(doc["id"])
         # a duplicate of the file as it was uploaded, though the document has been edited since
-        edited_since = duplicate and doc["sha256"] != library.ingestion.file_sha256(data)
+        edited_since = duplicate and doc["sha256"] != library.rag.file_sha256(data)
         results.append({"file": f.filename, "status": "duplicate" if duplicate else "queued", "document": _public(doc),
                         "edited_since": edited_since})
     return results

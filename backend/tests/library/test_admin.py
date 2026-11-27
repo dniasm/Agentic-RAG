@@ -12,20 +12,20 @@ from fastapi.testclient import TestClient
 
 from backend.config import api_meter, gemini, llm
 from backend.config.settings import settings
-from backend.library import catalog, config, embed_budget
+from backend.library import config, embed_budget
 
 INVITE = "let-me-in-42"
 SECRET = "gsk_test_secret_key_never_shown"
 
 
 @pytest.fixture(autouse=True)
-def fresh_meter(monkeypatch):
+def fresh_meter(monkeypatch, user_db):
     monkeypatch.setattr(api_meter, "FLUSH_SECONDS", 3600.0)
     with api_meter._lock:
         api_meter._pending.clear()
         api_meter._latest.clear()
-    with catalog.tx() as c:
-        c.execute("DROP TABLE IF EXISTS api_usage")
+    with user_db.tx() as c:
+        c.execute("DELETE FROM api_usage")
     yield
     with api_meter._lock:
         api_meter._pending.clear()
@@ -65,12 +65,12 @@ def test_a_listed_account_sees_it_uncached(signed_in, admin):
     assert browser().get("/api/auth/state").json()["user"] is None
 
 
-def test_a_listed_name_cant_be_signed_up_for(signed_in, admin, monkeypatch):
+def test_a_listed_name_cant_be_signed_up_for(signed_in, admin, monkeypatch, user_db):
     monkeypatch.setattr(config, "SIGNUP_CODE", INVITE)
     r = browser().post("/api/auth/signup",
                        json={"username": "SOMEONE-ELSE", "password": "correct horse", "invite": INVITE})
     assert r.status_code == 409
-    assert catalog.user_by_name("someone-else") is None
+    assert user_db.connection().execute("SELECT 1 FROM users WHERE username = ?", ("someone-else",)).fetchone() is None
 
 
 def test_the_panel_counts_accounts_without_content(signed_in, admin):
@@ -159,7 +159,6 @@ def test_counts_survive_a_restart():
     api_meter.count("gemini", 0, "questions", calls=2)
     api_meter.count("voyage", 0, "rerank", calls=1)
     api_meter.flush()
-    catalog.reset_connection()
     got = {(r["provider"], r["model"]): r["calls"] for r in api_meter.rows_since(24)}
     assert got == {("gemini", "questions"): 2, ("voyage", "rerank"): 1}
 

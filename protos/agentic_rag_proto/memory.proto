@@ -1,0 +1,119 @@
+syntax = "proto3";
+
+// What the app remembers about each person: exact facts ("hobbies: trekking; futsal") and episodes, short summaries of
+// past exchanges that are found again by meaning. The service owns both stores (memory.db and its own embedded vector
+// folder) and the embedding: callers send text, never vectors, except the bulk import used by scripts/migrate_memory.py.
+// Deciding WHAT to remember (reading messages with a language model) stays in the orchestrator. Every call is scoped
+// by user_id (a User service id kept as a plain string): one person's facts and episodes are never visible to another.
+//
+// Errors: INVALID_ARGUMENT (empty user id, key, value or text), RESOURCE_EXHAUSTED (no embedding request slot became
+// free in time: the caller answers without recall, or retries later), UNAVAILABLE / DEADLINE_EXCEEDED.
+package agentic_rag.v1;
+
+service MemoryService {
+  // The person's facts grouped by key, most recently updated key first.
+  rpc ListFacts(ListFactsRequest) returns (ListFactsReply);
+  // Adds one value to a key (a duplicate, ignoring case, only refreshes its timestamp).
+  rpc AddFact(FactRequest) returns (FactReply);
+  // Makes the value the key's only value (single-value keys such as preferred_name).
+  rpc SetFact(FactRequest) returns (FactReply);
+  // Deletes one value of a key (ignoring case), or the whole key when value is not set. Returns rows deleted.
+  rpc DeleteFact(DeleteFactRequest) returns (DeleteFactReply);
+
+  // Embeds the text (Voyage, as a document) and stores it. The id is stable for the same user and text, so storing an
+  // exchange twice keeps one episode.
+  rpc StoreEpisode(StoreEpisodeRequest) returns (StoreEpisodeReply);
+  // Embeds the query (as a query) and returns the person's closest episodes, best first.
+  rpc SearchEpisodes(SearchEpisodesRequest) returns (SearchEpisodesReply);
+  // Removes the episodes made in one conversation.
+  rpc DeleteConversationEpisodes(DeleteConversationEpisodesRequest) returns (DeleteConversationEpisodesReply);
+
+  // Idempotent bulk copy for scripts/migrate_memory.py (and tests): facts keep their ids and timestamps, episodes keep
+  // their ids, vectors and payloads (nothing is embedded again). Rows already there are left as they are.
+  rpc ImportFacts(ImportFactsRequest) returns (ImportReply);
+  rpc ImportEpisodes(ImportEpisodesRequest) returns (ImportReply);
+  // Counts, so a migration can check what the service holds.
+  rpc CountMemory(CountMemoryRequest) returns (CountMemoryReply);
+}
+
+message FactGroup {
+  string memory_key = 1;
+  repeated string values = 2;
+  string updated_at = 3;
+}
+
+message ListFactsRequest { string user_id = 1; }
+message ListFactsReply { repeated FactGroup groups = 1; }
+
+message FactRequest {
+  string user_id = 1;
+  string memory_key = 2;
+  string value = 3;
+}
+message FactReply {}
+
+message DeleteFactRequest {
+  string user_id = 1;
+  string memory_key = 2;
+  optional string value = 3;
+}
+message DeleteFactReply { int64 deleted = 1; }
+
+message StoreEpisodeRequest {
+  string user_id = 1;
+  string text = 2;
+  string kind = 3;                        // "episodic" when empty
+  optional string conversation_id = 4;
+}
+message StoreEpisodeReply { string id = 1; }
+
+message SearchEpisodesRequest {
+  string user_id = 1;
+  string query = 2;
+  int32 limit = 3;                        // 5 when 0
+  optional double score_threshold = 4;
+}
+message Episode {
+  string id = 1;
+  string text = 2;
+  string kind = 3;
+  optional string conversation_id = 4;
+  optional string updated_at = 5;
+  double score = 6;
+}
+message SearchEpisodesReply { repeated Episode episodes = 1; }
+
+message DeleteConversationEpisodesRequest {
+  string user_id = 1;
+  string conversation_id = 2;
+}
+message DeleteConversationEpisodesReply {}
+
+message ImportedFact {
+  string id = 1;
+  string user_id = 2;
+  string memory_key = 3;
+  string value = 4;
+  string created_at = 5;
+  string updated_at = 6;
+}
+message ImportFactsRequest { repeated ImportedFact facts = 1; }
+
+message ImportedEpisode {
+  string id = 1;
+  repeated float vector = 2;
+  string user_id = 3;
+  string text = 4;
+  string kind = 5;
+  optional string conversation_id = 6;
+  string updated_at = 7;
+}
+message ImportEpisodesRequest { repeated ImportedEpisode episodes = 1; }
+
+message ImportReply { int64 created = 1; }
+
+message CountMemoryRequest {}
+message CountMemoryReply {
+  int64 facts = 1;
+  int64 episodes = 2;
+}

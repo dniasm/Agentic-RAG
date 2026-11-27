@@ -1,0 +1,30 @@
+name: "Library · Documents"
+run-name: "Library · Documents · ${{ github.event.pull_request.title || github.ref_name }}"
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+concurrency:
+  group: "${{ github.workflow }}-${{ github.head_ref || github.ref }}"
+  cancel-in-progress: true
+
+jobs:
+  suite:
+    name: ${{ matrix.suite }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - suite: pdf-editing
+            tests: backend/tests/library/test_editing.py backend/tests/library/test_export.py backend/tests/library/test_font_fetch.py backend/tests/library/test_ocr.py backend/tests/library/test_own_glyph_check.py backend/tests/library/test_pdf_*.py backend/tests/library/test_reword_and_letters.py backend/tests/library/test_tiny_font.py backend/tests/library/test_web_edit.py
+          - suite: library-agent
+            tests: backend/tests/library/test_after_merge.py backend/tests/library/test_agent.py backend/tests/library/test_chat_panel.py backend/tests/library/test_edge_cases.py backend/tests/library/test_embed_budget.py backend/tests/library/test_fallback.py backend/tests/library/test_fixes.py backend/tests/library/test_follow_ups.py backend/tests/library/test_gemini_keys.py backend/tests/library/test_growth.py
+          - suite: library-ops
+            tests: backend/tests/library/test_catalog_client.py backend/tests/library/test_library.py backend/tests/library/test_library_page.py backend/tests/library/test_lock_held.py backend/tests/library/test_logs_and_queue.py backend/tests/library/test_manage_route.py backend/tests/library/test_mount.py backend/tests/library/test_naming.py backend/tests/library/test_optimizations.py backend/tests/library/test_preview.py backend/tests/library/test_redo.py backend/tests/library/test_reindex.py backend/tests/library/test_shared_limits.py backend/tests/library/test_summaries.py backend/tests/library/test_undo_and_batch.py
+    uses: ./.github/workflows/_python-tests.yml
+    with:
+      name: ${{ matrix.suite }}
+      tests: ${{ matrix.tests }}
+      tesseract: true

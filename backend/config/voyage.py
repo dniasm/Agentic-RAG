@@ -1,6 +1,6 @@
 """The one Voyage AI client, behind a shared rate limit.
 
-Reranking (rag/rerank.py), conversation-memory recall and episode saves (memory/embeddings.py) all use the same
+Reranking (services/document/rerank.py, the Document service), conversation-memory recall and episode saves (memory/embeddings.py) all use the same
 Voyage account. Its free tier (no payment method) allows 3 requests a minute in total, across all of them. With a
 client each, they didn't know about one another: a recall and a save could use up the minute, and the next rerank
 got a 429 and fell back to the LLM relevance check.
@@ -15,9 +15,10 @@ Each call names its priority:
             message is answered without them
     SAVE    storing an exchange in the background: waits up to VOYAGE_SAVE_MAX_WAIT
 
-FIND, RECALL and SAVE only take a slot while VOYAGE_RERANK_RESERVE more are free, and never ahead of a waiting
-higher priority, so
-the reranker always finds a slot. With a payment method Voyage allows far more: raise VOYAGE_REQUESTS_PER_MINUTE.
+Within one limiter a lower priority never goes ahead of a waiting higher one. The account's budget is split between
+the two processes that call Voyage: the orchestrator (rerank, find) takes VOYAGE_RERANK_RESERVE requests a minute and
+the Memory service (recall, save) the rest of VOYAGE_REQUESTS_PER_MINUTE (see shares()), so together they cannot
+exceed it and the reranker always finds a slot. With a payment method Voyage allows far more: raise VOYAGE_REQUESTS_PER_MINUTE.
 """
 import threading
 import time
@@ -75,9 +76,40 @@ class RateLimiter:
                 self._cond.notify_all()
 
 
-@lru_cache(maxsize=1)
-def limiter() -> RateLimiter:
-    return RateLimiter(settings.voyage_requests_per_minute, settings.voyage_rerank_reserve)
+def shares() -> tuple[int, int]:
+    """(document share, memory share) of the account's requests per minute: the Document service (rerank and find) gets
+    VOYAGE_RERANK_RESERVE, the Memory service (embeddings) the rest, at least 1 each. They are separate processes with
+    a limiter each, so together they never exceed VOYAGE_REQUESTS_PER_MINUTE (but for a total below 2)."""
+    total = settings.voyage_requests_per_minute
+    rerank = min(max(1, settings.voyage_rerank_reserve), max(1, total - 1))
+    return rerank, max(1, total - rerank)
+
+
+_role = "document"
+
+
+def use_document_share() -> None:
+    """Called by the Document service process before its first request: its limiter takes the document (rerank) share."""
+    global _role
+    _role = "document"
+    if hasattr(limiter, "cache_clear"):
+        limiter.cache_clear()
+
+
+def use_memory_share() -> None:
+    """Called by the Memory service process before its first request: its limiter takes the memory share."""
+    global _role
+    _role = "memory"
+    if hasattr(limiter, "cache_clear"):
+        limiter.cache_clear()
+
+
+def make_limiter() -> RateLimiter:
+    rerank, memory = shares()
+    return RateLimiter(memory if _role == "memory" else rerank, reserve=0)
+
+
+limiter = lru_cache(maxsize=1)(make_limiter)
 
 
 @lru_cache(maxsize=1)

@@ -1,6 +1,6 @@
 """Persistent memory: key-value facts about the user, and short summaries of past exchanges.
 
-Facts (SQLite, one row per value; see database.user_facts):
+Facts (one row per value, kept by the Memory service; see backend/models/memory.py):
     The memory model (Qwen) reads the latest user message and reports what to REMEMBER or FORGET.
     It does not decide how storage changes: plan_changes() does, in code.
       - remember on a single-value key (preferred_name, location, favorite_*): the new value replaces the old

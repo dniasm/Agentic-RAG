@@ -11,6 +11,7 @@ export default defineConfig({
       '/api': {
         target: 'http://127.0.0.1:8000',
         changeOrigin: true,
+        ws: true,   // the /api/ws WebSocket
         // Pass the browser's address on (X-Forwarded-For): the login limit counts wrong passwords per address,
         // and without this every client would be 127.0.0.1.
         xfwd: true,

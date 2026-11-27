@@ -1,0 +1,106 @@
+name: "Docker"
+run-name: "Docker · ${{ github.event.pull_request.title || github.ref_name }}"
+
+# Always on main; on other branches/PRs only when Docker-related files change.
+# GitHub ANDs `branches` with `paths` inside one event, so the path check is a gate job.
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: "${{ github.workflow }}-${{ github.head_ref || github.ref }}"
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.g.outputs.run }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - id: g
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.sha }}
+        run: |
+          run=false
+          if [ "$EVENT" = push ] && [ "$REF" = refs/heads/main ]; then
+            run=true
+          elif [ -z "$BASE" ] || [ "$BASE" = 0000000000000000000000000000000000000000 ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            run=true   # new branch / unknown base: be safe
+          elif git diff --name-only "$BASE" "$HEAD" | grep -Eq '^(Dockerfile|docker-compose\.yml|\.dockerignore|requirements[^/]*\.txt|scripts/grpc_healthcheck\.py|scripts/docker-entrypoint\.sh|render\.yaml|services/.*|protos/.*|agentic_rag_proto/.*|\.github/workflows/docker\.yml)$'; then
+            run=true
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+
+  compose:
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+      - name: Dummy keys (the stack starts without real API keys; nothing here calls a model)
+        run: |
+          printf 'GROQ_API_KEY=dummy\nGEMINI_API_KEY=dummy\nVOYAGE_API_KEY=dummy\n' > .env
+      - run: docker compose build
+      - run: docker compose up -d
+      - name: Wait for all services up
+        run: |
+          for i in $(seq 1 36); do
+            if curl -fsS http://localhost:8000/api/health/services 2>/dev/null | grep -Eq '"all_up": *true'; then
+              echo "all services up"; exit 0
+            fi
+            sleep 5
+          done
+          echo "services not up after 3 minutes"
+          docker compose ps
+          docker compose logs --no-color --tail=100
+          exit 1
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs --no-color --tail=200
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
+
+  single-container:
+    # The image as Render runs it: one container, the default CMD (all 5 processes via run_all.py on $PORT), the
+    # entrypoint handing a root-owned /data disk to the `app` user, every state path on that disk (render.yaml).
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+      - run: docker build -t agentic-rag .
+      - name: Run like Render
+        run: |
+          docker volume create rag-data
+          docker run -d --name rag -p 10000:10000 -v rag-data:/data \
+            -e PORT=10000 -e SERVICES_DATA_DIR=/data/services -e LIBRARY_DATA_DIR=/data/library \
+            -e DATABASE_PATH=/data/orchestrator/app.db -e QDRANT_PATH=/data/orchestrator/qdrant -e LOG_DIR=/data/logs \
+            -e FORWARDED_ALLOW_IPS='*' -e ALLOWED_HOSTS='localhost,127.0.0.1' \
+            -e GROQ_API_KEY=dummy -e GEMINI_API_KEY=dummy -e VOYAGE_API_KEY=dummy agentic-rag
+      - name: Wait for all services up
+        run: |
+          for i in $(seq 1 36); do
+            if curl -fsS http://localhost:10000/api/health/services 2>/dev/null | grep -Eq '"all_up": *true'; then
+              echo "all services up"; exit 0
+            fi
+            sleep 5
+          done
+          echo "not up after 3 minutes"; docker logs --tail=150 rag; exit 1
+      - name: State is on the disk, written by the app user
+        run: |
+          docker exec rag sh -c 'ls /data/services /data/logs && test "$(stat -c %U /data/services)" = app'
+      - name: Logs on failure
+        if: failure()
+        run: docker logs --tail=200 rag
+      - name: Tear down
+        if: always()
+        run: docker rm -f rag; docker volume rm rag-data || true

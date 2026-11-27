@@ -30,3 +30,6 @@ skills-lock.json
 
 # kept by backend/scripts/merge_library.py --apply until stage 7
 backend/vector_db/qdrant_data.before-merge/
+
+# logs (services/common/log.py, scripts/logs.py)
+logs/

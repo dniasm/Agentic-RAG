@@ -2,7 +2,7 @@
 
 Some client errors can carry the request (with its key) in their text. scrub() replaces every configured key with
 "[key]"; KeyScrubber does the same to every log line, its arguments and its traceback, so a key can't reach
-all.log, events.log or the console even through an error we didn't expect.
+the log files or the console even through an error we didn't expect.
 """
 import logging
 

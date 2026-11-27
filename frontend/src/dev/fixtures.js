@@ -100,3 +100,18 @@ export const emptyStats = {
   documents: 0, chunks: 0, conversations: 0, queries: 0, by_tool: {}, queries_rewritten: 0,
   answers_evaluated: 0, answers_sufficient: 0, avg_latency_ms: 0,
 };
+
+// The signed-in user's own limits (GET /api/usage/me).
+export const usage = {
+  chat: [
+    { seconds: 300, allowed: 15, used: 3, left: 12, daily: false, resets_in_seconds: 212 },
+    { seconds: 86400, allowed: 60, used: 52, left: 8, daily: true, resets_in_seconds: 40000 },
+  ],
+  indexing: { allowed: 800, used: 120, left: 680, day: '2026-11-27', resets_at: '2026-11-28T08:00:00+00:00' },
+  login: { expires_at: '2026-12-27T08:00:00+00:00' },
+};
+export const emptyUsage = {
+  chat: usage.chat.map((w) => ({ ...w, used: 0, left: w.allowed, resets_in_seconds: null })),
+  indexing: { ...usage.indexing, used: 0, left: 800 },
+  login: usage.login,
+};

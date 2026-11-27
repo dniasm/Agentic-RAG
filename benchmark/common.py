@@ -16,8 +16,8 @@ sys.path.insert(0, str(ROOT))
 
 from backend.api.security import hash_password  # noqa: E402
 from backend.models import database as db  # noqa: E402
-from backend.rag import vectorstore  # noqa: E402
-from backend.rag.ingestion import file_sha256, ingest_file  # noqa: E402
+from services.document import vectorstore  # noqa: E402
+from services.document.ingestion import file_sha256, ingest_file  # noqa: E402
 
 BENCH_DIR = Path(__file__).resolve().parent
 BENCH_USER = "benchmark_bot"

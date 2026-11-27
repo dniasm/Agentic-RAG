@@ -3,6 +3,7 @@ import { ArrowRight } from 'lucide-react';
 import { apiService } from '../services/api';
 import { formatCount, formatSeconds, formatShare } from '../lib/format';
 import { hrefFor } from '../lib/route';
+import UsageBar from '../components/admin/UsageBar';
 
 // One hue: answers from the user's own documents are the main data element. Everything else is ink and greys.
 const SOURCES = [
@@ -134,6 +135,67 @@ function Library({ documents }) {
   );
 }
 
+function windowLabel(w) {
+  if (w.daily) return 'Messages today';
+  const m = Math.round(w.seconds / 60);
+  return m >= 120 ? `Messages (last ${Math.round(m / 60)} h)` : `Messages (last ${m} min)`;
+}
+
+function freesUp(seconds, prefix) {
+  if (seconds == null) return null;
+  if (seconds < 90) return `${prefix} in under a minute`;
+  if (seconds < 5400) return `${prefix} in ~${Math.round(seconds / 60)} min`;
+  return `${prefix} in ~${Math.round(seconds / 3600)} h`;
+}
+
+function MyUsage({ usage, loading }) {
+  const rows = [];
+  if (usage?.unlimited) {
+    const used = usage.indexing?.used;
+    return (
+      <section className="mt-3 panel p-5">
+        <h2 className="text-body font-medium">Your usage</h2>
+        <p className="mt-1 text-body">No limits (admin account)</p>
+        <p className="mt-1 text-small text-muted num">
+          {used != null ? `${formatCount(used)} passages indexed today. ` : ''}
+          {usage.indexing?.site_limited ? "The site's shared embedding quota is used up for today." : ''}
+        </p>
+      </section>
+    );
+  }
+  for (const w of usage?.chat || []) {
+    rows.push({
+      key: `c${w.seconds}`, label: windowLabel(w), used: w.used, limit: w.allowed,
+      note: w.used >= w.allowed ? freesUp(w.resets_in_seconds, 'Frees up') : w.resets_in_seconds != null && w.daily ? freesUp(w.resets_in_seconds, 'Oldest message frees up') : null,
+    });
+  }
+  const ix = usage?.indexing;
+  if (ix && ix.allowed) {
+    const secs = ix.resets_at ? Math.max(0, (new Date(ix.resets_at) - Date.now()) / 1000) : null;
+    rows.push({
+      key: 'ix', label: 'Passages indexed today', used: ix.used, limit: ix.allowed,
+      note: ix.site_limited ? `Only ${formatCount(ix.left)} left: the site's shared quota is nearly used up`
+        : ix.left === 0 ? freesUp(secs, 'Resets') : null,
+    });
+  }
+  return (
+    <section className="mt-3 panel p-5">
+      <h2 className="text-body font-medium">Your usage</h2>
+      <p className="mt-1 text-small text-muted">Limits on your account, so the shared quota lasts for everyone.</p>
+      {loading ? (
+        <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-5">
+          {[0, 1, 2].map((i) => <span key={i} className="skeleton block h-10 w-full" />)}
+        </div>
+      ) : (
+        <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-x-8 gap-y-5">
+          {rows.map(({ key, ...r }) => <UsageBar key={key} {...r} />)}
+          {usage && !ix ? <p className="text-small text-muted">Indexing numbers aren't available right now.</p> : null}
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function Overview({ documents }) {
   const [stats, setStats] = useState(null);
   const [error, setError] = useState(null);
@@ -143,6 +205,14 @@ export default function Overview({ documents }) {
     apiService.getStats().then(setStats).catch((e) => setError(e.message));
   };
   useEffect(load, []);
+
+  const [usage, setUsage] = useState(null);
+  const [usageError, setUsageError] = useState(null);
+  const loadUsage = () => {
+    setUsageError(null);
+    apiService.myUsage().then(setUsage).catch((e) => setUsageError(e.message));
+  };
+  useEffect(loadUsage, []);
 
   const loading = !stats && !error;
   const s = stats || { queries: 0, by_tool: {} };
@@ -190,6 +260,13 @@ export default function Overview({ documents }) {
                 : <SourceShare stats={s} />}
               <Library documents={documents} />
             </div>
+
+            {usageError ? (
+              <p className="mt-3 panel px-4 py-3 text-body text-[var(--pill-negative-ink)]">
+                Couldn't load your limits: {usageError}{' '}
+                <button className="font-medium underline underline-offset-4" onClick={loadUsage}>Retry</button>
+              </p>
+            ) : <MyUsage usage={usage} loading={!usage} />}
           </>
         )}
       </div>

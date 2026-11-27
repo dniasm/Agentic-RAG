@@ -1,13 +1,9 @@
-"""Memory storage and merge rules (no API calls; uses a temporary SQLite database).
+"""Memory merge rules and the fact functions (no API calls: facts live in the in-process Memory service).
 
     python -m unittest backend.tests.test_memory -v
 """
-import json
-import os
-import tempfile
 import unittest
 
-from backend.config.settings import settings
 from backend.models import database as db
 from backend.tools.memory import MemoryOp, is_single_value, normalize_key, plan_changes
 
@@ -76,17 +72,10 @@ class MergeRules(unittest.TestCase):
 
 
 class Storage(unittest.TestCase):
-    def setUp(self):
-        self._old_path, self._old_conn = settings.database_path, db._conn
-        self.tmp = tempfile.mkdtemp()
-        settings.database_path = os.path.join(self.tmp, "test.db")
-        db._conn = None
-        db.init_db()
-        self.uid = db.create_user("memory_test", "x")["id"]
+    """The facts functions, through the Memory service the test session runs (conftest.py)."""
 
-    def tearDown(self):
-        db._conn.close()
-        db._conn, settings.database_path = self._old_conn, self._old_path
+    def setUp(self):
+        self.uid = db.create_user("memory_test", "x")["id"]
 
     def test_add_set_delete_and_grouping(self):
         db.add_fact(self.uid, "hobbies", "trekking")
@@ -103,56 +92,6 @@ class Storage(unittest.TestCase):
         self.assertEqual({m["memory_key"]: m["values"] for m in db.list_memories(self.uid)},
                          {"hobbies": ["trekking"]})
 
-    def test_old_memories_are_migrated_once(self):
-        with db.tx() as c:
-            c.execute("DELETE FROM migrations")
-            c.execute("CREATE TABLE IF NOT EXISTS user_memory (id TEXT PRIMARY KEY, user_id TEXT, memory_key TEXT, "
-                      "memory_value TEXT, created_at TEXT, updated_at TEXT)")  # as databases before 2026-11-01
-            for key, value in (("hobbies", json.dumps(["trekking", "futsal"])), ("preferred_name", "Ash")):
-                c.execute("INSERT INTO user_memory (id, user_id, memory_key, memory_value, created_at, updated_at) "
-                          "VALUES (?, ?, ?, ?, 't', 't')", (key, self.uid, key, value))
-        db.init_db()
-        self.assertEqual({m["memory_key"]: m["values"] for m in db.list_memories(self.uid)},
-                         {"hobbies": ["trekking", "futsal"], "preferred_name": ["Ash"]})
-        db.delete_fact(self.uid, "hobbies")
-        db.init_db()  # already migrated: deleted facts must not come back
-        self.assertNotIn("hobbies", {m["memory_key"] for m in db.list_memories(self.uid)})
-
-
-
-class CollectionCheckedOnce(unittest.TestCase):
-    def test_checked_once_per_client(self):
-        from unittest import mock
-
-        from backend.memory import store
-
-        def fake_client():
-            c = mock.Mock()
-            c.collection_exists.return_value = True
-            c.get_collection.return_value.config.params.vectors.size = settings.voyage_memory_dimensions
-            return c
-
-        first, second = fake_client(), fake_client()
-        with mock.patch.object(store, "_checked", set()), mock.patch.object(store, "get_client", return_value=first):
-            for _ in range(3):  # startup, then every message's search and save
-                store.ensure_memory_collection()
-            self.assertEqual(first.collection_exists.call_count, 1)
-            with mock.patch.object(store, "get_client", return_value=second):  # client reopened: check again
-                store.ensure_memory_collection()
-            self.assertEqual(second.collection_exists.call_count, 1)
-
-    def test_a_failed_check_is_retried_next_time(self):
-        from unittest import mock
-
-        from backend.memory import store
-
-        client = mock.Mock()
-        client.collection_exists.side_effect = [RuntimeError("locked"), False]
-        with mock.patch.object(store, "_checked", set()), mock.patch.object(store, "get_client", return_value=client):
-            with self.assertRaises(RuntimeError):
-                store.ensure_memory_collection()
-            store.ensure_memory_collection()
-        client.create_collection.assert_called_once()
 
 if __name__ == "__main__":
     unittest.main()

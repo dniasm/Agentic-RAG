@@ -1,0 +1,69 @@
+# Render Blueprint: the whole backend in ONE web service (the four gRPC services and the orchestrator, started by
+# scripts/run_all.py; the services listen on localhost only). One persistent disk holds every file the app writes.
+# Step by step: README "Deploying (Render + Vercel)". No value of a secret belongs in this file: `sync: false` makes
+# Render ask for it when the Blueprint is created (and again, in the dashboard, whenever it changes).
+services:
+  - type: web
+    name: agentic-rag
+    runtime: docker
+    plan: starter
+    branch: main
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    # No dockerCommand: the image's default CMD runs run_all.py with the orchestrator on 0.0.0.0:$PORT (Render's
+    # router) and the services on localhost, through the entrypoint that makes the disk writable.
+    healthCheckPath: /api/health
+    autoDeploy: true
+    disk:
+      name: agentic-rag-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      # --- where state lives: everything on the disk ---
+      - key: SERVICES_DATA_DIR    # each service's SQLite file and Qdrant folders
+        value: /data/services
+      - key: LIBRARY_DATA_DIR     # document files, versions, fonts, the catalog
+        value: /data/library
+      - key: DATABASE_PATH        # its folder also holds token_usage.jsonl
+        value: /data/orchestrator/app.db
+      - key: QDRANT_PATH
+        value: /data/orchestrator/qdrant
+      - key: LOG_DIR
+        value: /data/logs
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      # --- behind Render's (and Vercel's) proxy ---
+      - key: FORWARDED_ALLOW_IPS  # uvicorn reads X-Forwarded-For/Proto from the proxy in front of it
+        value: "*"
+      - key: ALLOWED_HOSTS        # Host headers the site answers to; tighten to your own onrender.com name if you like
+        value: "*.onrender.com"
+      - key: CORS_ORIGINS         # the Vercel site's origin(s), comma-separated, e.g. https://my-app.vercel.app
+        sync: false
+      # --- provider keys ---
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_API_KEY_2
+        sync: false
+      - key: GROQ_API_KEY_3
+        sync: false
+      - key: GROQ_API_KEY_4
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY_2
+        sync: false
+      - key: GEMINI_API_KEY_3
+        sync: false
+      - key: GEMINI_API_KEY_4
+        sync: false
+      - key: VOYAGE_API_KEY
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
+      # --- accounts ---
+      - key: SIGNUP_CODE          # invite code for every sign-up after the first (empty: sign-ups closed)
+        sync: false
+      - key: ADMIN_USERNAMES      # comma-separated accounts that can open the Admin page
+        sync: false
+      - key: BOT_CONTACT          # contact URL or email Wikimedia asks automated clients to send
+        sync: false

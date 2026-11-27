@@ -1,0 +1,18 @@
+name: "Agent · RAG"
+run-name: "Agent · RAG · ${{ github.event.pull_request.title || github.ref_name }}"
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+concurrency:
+  group: "${{ github.workflow }}-${{ github.head_ref || github.ref }}"
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    uses: ./.github/workflows/_python-tests.yml
+    with:
+      name: "Agent and RAG tests"
+      tests: backend/tests/test_routing.py backend/tests/test_citations.py backend/tests/test_rerank.py backend/tests/test_voyage.py backend/tests/test_memory.py backend/tests/test_documents.py

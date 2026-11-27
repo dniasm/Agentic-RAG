@@ -11,10 +11,8 @@ import shutil
 import pytest
 
 from backend.library import catalog, config, library, titles
-from backend.rag import ingestion, rerank, retrieval, sparse, vectorstore  # noqa: F401
-from backend.models import database as db
-
-db.init_db()   # day7's tables too (the app's startup does this; TestClient without `with` skips it)
+from services.document import ingestion, rerank, retrieval, sparse, vectorstore  # noqa: F401
+from services.document import db as document_db
 
 
 def fake_vector(text: str) -> list[float]:
@@ -40,7 +38,7 @@ def fake_title(prompt: str) -> titles.DocProfile:
 
 
 @pytest.fixture(autouse=True)
-def fakes(monkeypatch):
+def fakes(monkeypatch, user_db):
     from backend.config import gemini, llm
     llm.key_pool.reset()   # no rate-limited key carried over from another test
     gemini.pool.reset()
@@ -53,16 +51,14 @@ def fakes(monkeypatch):
     yield
     for d in catalog.list_documents():
         library.delete(d["id"])
-    with catalog.tx() as c:
-        c.execute("DELETE FROM sessions")
-        c.execute("DELETE FROM renames")
-        c.execute("DELETE FROM batches")
-        c.execute("DELETE FROM batch_tasks")
-        c.execute("DELETE FROM users")
-        c.execute("DELETE FROM auth_tokens")
+    with document_db.shared().tx() as c:   # the Document service's catalog, in this process: nothing carries over
+        for table in ("documents", "renames", "edits", "undone_edits", "sessions", "batches", "batch_tasks"):
+            c.execute(f"DELETE FROM {table}")
     for folder in config.LIBRARY_DIR.iterdir() if config.LIBRARY_DIR.exists() else []:
         if folder.is_dir():   # users' own folders
             shutil.rmtree(folder, ignore_errors=True)
+    with user_db.tx() as c:   # every account (their logins go with them)
+        c.execute("DELETE FROM users")
     from backend.library import auth
     auth._failures.clear()
 

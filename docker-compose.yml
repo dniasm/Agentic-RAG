@@ -1,0 +1,80 @@
+# Agentic RAG in Docker: the orchestrator (REST in, WebSocket out) and the four gRPC services, each with its own
+# data volume. API keys come from .env (optional here; never baked into the image). `docker compose up -d --build`,
+# then http://localhost:8000. Health: http://localhost:8000/api/health/services
+name: agentic-rag
+
+x-app: &app
+  build: .
+  image: agentic-rag:local
+  restart: unless-stopped
+  env_file:
+    - path: .env
+      required: false
+  environment: &env
+    GRPC_LISTEN_HOST: 0.0.0.0
+    USER_SERVICE_ADDR: user:50061
+    CONVERSATION_SERVICE_ADDR: conversation:50062
+    MEMORY_SERVICE_ADDR: memory:50063
+    DOCUMENT_SERVICE_ADDR: document:50064
+    SERVICES_DATA_DIR: /data/services
+    LIBRARY_DATA_DIR: /data/library
+    LOG_DIR: /app/logs
+    TZ: ${TZ:-UTC}
+
+x-health: &health
+  interval: 3s
+  timeout: 5s
+  retries: 30
+  start_period: 10s
+
+services:
+  user:
+    <<: *app
+    command: ["python", "-m", "services.user"]
+    volumes: ["user-data:/data/services", "logs:/app/logs"]
+    healthcheck:
+      <<: *health
+      test: ["CMD", "python", "scripts/grpc_healthcheck.py", "50061"]
+
+  conversation:
+    <<: *app
+    command: ["python", "-m", "services.conversation"]
+    volumes: ["conversation-data:/data/services", "logs:/app/logs"]
+    healthcheck:
+      <<: *health
+      test: ["CMD", "python", "scripts/grpc_healthcheck.py", "50062"]
+
+  memory:
+    <<: *app
+    command: ["python", "-m", "services.memory"]
+    volumes: ["memory-data:/data/services", "logs:/app/logs"]
+    healthcheck:
+      <<: *health
+      test: ["CMD", "python", "scripts/grpc_healthcheck.py", "50063"]
+
+  document:
+    <<: *app
+    command: ["python", "-m", "services.document"]
+    volumes: ["document-data:/data/services", "logs:/app/logs"]
+    healthcheck:
+      <<: *health
+      test: ["CMD", "python", "scripts/grpc_healthcheck.py", "50064"]
+
+  orchestrator:
+    <<: *app
+    command: ["python", "-m", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports: ["8000:8000"]
+    volumes: ["library-data:/data/library", "logs:/app/logs"]
+    depends_on:
+      user: {condition: service_healthy}
+      conversation: {condition: service_healthy}
+      memory: {condition: service_healthy}
+      document: {condition: service_healthy}
+
+volumes:
+  user-data:
+  conversation-data:
+  memory-data:
+  document-data:
+  library-data:
+  logs:

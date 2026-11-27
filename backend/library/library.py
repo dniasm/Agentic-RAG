@@ -13,17 +13,15 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from qdrant_client import models
-
 from backend.library import catalog, config, limits, naming, titles
 from backend.library.logs import event
-from backend.config import voyage
-from backend.rag import ingestion, rerank, retrieval, vectorstore
-from backend.config.settings import settings as day7_settings
+from backend.realtime.hub import hub
+from services.common.log import in_context
+from backend.documents import rag
 
 log = logging.getLogger(__name__)
 
-SUPPORTED_EXTENSIONS = ingestion.SUPPORTED_EXTENSIONS
+SUPPORTED_EXTENSIONS = rag.SUPPORTED_EXTENSIONS
 
 
 class LibraryError(Exception):
@@ -35,7 +33,7 @@ class LibraryError(Exception):
 WRITE_LOCK = threading.RLock()
 
 
-LOCK_SLOW_SECONDS = 2.0   # held longer than this: one "lock_held" line in events.log (everyone else waited)
+LOCK_SLOW_SECONDS = 2.0   # held longer than this: one "lock_held" line in the audit log (everyone else waited)
 _held = threading.local()   # how deep this thread is in the (re-entrant) lock: only the outermost hold is timed
 
 
@@ -63,12 +61,7 @@ def _path(doc: dict) -> Path:
 def _set_chunk_fields(doc_id: str, owner: str, **fields) -> None:
     """Update metadata fields on every chunk of a document (no re-embedding). Chunks are found under their owner:
     each user's chunks carry their own user_id, which every search filters on."""
-    client = vectorstore.get_client()
-    with vectorstore._lock:
-        client.set_payload(
-            day7_settings.collection_name, payload=fields, key="metadata", wait=True,
-            points=models.FilterSelector(filter=vectorstore.user_filter(owner, doc_id)),
-        )
+    rag.set_chunk_fields(owner, doc_id, fields)
 
 
 def folder_of(owner: str) -> str:
@@ -112,7 +105,8 @@ def _unique_title(title: str, exclude: str | None = None, owner: str = config.OW
 
 
 # ---------------------------------------------------------------- ingest
-def add_file(original_name: str, data: bytes, owner: str = config.OWNER) -> tuple[dict, bool]:
+def add_file(original_name: str, data: bytes, owner: str = config.OWNER,
+             conversation_id: str | None = None) -> tuple[dict, bool]:
     """Store an uploaded file. Returns (document, is_duplicate). Call process() next to index it."""
     original_name = Path(original_name or "").name or "document"
     ext = Path(original_name).suffix.lower()
@@ -123,7 +117,7 @@ def add_file(original_name: str, data: bytes, owner: str = config.OWNER) -> tupl
     if len(data) > config.MAX_UPLOAD_MB * 1024 * 1024:
         raise LibraryError(f"The file is larger than {config.MAX_UPLOAD_MB} MB.")
 
-    digest = ingestion.file_sha256(data)
+    digest = rag.file_sha256(data)
     existing = catalog.find_by_hash(digest, owner)
     if existing and existing["status"] != "failed":   # the same file, or the one it was before it was edited
         event("upload_duplicate", file=original_name, same_as=existing["title"], doc=existing["id"],
@@ -138,7 +132,8 @@ def add_file(original_name: str, data: bytes, owner: str = config.OWNER) -> tupl
         file_name = stored_name(owner, provisional, ext)
         (config.LIBRARY_DIR / file_name).write_bytes(data)
         doc = catalog.add_document(title=provisional, original_name=original_name, file_name=file_name, ext=ext,
-                                   sha256=digest, size_bytes=len(data), owner=owner)
+                                   sha256=digest, size_bytes=len(data), owner=owner,
+                                   conversation_id=conversation_id)
     event("upload", doc=doc["id"], file=original_name, bytes=len(data))
     return doc, False
 
@@ -151,7 +146,7 @@ _queue = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ingest")
 
 def queue(doc_id: str) -> None:
     """Index the document in the background (process())."""
-    _queue.submit(process, doc_id)
+    _queue.submit(in_context(process), doc_id)
 
 
 def stop_queue() -> None:
@@ -159,44 +154,57 @@ def stop_queue() -> None:
     _queue.shutdown(wait=False, cancel_futures=True)
 
 
+def _push_doc(doc: dict, stage: str, **extra) -> None:
+    """Tell the owner's open tabs where this file's indexing is (backend/realtime/schema.py library/document)."""
+    hub.publish(doc["owner"], "library", "document", {"doc_id": doc["id"], "stage": stage, **extra})
+
+
+def _progress(doc: dict, stage: str, done: int, total: int) -> None:
+    """The service's Ingest / ReadPages progress, republished to the owner's open tabs: OCR page n of N, passages embedded."""
+    if stage in ("ocr", "embedding"):
+        _push_doc(doc, stage, done=done, total=total)
+
+
 def process(doc_id: str, ask_title=None) -> dict:
     """Title the document, then index it with day7's ingestion pipeline (load, clean, chunk, embed, store)."""
     doc = catalog.get_document(doc_id)
     if doc is None:   # deleted while it waited in the queue
         return None
+    _push_doc(doc, "reading")   # the read includes OCR of scanned pages
     try:
-        pages, _ = ingestion.load_file(_path(doc))
+        pages, _ = rag.read_pages(_path(doc), on_progress=lambda stage, done, total: _progress(doc, stage, done, total))
         if not pages:
-            raise ingestion.IngestionError("No extractable text found (the file may be scanned images).")
-        opening = "\n\n".join(p.page_content for p in pages)[: config.TITLE_SOURCE_CHARS]
+            raise rag.IngestionError("No extractable text found (the file may be scanned images).")
+        opening = "\n\n".join(p["text"] for p in pages)[: config.TITLE_SOURCE_CHARS]
         others = [d["title"] for d in catalog.list_documents(owner=doc["owner"])
                   if d["id"] != doc_id and d["status"] != "failed"]
         profile, _ = titles.profile_document(doc["original_name"], opening, others, ask=ask_title)
         with WRITE_LOCK:   # choosing the title and the file name, and taking them, is one step for renames too
             title = _unique_title(profile.title, exclude=doc_id, owner=doc["owner"])
             file_name = _move_file(catalog.get_document(doc_id), title)
-            catalog.update_document(doc_id, title=title, file_name=file_name, summary=profile.summary,
-                                    keywords=profile.keywords)
-            catalog.record_rename(doc_id, doc["original_name"], title, "titled")
+            catalog.update_document(doc_id, rename=(doc["original_name"], title, "titled"), title=title,
+                                    file_name=file_name, summary=profile.summary, keywords=profile.keywords)
 
-        result = ingestion.ingest_file(config.LIBRARY_DIR / file_name, user_id=doc["owner"], doc_id=doc_id,
-                                       filename=title)
+        result = rag.ingest(config.LIBRARY_DIR / file_name, user_id=doc["owner"], doc_id=doc_id, filename=title,
+                            file_name=file_name,
+                            on_progress=lambda stage, done, total: _progress(doc, stage, done, total))
         if catalog.get_document(doc_id) is None:   # deleted while it was being indexed
-            vectorstore.delete_document_vectors(doc["owner"], doc_id)
+            rag.delete_document_vectors(doc["owner"], doc_id)
             return None
-        _set_chunk_fields(doc_id, doc["owner"], title=title, file_name=file_name)
         from backend.library import export   # imported here: export imports editing, which imports this module
         pages = export.page_count(catalog.get_document(doc_id), result["pages"])
         catalog.update_document(doc_id, status="indexed", pages=pages, chunks=result["chunks"], error=None)
         event("indexed", doc=doc_id, title=title, chunks=result["chunks"], pages=pages)
+        _push_doc(doc, "indexed", title=title)
     except Exception as e:
         log.exception("Ingesting %s failed", doc["original_name"])
         try:
-            vectorstore.delete_document_vectors(doc["owner"], doc_id)
+            rag.delete_document_vectors(doc["owner"], doc_id)
         except Exception:
             pass
         catalog.update_document(doc_id, status="failed", error=str(e)[:300])
         event("index_failed", doc=doc_id, file=doc["original_name"], error=str(e)[:200])
+        _push_doc(doc, "failed", error=str(e)[:200])
     return catalog.get_document(doc_id)
 
 
@@ -210,7 +218,7 @@ def delete(doc_id: str) -> None:
     doc = catalog.get_document(doc_id)
     if not doc:
         raise LibraryError("Document not found.")
-    vectorstore.delete_document_vectors(doc["owner"], doc_id)
+    rag.delete_document_vectors(doc["owner"], doc_id)
     _path(doc).unlink(missing_ok=True)
     shutil.rmtree(config.DATA_DIR / "versions" / doc_id, ignore_errors=True)
     catalog.delete_document(doc_id)
@@ -241,8 +249,7 @@ def rename(doc_id: str, new_title: str) -> dict:
         if file_name != doc["file_name"]:  # put the file back so the catalog and disk still agree
             os.replace(config.LIBRARY_DIR / file_name, _path(doc))
         raise
-    catalog.update_document(doc_id, title=title, file_name=file_name)
-    catalog.record_rename(doc_id, doc["title"], title, "user")
+    catalog.update_document(doc_id, rename=(doc["title"], title, "user"), title=title, file_name=file_name)
     event("rename", doc=doc_id, old=doc["title"], new=title, file=file_name)
     return {"old_title": doc["title"], "new_title": title, "file_name": file_name}
 
@@ -267,7 +274,7 @@ def _content_scores(description: str, docs: list[dict], owner: str) -> tuple[dic
     """Best relevance per document from its chunks and its profile. Returns (scores, evidence, scorer).
     Only the owner's chunks are searched."""
     try:
-        hits = retrieval.retrieve([description], owner, k=12, min_score=0.0)
+        hits = rag.search([description], owner, k=12, min_score=0.0)["passages"]
     except Exception as e:
         log.warning("Content search failed: %s", str(e)[:200])
         hits = []
@@ -276,11 +283,20 @@ def _content_scores(description: str, docs: list[dict], owner: str) -> tuple[dic
     items = hits + [{"content": profile_text(d), "doc_id": d["id"], "profile": True} for d in docs]
 
     # day7's Voyage limiter, below answer reranking: when no slot is free, None at once and cosine scores below
-    scored = rerank.score(description, items, priority=voyage.FIND)
+    try:
+        relevance = rag.rerank_texts(description, [i["content"] for i in items], priority="find")
+    except Exception as e:
+        log.warning("Reranking failed: %s", str(e)[:200])
+        relevance = None
+    scored = None
+    if relevance is not None:
+        for item, r in zip(items, relevance):
+            item["relevance"] = r
+        scored = sorted(items, key=lambda i: i["relevance"], reverse=True)
     scores: dict[str, float] = {}
     evidence: dict[str, str] = {}
     if scored is not None:
-        scorer = scored[0]["scorer"] if scored else "voyage"
+        scorer = "voyage"
         for item in scored:  # best first
             doc_id = item["doc_id"]
             if doc_id not in scores:
@@ -300,8 +316,7 @@ def _thresholds(scorer: str) -> tuple[float, float, float]:
         return config.COSINE_HIGH, config.COSINE_LOW, config.COSINE_MARGIN
     if scorer == "voyage":
         return config.MATCH_HIGH, config.MATCH_LOW, config.MATCH_MARGIN
-    high, low = rerank.thresholds(scorer)
-    return high, low, config.MATCH_MARGIN
+    return config.MATCH_HIGH, config.MATCH_LOW, config.MATCH_MARGIN
 
 
 def snippet(text: str, limit: int = 180) -> str:

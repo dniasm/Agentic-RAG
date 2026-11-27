@@ -3,7 +3,8 @@ import docx
 import pytest
 
 from backend.library import agent, catalog, config, editing, library
-from backend.rag import vectorstore
+from backend.config.settings import settings
+from services.document import ingestion, vectorstore
 from test_agent import turn
 
 
@@ -13,7 +14,7 @@ def stored(doc):
 
 def chunk_texts(doc_id):
     client = vectorstore.get_client()
-    points, _ = client.scroll(library.day7_settings.collection_name,
+    points, _ = client.scroll(settings.collection_name,
                               scroll_filter=vectorstore.user_filter(config.OWNER, doc_id), limit=100)
     return " ".join(p.payload["page_content"] for p in points)
 
@@ -65,7 +66,7 @@ def test_append_grows_the_index_and_shrinking_drops_old_chunks(library_docs):
     editing.edit(doc["id"], "replace", find="Zebrafish are striped. " * 200, text="", replace_all=True)
     assert catalog.get_document(doc["id"])["chunks"] == before
     client = vectorstore.get_client()           # (day7 dropped its count helper: counted here)
-    stored = client.count(library.day7_settings.collection_name, count_filter=vectorstore.user_filter(config.OWNER),
+    stored = client.count(settings.collection_name, count_filter=vectorstore.user_filter(config.OWNER),
                           exact=True).count
     assert stored == sum(d["chunks"] for d in catalog.list_documents())
 
@@ -76,7 +77,7 @@ def test_failed_embedding_puts_the_file_back(library_docs, monkeypatch):
 
     def boom(texts, title):
         raise RuntimeError("quota")
-    monkeypatch.setattr(editing.ingestion, "embed_paced", boom)
+    monkeypatch.setattr(ingestion, "embed_paced", boom)
     with pytest.raises(editing.EditError, match="unchanged"):
         editing.edit(doc["id"], "replace", find="classifier", text="thing")
     assert stored(doc) == original and "classifier" in chunk_texts(doc["id"])

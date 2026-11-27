@@ -1,13 +1,16 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowRight, Loader2, PanelRight } from 'lucide-react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { ArrowRight, Loader2, PanelRight, Upload } from 'lucide-react';
 import ChatDocuments from '../components/ChatDocuments';
 import InputBox from '../components/InputBox';
+import UploadChips from '../components/UploadChips';
 import Message from '../components/Message';
 import { hrefFor } from '../lib/route';
 import { redoableEdits, undoableEdits } from '../lib/chatActions';
 import { readStored, writeStored } from '../lib/storage';
 import { apiService } from '../services/api';
 import { useChatDocuments } from '../state/chatDocuments';
+import { addFiles, moveUploads, useUploads } from '../state/chatUploads';
+import { chipsFor, shouldJumpToBottom } from '../lib/uploadChips';
 import { NEW_KEY, clearNewChat, loadConversation, sendMessage, useConversation } from '../state/chatStore';
 
 function suggestionsFor(documents) {
@@ -66,6 +69,10 @@ export default function Chat({ conversationId, title, documents, onConversationC
   const key = conversationId || NEW_KEY;
   const conv = useConversation(key);
   const scrollRef = useRef(null);
+  const positionedFor = useRef(null);   // the chat the view has been put at the latest message for
+  const dragDepth = useRef(0);
+  const [dragging, setDragging] = useState(false);
+  const uploads = useUploads();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [panelOpen, setPanelOpen] = useState(() => readStored(PANEL_KEY, false));
   const [undone, setUndone] = useState(() => new Set());   // edit ids taken back with an Undo button here
@@ -111,6 +118,15 @@ export default function Chat({ conversationId, title, documents, onConversationC
     else clearNewChat();
   }, [conversationId]);
 
+  // Opening a chat puts the view at its latest message, at once and also when the messages arrive later.
+  // (Before paint, so the top is never shown.)
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !shouldJumpToBottom({ key, positionedFor: positionedFor.current, messageCount: conv.messages.length })) return;
+    positionedFor.current = key;
+    el.scrollTop = el.scrollHeight;
+  }, [key, conv.messages.length]);
+
   // Follow the answer as it is written, unless the reader has scrolled up to read something earlier.
   const lastText = conv.messages.at(-1);
   useEffect(() => {
@@ -120,7 +136,25 @@ export default function Chat({ conversationId, title, documents, onConversationC
     if (nearBottom || lastText?.sender === 'user') el.scrollTop = el.scrollHeight;
   }, [conv.messages.length, lastText?.draft, lastText?.text]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const send = (text) => sendMessage(text, conversationId, { onCreated: onConversationCreated, onDone: onAnswered });
+  const send = (text) => sendMessage(text, conversationId, {
+    onCreated: (id) => { moveUploads(key, id); onConversationCreated?.(id); },
+    onDone: onAnswered,
+  });
+  const addToLibrary = (files) => addFiles(files, key, conversationId);
+
+  const hasFiles = (e) => Array.from(e.dataTransfer?.types || []).includes('Files');
+  const drag = {
+    onDragEnter: (e) => { if (!hasFiles(e)) return; e.preventDefault(); dragDepth.current += 1; setDragging(true); },
+    onDragOver: (e) => { if (hasFiles(e)) e.preventDefault(); },
+    onDragLeave: (e) => { if (!hasFiles(e)) return; dragDepth.current -= 1; if (dragDepth.current <= 0) { dragDepth.current = 0; setDragging(false); } },
+    onDrop: (e) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      dragDepth.current = 0;
+      setDragging(false);
+      addToLibrary(e.dataTransfer.files);
+    },
+  };
 
   const empty = conv.messages.length === 0;
 
@@ -133,7 +167,12 @@ export default function Chat({ conversationId, title, documents, onConversationC
 
   return (
     <div className="h-full flex">
-    <div className="flex-1 min-w-0 h-full flex flex-col">
+    <div className="flex-1 min-w-0 h-full flex flex-col relative" {...drag}>
+      {dragging && (
+        <div className="absolute inset-2 z-20 flex items-center justify-center gap-2 rounded-card border-2 border-dashed border-control bg-ground/90 text-reading pointer-events-none">
+          <Upload className="w-5 h-5" aria-hidden="true" /> Drop files to add them to your library
+        </div>
+      )}
       {/* On a phone the top bar already names the chat, so this row is only read by screen readers there. */}
       <div className="sr-only lg:not-sr-only flex-none border-b border-line lg:px-8">
        <div className="max-w-[760px] mx-auto flex items-center gap-4 h-14">
@@ -183,7 +222,8 @@ export default function Chat({ conversationId, title, documents, onConversationC
             </p>
           )}
           <div className="lg:hidden flex justify-end mb-1">{panelButton}</div>
-          <InputBox onSend={send} busy={conv.streaming} conversationKey={key} />
+          <InputBox onSend={send} busy={conv.streaming} conversationKey={key} onFiles={addToLibrary}
+                    attachments={<UploadChips chips={chipsFor(uploads, key)} />} />
         </div>
       </div>
     </div>

@@ -1,0 +1,28 @@
+name: "Ops · Tooling"
+run-name: "Ops · Tooling · ${{ github.event.pull_request.title || github.ref_name }}"
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+concurrency:
+  group: "${{ github.workflow }}-${{ github.head_ref || github.ref }}"
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    uses: ./.github/workflows/_python-tests.yml
+    with:
+      name: "Ops tests"
+      tests: backend/tests/test_backup.py backend/tests/library/test_merge_library.py backend/tests/test_logs_core.py backend/tests/test_logs_context.py backend/tests/test_logs_viewer.py
+
+  coverage-guard:
+    name: Test coverage guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+      - run: python scripts/ci_test_coverage.py

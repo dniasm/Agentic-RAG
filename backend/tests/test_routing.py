@@ -6,7 +6,7 @@ import unittest
 from unittest import mock
 
 from backend.config.settings import settings
-from backend.graph import nodes, workflow
+from backend.graph import doc_reference, guards, nodes, workflow
 from backend.tools import memory, rag, web_search
 
 
@@ -675,6 +675,125 @@ class GateTokensLoggedSeparately(unittest.TestCase):
         steps = tracker.summary()["by_step"]
         self.assertEqual(steps["knowledge_gate"]["input"], 700)
         self.assertNotIn("direct", steps)
+
+
+class DocumentReferences(unittest.TestCase):
+    """"The document I just uploaded" points at a document; it must not depend on the passages sharing its words."""
+    DOC = {"id": "d1", "title": "Overview of Nepal's Geography, Culture, and Economy", "original_name": "nepal.docx",
+           "status": "indexed", "conversation_id": "c1"}
+    OLDER = {"id": "d0", "title": "Quarterly Budget", "original_name": "budget.pdf", "status": "indexed",
+             "conversation_id": None}
+
+    def test_detector_knows_the_just_uploaded_family(self):
+        for q in ("Tell me about the document I just uploaded.", "summarize the file I've just sent",
+                  "what is in the pdf I uploaded", "explain my latest upload",
+                  "what does the most recent document say", "summarise this file",
+                  "read the just uploaded document"):
+            self.assertIsNotNone(doc_reference.detect(q), q)
+
+    def test_detector_leaves_ordinary_questions_and_changes_alone(self):
+        for q in ("What is the capital of Nepal?", "how do I upload a file in Flask?",
+                  "rename the file I just uploaded", "hi", "what does the report say about revenue"):
+            self.assertIsNone(doc_reference.detect(q), q)
+
+    def _resolve(self, query, here=(), latest=None, indexed=()):
+        with mock.patch.object(doc_reference.catalog, "conversation_documents", return_value=list(here)), \
+                mock.patch.object(doc_reference.catalog, "latest_document", return_value=latest), \
+                mock.patch.object(doc_reference.catalog, "list_documents", return_value=list(indexed)):
+            return doc_reference.resolve(query, "u1", "c1")
+
+    def test_this_conversations_newest_upload_comes_first_then_the_latest_upload(self):
+        newest = {**self.DOC, "id": "d2"}
+        docs, _ = self._resolve("tell me about the document I just uploaded", here=[newest, self.DOC],
+                                latest=self.OLDER)
+        self.assertEqual([d["id"] for d in docs], ["d2"])
+        docs, why = self._resolve("tell me about the document I just uploaded", latest=self.OLDER)
+        self.assertEqual([d["id"] for d in docs], ["d0"])
+        self.assertIn("most recent", why)
+
+    def test_a_document_still_being_indexed_is_never_swapped_for_an_older_one(self):
+        pending = {**self.DOC, "status": "processing"}
+        self.assertIsNone(self._resolve("the document I just uploaded", here=[pending], latest=self.OLDER))
+        self.assertIsNone(self._resolve("summarise this document"))   # nothing uploaded here: the router decides
+
+    def test_a_document_is_found_by_title_or_file_name(self):
+        indexed = [self.DOC, self.OLDER]
+        docs, _ = self._resolve("what does the Quarterly Budget say about travel?", indexed=indexed)
+        self.assertEqual([d["id"] for d in docs], ["d0"])
+        docs, _ = self._resolve("summarise nepal.docx", indexed=indexed)
+        self.assertEqual([d["id"] for d in docs], ["d1"])
+        self.assertIsNone(self._resolve("what is the capital of Nepal?", indexed=indexed))
+
+    def test_catalog_failure_falls_back_to_the_normal_path(self):
+        with mock.patch.object(doc_reference.catalog, "conversation_documents", side_effect=RuntimeError("down")):
+            self.assertIsNone(doc_reference.resolve("the document I just uploaded", "u1", "c1"))
+
+    def test_low_relevance_search_still_answers_from_the_uploaded_documents_passages(self):
+        passages = [{"id": "p1", "content": "Nepal is a Himalayan country with eight of the ten highest peaks.",
+                     "source": "Overview of Nepal", "page": 1, "doc_id": "d1", "score": 0.1, "relevance": 0.39},
+                    {"id": "p2", "content": "Tourism and remittances are central to the economy.",
+                     "source": "Overview of Nepal", "page": 1, "doc_id": "d1", "score": 0.1, "relevance": 0.2}]
+        seen = {}
+
+        def search(queries, user_id, **kw):
+            seen["kw"] = kw
+            return {"passages": passages, "reranked": True, "zone": "low", "best_relevance": 0.39}
+
+        evaluated = {"sufficient": True, "grounded": True, "score": 5, "missing": ""}
+        with mock.patch.object(doc_reference.catalog, "conversation_documents", return_value=[self.DOC]), \
+                mock.patch.object(nodes.doc_rag, "search", side_effect=search), \
+                mock.patch.object(nodes.rag, "generate", return_value="Nepal is Himalayan [1] and tourism matters [2]."), \
+                mock.patch.object(nodes, "evaluate_answer", return_value=evaluated), \
+                mock.patch.object(nodes, "verified_decision", side_effect=AssertionError("router model not needed")), \
+                mock.patch.object(nodes.direct_answer, "answer", side_effect=AssertionError("no model-knowledge fallback")):
+            final = workflow.run_agent("Tell me about the document I just uploaded.", {"id": "u1", "username": "u"},
+                                       [], [], [self.DOC["title"]], context={"conversation_id": "c1"})
+        self.assertEqual(seen["kw"]["doc_id"], "d1")
+        self.assertEqual(final["tool"], "rag")
+        self.assertEqual([s["doc_id"] for s in final["sources"]], ["d1", "d1"])
+        self.assertIn("Nepal", final["answer"])
+
+    def test_an_ordinary_content_question_still_goes_through_the_relevance_gate(self):
+        with mock.patch.object(doc_reference.catalog, "list_documents", return_value=[self.DOC]):
+            self.assertIsNone(nodes._document_reference({"query": "What is the capital of Nepal?", "user_id": "u1",
+                                                         "conversation_id": "c1"}))
+
+
+class PlaceholderGuard(unittest.TestCase):
+    def test_template_slots_are_found(self):
+        for text in ("**Title:** [Document Name]\n**Summary:** [A concise description of the document]",
+                     "Hello [Your Name]", "Dear {{name}}", "<insert title here>"):
+            self.assertTrue(guards.has_placeholders(text), text)
+
+    def test_citations_links_code_and_checkboxes_are_not_slots(self):
+        for text in ("Nepal has 8 peaks [1] and rivers [2, 3].", "See [the docs](https://x.org) for more.",
+                     "Use `a[Index]` or:\n```\nx = y[Key Name]\n```", "- [x] done\n- [ ] todo",
+                     "The quote reads [sic] here."):
+            self.assertFalse(guards.has_placeholders(text), text)
+
+    def test_a_slotted_answer_is_written_again_once_then_replaced_by_a_safe_message(self):
+        bad = "Name: [Document Name]"
+        self.assertEqual(guards.guarded(bad, lambda: "It is a report about Nepal."),
+                         ("It is a report about Nepal.", True))
+        again = mock.Mock(return_value="Still [Document Name]")
+        self.assertEqual(guards.guarded(bad, again)[0], guards.SAFE_ANSWER)
+        again.assert_called_once()
+        self.assertEqual(guards.guarded(bad)[0], guards.SAFE_ANSWER)
+        self.assertEqual(guards.guarded("A fine answer [1].", again), ("A fine answer [1].", False))
+
+    def test_the_greeting_node_never_sends_a_template(self):
+        replies = iter(["Here: [Document Name]", "Here: [A concise description]"])
+        with mock.patch.object(nodes.greeting, "respond", side_effect=lambda *a: next(replies)):
+            out = nodes.greeting_node({"query": "hello there", "history": []})
+        self.assertEqual(out["answer"], guards.SAFE_ANSWER)
+
+    def test_a_message_about_the_documents_is_not_small_talk(self):
+        decision = nodes.Route(message_type="small_talk", source_preference="auto", reasoning="r",
+                               query_is_clear=True, standalone_query="There is only one document present.",
+                               confidence="high", confidence_required=False)
+        with mock.patch.object(nodes, "verified_decision", return_value=(decision, [])):
+            out = nodes.router_node({"query": "There is only one document present.", "doc_names": ["Nepal"]})
+        self.assertEqual(out["intent"], "rag")
 
 
 if __name__ == "__main__":

@@ -92,11 +92,11 @@ def test_the_login_cookie_is_secure_on_the_public_name(library_docs_free_signup)
 
 
 @pytest.fixture
-def library_docs_free_signup(monkeypatch):
+def library_docs_free_signup(monkeypatch, user_db):
     """Sign up through the real app at a given address; the accounts are removed afterwards (the library's tests expect
     to make the first account themselves)."""
     from backend.app import app
-    from backend.library import catalog, config
+    from backend.library import config
     monkeypatch.setattr(config, "SIGNUP_CODE", "let-me-in")
     monkeypatch.setattr(settings, "allowed_hosts", "*.ts.net")   # whatever the machine's .env pins it to
     made = []
@@ -106,9 +106,8 @@ def library_docs_free_signup(monkeypatch):
         made.append(f"user_{uuid.uuid4().hex[:8]}")
         return c.post("/api/auth/signup", json={"username": made[-1], "password": "correct horse", "invite": "let-me-in"})
     yield sign_up
-    with catalog.tx() as c:
+    with user_db.tx() as c:
         for name in made:
-            c.execute("DELETE FROM auth_tokens WHERE user_id IN (SELECT id FROM users WHERE username = ?)", (name,))
             c.execute("DELETE FROM users WHERE username = ?", (name,))
 
 

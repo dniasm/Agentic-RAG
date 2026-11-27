@@ -15,9 +15,10 @@ from fastapi.responses import JSONResponse
 
 from backend import chat_limits
 from backend.api.dependencies import require_admin
-from backend.config import api_meter, gemini, llm
+from backend.config import api_meter, llm
+from backend.documents import rag
 from backend.config.settings import settings
-from backend.library import catalog, embed_budget
+from backend.library import auth, embed_budget
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -78,10 +79,11 @@ def _gemini(rows: list[dict], now: datetime) -> dict:
         if r["provider"] == "gemini" and r["model"] in ("documents", "questions")                 and embed_budget.provider_day(_hour_start(r["hour"])) == day:
             per_key[r["key"]][r["model"]] += r["calls"]
             per_key[r["key"]]["limited"] += r["limited"]
-    cooldowns, shared, rejected = gemini.pool.cooldowns(), gemini.pool.shared(), gemini.pool.rejected()
+    pool = {k["index"]: k for k in rag.key_states()}   # cooldowns and flags: the key pool lives in the Document service
     keys = [{"key": s["index"] + 1, **per_key[s["index"]], "left": s["left"], "out_for_day": s["out_for_day"],
-             "cooldown_seconds": cooldowns.get(s["index"]), "shares_quota": s["index"] in shared,
-             "rejected": s["index"] in rejected}
+             "cooldown_seconds": pool.get(s["index"], {}).get("cooldown_seconds"),
+             "shares_quota": pool.get(s["index"], {}).get("shares_quota", False),
+             "rejected": pool.get(s["index"], {}).get("rejected", False)}
             for s in embed_budget.key_states(now)]
     site = embed_budget.site_day(now)
     documents = sum(k["documents"] for k in keys)
@@ -109,11 +111,8 @@ def _accounts(now: datetime) -> dict:
     windows = chat_limits.allowance.windows()
     chats = chat_limits.allowance.counts()
     day = embed_budget.provider_day(now)
-    embed_budget.used(day=day)   # (makes sure the table exists)
-    with catalog.tx() as c:
-        names = {r[0]: r[1] for r in c.execute("SELECT id, username FROM users").fetchall()}
-        embedded = {r[0]: r[1] for r in c.execute(
-            "SELECT user_id, chunks FROM embed_usage WHERE day = ?", (day,)).fetchall()}
+    names = {u["id"]: u["username"] for u in auth.list_users()}
+    embedded = embed_budget.used_by_user(day)
     rows = []
     for user_id in set(chats) | set(embedded):
         if user_id not in names:

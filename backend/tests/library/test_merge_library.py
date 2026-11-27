@@ -1,4 +1,5 @@
 """The stage 3 merge script on two tiny source sets (no network: vectors are made up)."""
+import contextlib
 import hashlib
 import json
 import sqlite3
@@ -7,7 +8,7 @@ import pytest
 from qdrant_client import QdrantClient, models
 
 from backend.config.settings import settings
-from backend.rag import sparse, vectorstore
+from services.document import sparse, vectorstore
 from backend.scripts import merge_library
 
 DAY7_DOCUMENTS = """CREATE TABLE documents (
@@ -71,10 +72,8 @@ def sources(tmp_path, monkeypatch):
     (renamer / "library" / "u2").mkdir(parents=True)
     text = b"Measles fact sheet"
     (renamer / "library" / "u2" / "Measles Fact Sheet.txt").write_bytes(text)
-    monkeypatch.setattr(settings, "database_path", str(renamer / "catalog.db"))
-    from backend.library import catalog
-    catalog.reset_connection()
-    with catalog.tx() as c:
+    with contextlib.closing(sqlite3.connect(renamer / "catalog.db")) as c:   # the renamer's own file, as it had it
+        c.executescript(merge_library.LEGACY_CATALOG_SCHEMA + merge_library.LEGACY_USER_TABLES)
         c.execute("INSERT INTO users VALUES ('u2', 'bob', 'pbkdf2_sha256$1$aa$bb', ?)", (T0,))
         c.execute("INSERT INTO documents (id, title, original_name, file_name, ext, sha256, original_sha256, "
                   "size_bytes, pages, chunks, owner, status, created_at, updated_at) VALUES "
@@ -84,8 +83,7 @@ def sources(tmp_path, monkeypatch):
                   "VALUES ('s1', '[]', ?, '{}', 'u2', ?, ?)",
                   (json.dumps([{"role": "user", "text": "rename who to Measles Fact Sheet"},
                                {"role": "assistant", "text": "Renamed.", "actions": [{"type": "rename"}]}]), T0, T1))
-    catalog.reset_connection()
-    monkeypatch.undo()
+        c.commit()
     _store(renamer / "qdrant", [_point(3, "u2", "r1", "measles fact sheet")])
     # the renamer's collection has its own name
     client = QdrantClient(path=str(renamer / "qdrant"))
@@ -93,6 +91,7 @@ def sources(tmp_path, monkeypatch):
                              sparse_vectors_config=client.get_collection("c").config.params.sparse_vectors)
     client.upsert("renamer_docs", points=[_point(3, "u2", "r1", "measles fact sheet")], wait=True)
     client.close()
+    monkeypatch.setenv("SERVICES_DATA_DIR", str(tmp_path / "svc"))   # the merge reads and swaps conversation.db there, not the test service's
     monkeypatch.setattr(settings, "collection_name", "c")
     return day7, renamer
 
@@ -105,9 +104,13 @@ def test_the_merge_keeps_every_id_and_passes_its_checks(sources, tmp_path):
     docs = dict(merged.execute("SELECT id, title FROM documents").fetchall())
     assert docs == {"d1": "bm25 notes", "d2": "stemming", "r1": "Measles Fact Sheet"}
     assert merged.execute("SELECT owner, file_name FROM documents WHERE id = 'd2'").fetchone() == ("u1", "u1/stemming.md")
+    merged.close()
+    merged = sqlite3.connect(tmp_path / "staging" / "conversation.db")   # the chats are the Conversation service's file
     assert merged.execute("SELECT title FROM conversations WHERE id = 's1'").fetchone() == ("rename who to Measles Fact Sheet",)
     tools = merged.execute("SELECT role, tool, meta FROM messages WHERE conversation_id = 's1' ORDER BY created_at").fetchall()
     assert tools == [("user", None, None), ("assistant", "manage_documents", '{"actions": [{"type": "rename"}]}')]
+    merged.close()
+    merged = sqlite3.connect(tmp_path / "staging" / "app.db")
     assert {r[0] for r in merged.execute("SELECT id FROM users")} == {"u1", "u2"}
     assert (tmp_path / "staging" / "library" / "u1" / "stemming.md").read_bytes() == b"Stemming reduces words to their stems"
     merged.close()

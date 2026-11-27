@@ -2,6 +2,7 @@
 so an edit can write new letters in the document's own font instead of embedding a copy. A wrong map is caught by the
 glyph check on the saved page."""
 import io
+import os
 import logging
 import re
 
@@ -12,7 +13,10 @@ from fontTools.pens.t2CharStringPen import T2CharStringPen
 
 from backend.library import pdf_edit, pdf_encoding
 
-ARIAL = "C:/Windows/Fonts/arial.ttf"
+# A TrueType font present on the machine: Arial on Windows, DejaVu Sans on Linux (CI)
+ARIAL = next((p for p in ("C:/Windows/Fonts/arial.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                          "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf") if os.path.exists(p)), None)
+pytestmark = pytest.mark.skipif(ARIAL is None, reason="no TrueType font (Arial / DejaVu Sans) on this machine")
 
 
 def _simple_font_pdf(path, encoding: str | None = None, lines=("hello world", "quiet study")):

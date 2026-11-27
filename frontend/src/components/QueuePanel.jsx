@@ -1,43 +1,53 @@
 /** The Library's queue: batches of tasks a chat queued ("do these to every report"), still running or queued in
-    the last hour, each task with its state and reply. Polled every few seconds while any task waits, slowly
-    otherwise; hidden when there is nothing to show. */
-import React, { useEffect, useRef, useState } from 'react';
+    the last hour, each task with its state and reply. Read once on load and again after a reconnect; the
+    server then pushes each change over the WebSocket (queue/task, queue/changed). Hidden when there is nothing
+    to show. */
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { apiService } from '../services/api';
-import {
-  ACTIVE_POLL_MS, IDLE_POLL_MS, TASK_LABEL, TASK_PILL, plainReply, queueSummary, waitingTasks,
-} from '../lib/queue';
+import { realtime } from '../services/realtime';
+import { TASK_LABEL, TASK_PILL, applyTaskEvent, plainReply, queueSummary, waitingTasks } from '../lib/queue';
 
 /** onTaskFinished(): a task finished (titles or files may have changed: reload the list). */
 export default function QueuePanel({ onTaskFinished }) {
   const [queue, setQueue] = useState(null);
   const [error, setError] = useState(null);
-  const doneBefore = useRef(null);
-  const timer = useRef(null);
+  const current = useRef(null);
   const finished = useRef(onTaskFinished);
   finished.current = onTaskFinished;
 
-  const poll = async () => {
-    clearTimeout(timer.current);
-    let next = IDLE_POLL_MS;
+  const show = (q) => { current.current = q; setQueue(q); };
+
+  const load = useCallback(async () => {
     try {
-      const q = await apiService.getQueue();
-      const { done, active } = queueSummary(q);
-      if (doneBefore.current !== null && done > doneBefore.current) finished.current?.();
-      doneBefore.current = done;
-      setQueue(q);
+      show(await apiService.getQueue());
       setError(null);
-      next = active ? ACTIVE_POLL_MS : IDLE_POLL_MS;
     } catch (err) {
       setError(err.message);
     }
-    timer.current = setTimeout(poll, next);
-  };
+  }, []);
 
-  useEffect(() => { poll(); return () => clearTimeout(timer.current); }, []);
+  useEffect(() => {
+    load();
+    let wasOpen = realtime.isOpen();
+    const offState = realtime.onState((s) => {   // events may have been missed while it was down: read again
+      if (s === 'open' && !wasOpen) load();
+      wasOpen = s === 'open';
+    });
+    const offEvents = realtime.subscribe((msg) => {
+      if (msg.channel === 'system' && msg.type === 'resync') load();
+      else if (msg.channel === 'queue' && msg.type === 'changed') load();
+      else if (msg.channel === 'queue' && msg.type === 'task') {
+        const next = applyTaskEvent(current.current, msg.data);
+        if (next) show(next); else load();
+        if (!['queued', 'running'].includes(msg.data.status)) finished.current?.();
+      }
+    });
+    return () => { offState(); offEvents(); };
+  }, [load]);
 
   const cancel = async (batch) => {
     try { await apiService.cancelBatch(batch.id); } catch (err) { setError(`Couldn't cancel: ${err.message}`); }
-    poll();
+    load();
   };
 
   const { batches, done, total } = queueSummary(queue);

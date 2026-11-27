@@ -1,0 +1,519 @@
+syntax = "proto3";
+
+// The RAG half of the document system: reading files, indexing them as passages (clean, chunk with overlap, embed, store;
+// OCR for scanned PDF pages) and finding them again (query embedded, dense + keyword search fused by RRF, cross-encoder
+// rerank, MMR for diverse passages). The service owns the passage index (its own embedded Qdrant folder) and its caches
+// (document.db: OCR text of scanned pages, query embeddings), and does all the embedding and reranking. It also owns the
+// library CATALOG in document.db (documents, rename history, edits and undone edits, the library chat's sessions, queued
+// batches and their tasks); the stored files themselves stay in the orchestrator's library folder for now.
+//
+// Files are sent as bytes (the service never reads the orchestrator's library folder): the first message of a stream
+// describes the file, the rest are chunks of at most 1 MiB, so a file larger than gRPC's 4 MB message limit works.
+// Every call is scoped by user_id (a User service id kept as a plain string): one person's passages are never visible to
+// another.
+//
+// The embedding allowance stays in the User service. The orchestrator checks it BEFORE Ingest and passes what is left as
+// max_passages; Ingest reports how many passages it really embedded, which the orchestrator then charges.
+//
+// Errors: INVALID_ARGUMENT (empty user id, no file), UNAVAILABLE / DEADLINE_EXCEEDED. Problems with one file (no text,
+// password-protected, not enough allowance, every Gemini key limited) are not statuses: the stream ends with a Failure
+// event, so the orchestrator can show the reason and mark the document.
+package agentic_rag.v1;
+
+service DocumentService {
+  // Client-streaming bytes in, server-streaming progress out: reading, ocr (page n of N), chunked, embedding (x of y),
+  // stored, then one Done or one Failure. Passages whose text the document already has keep their stored vectors.
+  rpc Ingest(stream IngestRequest) returns (stream IngestEvent);
+  // The text of a file as indexing would read it (OCR of scanned PDF pages included; progress while it runs), or only
+  // the OCR text of scanned pages that is already cached (used under the library lock, where OCR must never start).
+  rpc ReadPages(stream ReadRequest) returns (stream ReadEvent);
+
+  // Query variants -> the user's best passages: dense + keyword search fused by RRF; with rerank_query also scored by the
+  // reranker and chosen with MMR. reranked=false (reranker off, busy or failed) tells the caller to run its own
+  // relevance check on the candidates.
+  rpc Search(SearchRequest) returns (SearchReply);
+  // Scores arbitrary texts against a query with the reranker (the library agent also scores document profiles, which
+  // are not in the index). reranked=false when it could not.
+  rpc Rerank(RerankRequest) returns (RerankReply);
+
+  // Stored dense vectors of passages, in the order of the ids (empty vector: not found).
+  rpc GetDenseVectors(GetDenseVectorsRequest) returns (GetDenseVectorsReply);
+  // Removes every passage of one document of one user.
+  rpc DeleteDocumentVectors(DocumentRef) returns (DeleteReply);
+  // Sets metadata fields (title, file_name) on every passage of a document, without embedding anything.
+  rpc SetChunkFields(SetChunkFieldsRequest) returns (DeleteReply);
+  // Passage counts (all, one user, or one document), so a migration can check what the service holds.
+  rpc CountPassages(CountPassagesRequest) returns (CountPassagesReply);
+
+  // The state of the Gemini key pool (cooldowns, keys Google rejected, keys sharing a quota) for the admin page.
+  rpc KeyStates(KeyStatesRequest) returns (KeyStatesReply);
+
+  // Idempotent bulk copy for scripts/migrate_documents_rag.py (and tests): passages keep their ids, vectors and payloads
+  // (nothing is embedded again); the caches keep their keys. Rows already there are left as they are.
+  rpc ImportPassages(ImportPassagesRequest) returns (DocumentImportReply);
+  rpc ImportCaches(ImportCachesRequest) returns (DocumentImportReply);
+
+  // ---- the library catalog (document.db). One call per atomic operation; free-form JSON columns are JSON strings.
+  // Documents
+  rpc AddCatalogDocument(AddCatalogDocumentRequest) returns (CatalogDocument);   // status 'processing'
+  rpc LinkUpload(LinkUploadRequest) returns (DeleteReply);   // the file was uploaded (again) in this chat
+  rpc ListConversationDocuments(ListConversationDocumentsRequest) returns (CatalogDocumentList);   // newest link first
+  rpc GetCatalogDocument(CatalogDocumentRef) returns (OptionalCatalogDocument);
+  rpc FindCatalogDocumentByHash(FindByHashRequest) returns (OptionalCatalogDocument);
+  rpc ListCatalogDocuments(ListCatalogDocumentsRequest) returns (CatalogDocumentList);
+  // Updates columns (fields_json, a JSON object; null sets NULL; keywords is a JSON list) and, in the same transaction,
+  // adds a rename record when `rename` is set.
+  rpc UpdateCatalogDocument(UpdateCatalogDocumentRequest) returns (DeleteReply);
+  rpc DeleteCatalogDocument(CatalogDocumentRef) returns (DeleteReply);          // also its renames and edits
+  rpc RecordRename(RecordRenameRequest) returns (DeleteReply);
+  rpc RenameHistories(CatalogOwnerlessRequest) returns (RenameHistoriesReply);   // every document's, oldest first
+  rpc RenameHistory(CatalogDocumentRef) returns (RenameHistoryReply);
+  rpc UsedFileNames(UsedFileNamesRequest) returns (UsedFileNamesReply);
+  // Edits and undo
+  rpc RecordEdit(RecordEditRequest) returns (RecordEditReply);                   // + optional document update, atomically
+  rpc LastEdit(CatalogDocumentRef) returns (OptionalEdit);
+  rpc EditExists(EditRef) returns (EditExistsReply);
+  rpc EditHistory(CatalogDocumentRef) returns (EditHistoryReply);
+  rpc DeleteEdit(EditRef) returns (DeleteReply);
+  rpc UndoEdit(UndoEditRequest) returns (DeleteReply);          // edit -> undone_edits (+ optional document update)
+  rpc LastUndone(CatalogDocumentRef) returns (OptionalUndoneEdit);
+  rpc RedoEdit(RedoEditRequest) returns (DeleteReply);          // undone_edits -> edits under its own id (+ update)
+  rpc ClearUndone(CatalogDocumentRef) returns (ClearUndoneReply);
+  // The library chat agent's sessions
+  rpc LoadLibrarySession(LibrarySessionRef) returns (LibrarySession);   // a fresh empty one (no owner) when unknown
+  rpc SaveLibrarySession(LibrarySession) returns (DeleteReply);
+  // Queued batches
+  rpc AddBatch(AddBatchRequest) returns (CatalogBatch);
+  rpc GetBatch(BatchRef) returns (OptionalBatch);
+  rpc ActiveOrRecentBatches(ActiveBatchesRequest) returns (BatchList);
+  rpc ListBatches(ListBatchesRequest) returns (BatchList);
+  rpc TasksRunFor(LibrarySessionRef) returns (TasksRunReply);
+  rpc PendingTasksFor(LibrarySessionRef) returns (CountReply);
+  rpc NextQueuedTask(CatalogOwnerlessRequest) returns (OptionalTask);
+  // Picks the next queued task and marks it running (started_at = now) in one transaction.
+  rpc ClaimNextTask(CatalogOwnerlessRequest) returns (OptionalTask);
+  rpc GetTask(TaskRef) returns (OptionalTask);
+  rpc UpdateTask(UpdateTaskRequest) returns (TaskOwner);        // says whose batch it is, for the queue push
+  rpc CancelBatch(BatchRef) returns (CancelBatchReply);
+  rpc CountQueuedTasks(CountQueuedRequest) returns (CountReply);
+  rpc TasksWithStatus(TasksWithStatusRequest) returns (TaskList);
+  rpc RequeueRunningTasks(CatalogOwnerlessRequest) returns (CountReply);
+  rpc GiveLegacyChatsAndBatchesTo(GiveLegacyRequest) returns (DeleteReply);
+  // Migration (scripts/migrate_library_catalog.py)
+  rpc ImportCatalog(ImportCatalogRequest) returns (ImportCatalogReply);
+  rpc CountCatalog(CatalogOwnerlessRequest) returns (CountCatalogReply);
+}
+
+message IngestStart {
+  string user_id = 1;
+  string doc_id = 2;
+  string filename = 3;           // the title: the "source" a citation shows
+  string file_name = 4;          // the stored file's name, kept on each passage
+  string ext = 5;                // .pdf .docx .txt .md
+  optional int64 max_passages = 6;   // most passages that may be embedded; more is refused whole, before embedding
+}
+message IngestRequest {
+  oneof part {
+    IngestStart start = 1;       // first message
+    bytes chunk = 2;             // then the file, in order
+  }
+}
+
+message IngestProgress {
+  string stage = 1;              // reading | ocr | chunked | embedding | stored
+  int64 done = 2;
+  int64 total = 3;
+}
+message IngestDone {
+  int64 pages = 1;
+  int64 chunks = 2;
+  int64 embedded = 3;            // passages that were really sent to the embedding model (what is charged)
+}
+message Failure {
+  string kind = 1;               // no_text | unsupported | budget | rate_limited | error
+  string message = 2;
+  int64 needed = 3;              // budget: passages that needed embedding
+  bool for_day = 4;              // rate_limited: every key is out until Google's next day
+}
+message IngestEvent {
+  oneof event {
+    IngestProgress progress = 1;
+    IngestDone done = 2;
+    Failure failure = 3;
+  }
+}
+
+enum ReadMode {
+  READ_ALL = 0;                  // every page, scanned ones read by OCR
+  READ_SCANNED_CACHED = 1;       // only scanned pages whose OCR text is already cached
+}
+message ReadStart {
+  string ext = 1;
+  ReadMode mode = 2;
+}
+message ReadRequest {
+  oneof part {
+    ReadStart start = 1;
+    bytes chunk = 2;
+  }
+}
+message Page {
+  optional int64 page = 1;       // set for a PDF page
+  string text = 2;
+  bool ocr = 3;
+}
+message ReadResult {
+  repeated Page pages = 1;
+  int64 page_count = 2;
+}
+message ReadEvent {
+  oneof event {
+    IngestProgress progress = 1;
+    ReadResult result = 2;
+    Failure failure = 3;
+  }
+}
+
+message SearchRequest {
+  repeated string queries = 1;
+  string user_id = 2;
+  optional int64 k = 3;
+  optional double min_score = 4;
+  optional string doc_id = 5;
+  optional string mode = 6;           // dense | hybrid; default from the service's settings
+  optional string rerank_query = 7;   // set: rerank the candidates against this question, then MMR
+  bool mmr = 8;                       // with rerank_query: choose diverse passages when the match is not "low"
+}
+message Passage {
+  string id = 1;
+  string content = 2;
+  optional string source = 3;
+  optional int64 page = 4;
+  bool ocr = 5;
+  optional string doc_id = 6;
+  optional int64 chunk_index = 7;
+  string matched_query = 8;
+  double score = 9;                   // cosine similarity
+  double rrf = 10;
+  optional int64 dense_rank = 11;
+  optional int64 bm25_rank = 12;
+  optional double bm25 = 13;
+  optional double relevance = 14;     // reranker score (0-1), when reranked
+  optional string scorer = 15;
+  int64 selected = 16;                // MMR pick order (1 = first); 0: not chosen
+}
+message SearchReply {
+  repeated Passage passages = 1;      // reranked best first when reranked, else best RRF/cosine first
+  bool reranked = 2;
+  string zone = 3;                    // high | mid | low (when reranked)
+  optional double best_relevance = 4;
+}
+
+message RerankItem {
+  string content = 1;
+}
+message RerankRequest {
+  string query = 1;
+  repeated RerankItem items = 2;
+  string priority = 3;                // rerank | find
+}
+message RerankReply {
+  bool reranked = 1;
+  repeated double relevance = 2;      // in the order of the items
+  string scorer = 3;
+}
+
+message GetDenseVectorsRequest { repeated string ids = 1; }
+message Vector { repeated float values = 1; }
+message GetDenseVectorsReply { repeated Vector vectors = 1; }
+
+message DocumentRef {
+  string user_id = 1;
+  string doc_id = 2;
+}
+message DeleteReply {}
+message SetChunkFieldsRequest {
+  string user_id = 1;
+  string doc_id = 2;
+  string fields_json = 3;             // a JSON object of the metadata fields to set (null clears one)
+}
+
+message CountPassagesRequest {
+  optional string user_id = 1;
+  optional string doc_id = 2;
+}
+message CountPassagesReply {
+  int64 passages = 1;
+  int64 page_texts = 2;               // cached OCR pages
+  int64 query_embeddings = 3;         // cached question embeddings
+}
+
+message KeyStatesRequest {}
+message KeyState {
+  int64 index = 1;
+  bool out_for_day = 2;
+  optional double cooldown_seconds = 3;
+  bool shares_quota = 4;
+  bool rejected = 5;
+}
+message KeyStatesReply { repeated KeyState keys = 1; }
+
+message SparseVector {
+  repeated uint32 indices = 1;
+  repeated float values = 2;
+}
+message StoredPassage {
+  string id = 1;
+  repeated float dense = 2;
+  SparseVector sparse = 3;
+  string payload_json = 4;            // {"page_content": ..., "metadata": {...}}
+}
+message ImportPassagesRequest { repeated StoredPassage passages = 1; }
+message CacheRow {
+  string key = 1;
+  string value = 2;
+}
+message ImportCachesRequest {
+  repeated CacheRow page_texts = 1;
+  repeated CacheRow query_embeddings = 2;
+}
+message DocumentImportReply { int64 created = 1; }
+
+// ---------------------------------------------------------------- the library catalog
+message CatalogOwnerlessRequest {}
+message CountReply { int64 count = 1; }
+message CatalogDocument {
+  string id = 1;
+  string title = 2;
+  string original_name = 3;
+  string file_name = 4;
+  string ext = 5;
+  string sha256 = 6;
+  optional string original_sha256 = 7;
+  int64 size_bytes = 8;
+  optional int64 pages = 9;
+  optional int64 chunks = 10;
+  string summary = 11;
+  string keywords_json = 12;          // JSON list of strings
+  string owner = 13;
+  string status = 14;                 // processing | indexed | failed
+  optional string error = 15;
+  string created_at = 16;
+  string updated_at = 17;
+  reserved 18;                        // conversation_id: one chat per file; now document_uploads (many chats)
+}
+message OptionalCatalogDocument { optional CatalogDocument document = 1; }
+message CatalogDocumentList { repeated CatalogDocument documents = 1; }
+message CatalogDocumentRef { string doc_id = 1; }
+message AddCatalogDocumentRequest {
+  string title = 1;
+  string original_name = 2;
+  string file_name = 3;
+  string ext = 4;
+  string sha256 = 5;
+  int64 size_bytes = 6;
+  string owner = 7;                   // empty: "library"
+  optional string conversation_id = 8;   // also records the upload link (a file can be in many chats)
+}
+message LinkUploadRequest {
+  string doc_id = 1;
+  string conversation_id = 2;
+}
+message ListConversationDocumentsRequest {
+  string owner = 1;                   // empty: "library"
+  string conversation_id = 2;
+}
+message FindByHashRequest {
+  string sha256 = 1;
+  string owner = 2;                   // empty: "library"
+}
+message ListCatalogDocumentsRequest {
+  optional string status = 1;
+  optional string owner = 2;          // unset: everyone's (the server's own work)
+}
+message RenameRecord {
+  string old_title = 1;
+  string new_title = 2;
+  string reason = 3;                  // titled | user
+  string at = 4;
+}
+message RecordRenameRequest {
+  string doc_id = 1;
+  string old_title = 2;
+  string new_title = 3;
+  string reason = 4;
+}
+message UpdateCatalogDocumentRequest {
+  string doc_id = 1;
+  string fields_json = 2;             // title, original_name, file_name, ext, sha256, original_sha256, size_bytes, pages,
+                                      // chunks, summary, keywords, owner, status, error
+  optional RecordRenameRequest rename = 3;
+}
+message RenameHistoryReply { repeated RenameRecord renames = 1; }
+message DocumentRenames {
+  string doc_id = 1;
+  repeated RenameRecord renames = 2;
+}
+message RenameHistoriesReply { repeated DocumentRenames documents = 1; }
+message UsedFileNamesRequest { optional string exclude_doc = 1; }
+message UsedFileNamesReply { repeated string file_names = 1; }   // relative to the library folder, lower case, "/"
+
+message EditRecord {
+  int64 id = 1;
+  string doc_id = 2;
+  string operation = 3;
+  string detail = 4;
+  string backup = 5;
+  string at = 6;
+}
+message OptionalEdit { optional EditRecord edit = 1; }
+message EditRef { int64 edit_id = 1; }
+message EditExistsReply { bool exists = 1; }
+message EditSummary {
+  string operation = 1;
+  string detail = 2;
+  string at = 3;
+}
+message EditHistoryReply { repeated EditSummary edits = 1; }
+message RecordEditRequest {
+  string doc_id = 1;
+  string operation = 2;
+  string detail = 3;
+  string backup = 4;
+  optional string document_fields_json = 5;   // updates the document in the same transaction
+}
+message RecordEditReply { int64 edit_id = 1; }
+message UndoneEdit {
+  int64 id = 1;
+  string doc_id = 2;
+  string operation = 3;
+  string detail = 4;
+  string backup = 5;
+  string redo = 6;
+  string ext = 7;
+  string at = 8;
+  string undone_at = 9;
+  int64 undo_order = 10;
+}
+message OptionalUndoneEdit { optional UndoneEdit undone = 1; }
+message UndoEditRequest {
+  EditRecord edit = 1;
+  string redo = 2;
+  string ext = 3;
+  optional string document_fields_json = 4;   // updates edit.doc_id's document in the same transaction
+}
+message RedoEditRequest {
+  int64 undone_id = 1;
+  optional string document_fields_json = 2;   // updates the undone edit's document in the same transaction
+}
+message ClearUndoneReply { repeated UndoneEdit dropped = 1; }
+
+message LibrarySessionRef { string session_id = 1; }
+message LibrarySession {
+  string id = 1;
+  int64 turn = 2;
+  string llm_messages_json = 3;
+  string display_json = 4;
+  string guard_json = 5;
+  optional string owner = 6;          // unset on load: the session does not exist yet
+}
+
+message BatchItem {
+  string instruction = 1;
+  optional string payload_json = 2;   // a structured change, run in code; unset: free text for the agent
+}
+message AddBatchRequest {
+  string session_id = 1;
+  repeated BatchItem items = 2;
+  string owner = 3;                   // empty: "library"
+}
+message BatchRef { string batch_id = 1; }
+message TaskRef { int64 task_id = 1; }
+message CatalogTask {
+  int64 id = 1;
+  string batch_id = 2;
+  int64 position = 3;
+  string instruction = 4;
+  optional string payload_json = 5;
+  optional string checkpoint_json = 6;
+  string status = 7;                  // queued | running | done | not_done | failed | cancelled
+  string reply = 8;
+  string actions_json = 9;
+  int64 tokens = 10;
+  optional string started_at = 11;
+  optional string finished_at = 12;
+}
+message OptionalTask { optional CatalogTask task = 1; }
+message TaskList { repeated CatalogTask tasks = 1; }
+message CatalogBatch {
+  string id = 1;
+  string session_id = 2;
+  string owner = 3;
+  string created_at = 4;
+  repeated CatalogTask tasks = 5;
+}
+message OptionalBatch { optional CatalogBatch batch = 1; }
+message BatchList { repeated CatalogBatch batches = 1; }
+message ActiveBatchesRequest {
+  double hours = 1;
+  optional string owner = 2;
+}
+message ListBatchesRequest {
+  int64 limit = 1;
+  optional string owner = 2;
+}
+message TaskRun {
+  string actions_json = 1;
+  string finished_at = 2;
+}
+message TasksRunReply { repeated TaskRun tasks = 1; }
+message UpdateTaskRequest {
+  int64 task_id = 1;
+  string fields_json = 2;             // status, reply, actions (list), tokens, started_at, finished_at, checkpoint (object or null)
+}
+message TaskOwner {
+  string batch_id = 1;
+  string owner = 2;
+}
+message CancelBatchReply {
+  int64 cancelled = 1;
+  optional string owner = 2;          // unset: no such batch
+}
+message CountQueuedRequest { optional string owner = 1; }
+message TasksWithStatusRequest { string status = 1; }
+message GiveLegacyRequest { string user_id = 1; }
+
+// Rows as they are in app.db, kept with their ids and timestamps.
+message CatalogDump {
+  repeated CatalogDocument documents = 1;
+  repeated RenameRow renames = 2;
+  repeated EditRecord edits = 3;
+  repeated UndoneEdit undone_edits = 4;
+  repeated CatalogBatch batches = 5;      // with their tasks
+  repeated StoredSession sessions = 6;
+}
+message RenameRow {
+  int64 id = 1;
+  string doc_id = 2;
+  string old_title = 3;
+  string new_title = 4;
+  string reason = 5;
+  string at = 6;
+}
+message StoredSession {
+  LibrarySession session = 1;
+  string created_at = 2;
+  string updated_at = 3;
+}
+message ImportCatalogRequest { CatalogDump dump = 1; }
+message CatalogCounts {
+  int64 documents = 1;
+  int64 renames = 2;
+  int64 edits = 3;
+  int64 undone_edits = 4;
+  int64 batches = 5;
+  int64 batch_tasks = 6;
+  int64 sessions = 7;
+}
+message ImportCatalogReply { CatalogCounts created = 1; }   // rows created now (rows already there are kept)
+message CountCatalogReply { CatalogCounts held = 1; }

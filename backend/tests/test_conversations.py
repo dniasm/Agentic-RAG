@@ -4,7 +4,6 @@
 """
 import os
 import sqlite3
-import tempfile
 import unittest
 
 from fastapi import FastAPI
@@ -18,11 +17,6 @@ from backend.models import database as db
 
 class Rename(unittest.TestCase):
     def setUp(self):
-        self._old_path, self._old_conn = settings.database_path, db._conn
-        self.tmp = tempfile.mkdtemp()
-        settings.database_path = os.path.join(self.tmp, "test.db")
-        db._conn = None
-        db.init_db()
         self.user = db.create_user("rename_test", "x")
         self.other = db.create_user("someone_else", "x")
         self.conv = db.create_conversation(self.user["id"], "what is bm25?")
@@ -31,10 +25,6 @@ class Rename(unittest.TestCase):
         app.include_router(chat.router)
         app.dependency_overrides[get_current_user] = lambda: {"id": self.user["id"], "username": "rename_test"}
         self.client = TestClient(app)
-
-    def tearDown(self):
-        db._conn.close()
-        db._conn, settings.database_path = self._old_conn, self._old_path
 
     def test_rename_keeps_the_chats_place_in_the_list(self):
         res = self.client.patch(f"/conversations/{self.conv['id']}", json={"title": "  BM25 notes  "})
@@ -57,16 +47,8 @@ class Rename(unittest.TestCase):
 
 class Stats(unittest.TestCase):
     def setUp(self):
-        self._old_path, self._old_conn = settings.database_path, db._conn
-        settings.database_path = os.path.join(tempfile.mkdtemp(), "stats.db")
-        db._conn = None
-        db.init_db()
         self.uid = db.create_user("stats_test", "x")["id"]
         self.conv = db.create_conversation(self.uid, "c")["id"]
-
-    def tearDown(self):
-        db._conn.close()
-        db._conn, settings.database_path = self._old_conn, self._old_path
 
     def answers(self):
         db.add_message(self.conv, "user", "q")
@@ -81,17 +63,11 @@ class Stats(unittest.TestCase):
 
     def test_stats_come_from_the_columns(self):
         self.answers()
-        with db.tx() as c:  # the JSON is no longer read
-            c.execute("UPDATE messages SET meta = 'not json'")
-        stats = db.user_stats(self.uid)
-        self.assertEqual({k: stats[k] for k in self.expected()}, self.expected())
-
-    def test_older_databases_are_backfilled_from_meta_once(self):
-        self.answers()
-        with db.tx() as c:  # as before 14 November: columns empty, migration not run
-            c.execute("UPDATE messages SET latency_ms = NULL, rewritten = 0, sufficient = NULL")
-            c.execute("DELETE FROM migrations WHERE name = 'message_stats_v1'")
-        db.init_db()
+        # the session's Conversation service keeps its file in SERVICES_DATA_DIR (conftest.py)
+        con = sqlite3.connect(os.path.join(os.environ["SERVICES_DATA_DIR"], "conversation.db"), timeout=30)
+        with con:  # the JSON is no longer read
+            con.execute("UPDATE messages SET meta = 'not json' WHERE conversation_id = ?", (self.conv,))
+        con.close()
         stats = db.user_stats(self.uid)
         self.assertEqual({k: stats[k] for k in self.expected()}, self.expected())
 
@@ -102,23 +78,11 @@ class Stats(unittest.TestCase):
                          (0, 0, 0, 0, 0, {}))
 
 
-class FreshDatabase(unittest.TestCase):
-    def test_no_old_memory_table_and_migration_marked_done(self):
-        path = os.path.join(tempfile.mkdtemp(), "fresh.db")
-        old_path, old_conn = settings.database_path, db._conn
-        settings.database_path, db._conn = path, None
-        try:
-            db.init_db()
-            db.init_db()  # a second start must not fail either
-        finally:
-            db._conn.close()
-            db._conn, settings.database_path = old_conn, old_path
-        con = sqlite3.connect(path)
-        tables = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
-        done = con.execute("SELECT name FROM migrations").fetchall()
-        con.close()
-        self.assertNotIn("user_memory", tables)
-        self.assertEqual(sorted(done), [("message_stats_v1",), ("user_facts_v1",)])
+class NoOrchestratorDatabase(unittest.TestCase):
+    def test_the_facade_has_no_connection_or_schema(self):
+        # chats, facts and accounts are the services'; the catalog is the Document service's
+        self.assertFalse({"init_db", "tx", "_conn"} & set(dir(db)))
+        self.assertFalse(os.path.exists(settings.database_path))   # nothing this session did made an app.db
 
 
 if __name__ == "__main__":

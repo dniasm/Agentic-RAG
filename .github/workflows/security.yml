@@ -1,0 +1,18 @@
+name: "Security"
+run-name: "Security · ${{ github.event.pull_request.title || github.ref_name }}"
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+concurrency:
+  group: "${{ github.workflow }}-${{ github.head_ref || github.ref }}"
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    uses: ./.github/workflows/_python-tests.yml
+    with:
+      name: "Security tests"
+      tests: backend/tests/test_security.py backend/tests/library/test_accounts.py backend/tests/library/test_shared_login.py backend/tests/library/test_admin.py
