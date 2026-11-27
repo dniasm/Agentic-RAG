@@ -228,3 +228,51 @@ def test_a_pushed_task_change_updates_the_queue_panels_state():
     assert [t["status"] for t in result["next"]["batches"][0]["tasks"]] == ["done", "queued"]
     assert result["next"]["batches"][0]["tasks"][0]["reply"] == "ok" and result["unchanged"] == "queued"
     assert result["unknown"] is None and result["summary"]["done"] == 1 and result["summary"]["active"] is True
+
+
+def test_a_file_added_from_the_chat_box_is_checked_and_its_chip_follows_the_library_events():
+    rules = (SRC / "lib" / "uploadRules.js").as_uri()
+    chips = (SRC / "lib" / "uploadChips.js").as_uri()
+    result = node(f"""
+        const r = await import({json.dumps(rules)});
+        const m = await import({json.dumps(chips)});
+        const run = (acts) => acts.reduce(m.uploadsReducer, m.initialUploads);
+        const add = {{ type: 'add', cid: 1, key: 'new', name: 'a.pdf' }};
+        const status = (s) => s.chips[0].status;
+        const slow = run([add, {{ type: 'uploaded', cid: 1, docId: 'd1', docStatus: 'processing' }},
+                          {{ type: 'event', docId: 'd1', stage: 'embedding', done: 2, total: 9 }}]);
+        const early = run([add, {{ type: 'event', docId: 'd1', stage: 'indexed' }},
+                           {{ type: 'uploaded', cid: 1, docId: 'd1', docStatus: 'processing' }}]);
+        const failed = run([add, {{ type: 'uploaded', cid: 1, docId: 'd1', docStatus: 'processing' }},
+                            {{ type: 'event', docId: 'd1', stage: 'failed', error: 'Over the daily limit' }}]);
+        const polled = run([add, {{ type: 'uploaded', cid: 1, docId: 'd1', docStatus: 'processing' }},
+                            {{ type: 'docs', docs: [{{ id: 'd1', status: 'indexed' }}] }}]);
+        const moved = run([add, {{ type: 'rekey', from: 'new', to: 'c5' }}]);
+        console.log(JSON.stringify({{
+          ok: r.checkFile({{ name: 'A.PDF', size: 10 }}), badType: r.checkFile({{ name: 'a.exe', size: 1 }}),
+          noExt: r.checkFile({{ name: 'README', size: 1 }}), big: r.checkFile({{ name: 'a.txt', size: 21 * 1024 * 1024 }}),
+          uploading: status(run([add])), slow: [status(slow), slow.chips[0].detail], early: status(early),
+          failed: [status(failed), failed.chips[0].detail], polled: status(polled),
+          rejected: run([add, {{ type: 'rejected', cid: 1, error: 'Quota' }}]).chips[0].detail,
+          removed: run([add, {{ type: 'remove', cid: 1 }}]).chips.length,
+          moved: m.chipsFor(moved, 'c5').length, other: m.chipsFor(moved, 'new').length,
+        }}));""")
+    assert result["ok"] is None and "only PDF" in result["badType"] and "only PDF" in result["noExt"]
+    assert "larger than 20 MB" in result["big"]
+    assert result["uploading"] == "uploading" and result["slow"] == ["indexing", "Indexing 2/9"]
+    assert result["early"] == "ready" and result["failed"] == ["failed", "Over the daily limit"]
+    assert result["polled"] == "ready" and result["rejected"] == "Quota" and result["removed"] == 0
+    assert result["moved"] == 1 and result["other"] == 0
+
+
+def test_a_chat_opens_at_its_latest_message_once_the_messages_are_there():
+    url = (SRC / "lib" / "uploadChips.js").as_uri()
+    result = node(f"""
+        const {{ shouldJumpToBottom: j }} = await import({json.dumps(url)});
+        console.log(JSON.stringify({{
+          loading: j({{ key: 'c1', positionedFor: null, messageCount: 0 }}),
+          arrived: j({{ key: 'c1', positionedFor: null, messageCount: 12 }}),
+          streaming: j({{ key: 'c1', positionedFor: 'c1', messageCount: 13 }}),
+          switched: j({{ key: 'c2', positionedFor: 'c1', messageCount: 4 }}),
+        }}));""")
+    assert result == {"loading": False, "arrived": True, "streaming": False, "switched": True}

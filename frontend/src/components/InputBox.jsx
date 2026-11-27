@@ -1,5 +1,6 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { ArrowUp, Loader2 } from 'lucide-react';
+import { ArrowUp, Loader2, Paperclip } from 'lucide-react';
+import { ACCEPTED, MAX_MB } from '../lib/uploadRules';
 
 // Drafts are kept per conversation for this browser tab, so switching pages or chats doesn't throw away
 // what you were typing.
@@ -16,9 +17,11 @@ const writeDraft = (key, value) => {
 
 const MAX_HEIGHT = 200;
 
-export default function InputBox({ onSend, busy, conversationKey = 'new', placeholder = 'Ask a question' }) {
+// onFiles(files): files chosen with the paperclip or pasted; attachments: the chips shown above the text.
+export default function InputBox({ onSend, busy, conversationKey = 'new', placeholder = 'Ask a question', onFiles, attachments }) {
   const [text, setText] = useState(() => readDraft(conversationKey));
   const ref = useRef(null);
+  const fileInput = useRef(null);
 
   useEffect(() => {
     setText(readDraft(conversationKey));
@@ -49,6 +52,19 @@ export default function InputBox({ onSend, busy, conversationKey = 'new', placeh
     update('');
   };
 
+  const pickFiles = (e) => {
+    if (e.target.files?.length) onFiles?.(Array.from(e.target.files));
+    e.target.value = '';
+  };
+
+  // Pasting files (not text) adds them to the library.
+  const onPaste = (e) => {
+    const files = Array.from(e.clipboardData?.files || []);
+    if (!files.length || !onFiles) return;
+    e.preventDefault();
+    onFiles(files);
+  };
+
   const insertNewline = (el) => {
     const { selectionStart: start, selectionEnd: end } = el;
     const next = `${text.slice(0, start)}\n${text.slice(end)}`;
@@ -70,6 +86,7 @@ export default function InputBox({ onSend, busy, conversationKey = 'new', placeh
       onSubmit={(e) => { e.preventDefault(); submit(); }}
       className="panel flex flex-col focus-within:border-control transition-colors"
     >
+      {attachments}
       <label htmlFor="composer" className="sr-only">Your question</label>
       <textarea
         id="composer"
@@ -78,12 +95,22 @@ export default function InputBox({ onSend, busy, conversationKey = 'new', placeh
         value={text}
         onChange={(e) => update(e.target.value)}
         onKeyDown={onKeyDown}
+        onPaste={onPaste}
         placeholder={placeholder}
         aria-describedby="composer-keys"
         className="text-field w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-reading text-ink placeholder:text-muted focus:outline-none"
         style={{ maxHeight: MAX_HEIGHT }}
       />
       <div className="flex items-center gap-3 px-3 pb-3 pt-1">
+        {onFiles && (
+          <>
+            <input ref={fileInput} type="file" multiple accept={ACCEPTED.join(',')} className="hidden" onChange={pickFiles} tabIndex={-1} aria-hidden="true" />
+            <button type="button" onClick={() => fileInput.current?.click()} className="btn-ghost h-8 px-2 text-muted hover:text-ink"
+                    aria-label="Attach files" title={`Attach PDF, DOCX, TXT or MD, up to ${MAX_MB} MB each`}>
+              <Paperclip className="w-4 h-4" aria-hidden="true" />
+            </button>
+          </>
+        )}
         <p id="composer-keys" className="flex-1 pl-1 text-small text-muted hidden sm:block">
           Enter to send · Shift+Enter or Ctrl+Enter for a new line
         </p>
