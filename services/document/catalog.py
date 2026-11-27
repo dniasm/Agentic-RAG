@@ -11,7 +11,7 @@ from services.document import db
 OWNER = "library"   # the owner of documents, chats and batches from before accounts existed
 
 DOCUMENT_FIELDS = {"title", "original_name", "file_name", "ext", "sha256", "original_sha256", "size_bytes", "pages",
-                   "chunks", "summary", "keywords", "owner", "status", "error"}
+                   "chunks", "summary", "keywords", "owner", "status", "error", "conversation_id"}
 TASK_FIELDS = {"status", "reply", "actions", "tokens", "started_at", "finished_at", "checkpoint"}
 
 
@@ -58,14 +58,14 @@ def _read(sql: str, args=()) -> list:
 
 # ---------------------------------------------------------------- documents
 def add_document(*, title: str, original_name: str, file_name: str, ext: str, sha256: str, size_bytes: int,
-                 owner: str = OWNER) -> dict:
+                 owner: str = OWNER, conversation_id: str | None = None) -> dict:
     doc_id = uuid.uuid4().hex[:12]
     t = now()
     with db.shared().tx() as c:
         c.execute(
             "INSERT INTO documents (id, title, original_name, file_name, ext, sha256, original_sha256, size_bytes, "
-            "owner, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'processing', ?, ?)",
-            (doc_id, title, original_name, file_name, ext, sha256, sha256, size_bytes, owner, t, t))
+            "owner, status, created_at, updated_at, conversation_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'processing', ?, ?, ?)",
+            (doc_id, title, original_name, file_name, ext, sha256, sha256, size_bytes, owner, t, t, conversation_id))
         return _doc(c.execute("SELECT * FROM documents WHERE id = ?", (doc_id,)).fetchone())
 
 

@@ -12,9 +12,10 @@ from services.common import config
 
 
 class ServiceDB:
-    def __init__(self, name: str, schema: str, path: str | Path | None = None):
+    def __init__(self, name: str, schema: str, path: str | Path | None = None, migrate=None):
         self.name = name
         self.schema = schema
+        self.migrate = migrate   # migrate(conn): run after the schema, for columns added to tables that already exist
         self.path = Path(path) if path else config.data_dir() / f"{name}.db"
         self._lock = threading.RLock()
         self._conn: sqlite3.Connection | None = None
@@ -29,6 +30,9 @@ class ServiceDB:
                 conn.execute("PRAGMA journal_mode = WAL")
                 conn.execute("PRAGMA synchronous = NORMAL")
                 conn.executescript(self.schema)
+                if self.migrate:
+                    self.migrate(conn)
+                    conn.commit()
                 self._conn = conn
             return self._conn
 

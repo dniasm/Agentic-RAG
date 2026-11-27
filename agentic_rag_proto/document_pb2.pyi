@@ -359,7 +359,7 @@ class CountReply(_message.Message):
     def __init__(self, count: _Optional[int] = ...) -> None: ...
 
 class CatalogDocument(_message.Message):
-    __slots__ = ("id", "title", "original_name", "file_name", "ext", "sha256", "original_sha256", "size_bytes", "pages", "chunks", "summary", "keywords_json", "owner", "status", "error", "created_at", "updated_at")
+    __slots__ = ("id", "title", "original_name", "file_name", "ext", "sha256", "original_sha256", "size_bytes", "pages", "chunks", "summary", "keywords_json", "owner", "status", "error", "created_at", "updated_at", "conversation_id")
     ID_FIELD_NUMBER: _ClassVar[int]
     TITLE_FIELD_NUMBER: _ClassVar[int]
     ORIGINAL_NAME_FIELD_NUMBER: _ClassVar[int]
@@ -377,6 +377,7 @@ class CatalogDocument(_message.Message):
     ERROR_FIELD_NUMBER: _ClassVar[int]
     CREATED_AT_FIELD_NUMBER: _ClassVar[int]
     UPDATED_AT_FIELD_NUMBER: _ClassVar[int]
+    CONVERSATION_ID_FIELD_NUMBER: _ClassVar[int]
     id: str
     title: str
     original_name: str
@@ -394,7 +395,8 @@ class CatalogDocument(_message.Message):
     error: str
     created_at: str
     updated_at: str
-    def __init__(self, id: _Optional[str] = ..., title: _Optional[str] = ..., original_name: _Optional[str] = ..., file_name: _Optional[str] = ..., ext: _Optional[str] = ..., sha256: _Optional[str] = ..., original_sha256: _Optional[str] = ..., size_bytes: _Optional[int] = ..., pages: _Optional[int] = ..., chunks: _Optional[int] = ..., summary: _Optional[str] = ..., keywords_json: _Optional[str] = ..., owner: _Optional[str] = ..., status: _Optional[str] = ..., error: _Optional[str] = ..., created_at: _Optional[str] = ..., updated_at: _Optional[str] = ...) -> None: ...
+    conversation_id: str
+    def __init__(self, id: _Optional[str] = ..., title: _Optional[str] = ..., original_name: _Optional[str] = ..., file_name: _Optional[str] = ..., ext: _Optional[str] = ..., sha256: _Optional[str] = ..., original_sha256: _Optional[str] = ..., size_bytes: _Optional[int] = ..., pages: _Optional[int] = ..., chunks: _Optional[int] = ..., summary: _Optional[str] = ..., keywords_json: _Optional[str] = ..., owner: _Optional[str] = ..., status: _Optional[str] = ..., error: _Optional[str] = ..., created_at: _Optional[str] = ..., updated_at: _Optional[str] = ..., conversation_id: _Optional[str] = ...) -> None: ...
 
 class OptionalCatalogDocument(_message.Message):
     __slots__ = ("document",)
@@ -415,7 +417,7 @@ class CatalogDocumentRef(_message.Message):
     def __init__(self, doc_id: _Optional[str] = ...) -> None: ...
 
 class AddCatalogDocumentRequest(_message.Message):
-    __slots__ = ("title", "original_name", "file_name", "ext", "sha256", "size_bytes", "owner")
+    __slots__ = ("title", "original_name", "file_name", "ext", "sha256", "size_bytes", "owner", "conversation_id")
     TITLE_FIELD_NUMBER: _ClassVar[int]
     ORIGINAL_NAME_FIELD_NUMBER: _ClassVar[int]
     FILE_NAME_FIELD_NUMBER: _ClassVar[int]
@@ -423,6 +425,7 @@ class AddCatalogDocumentRequest(_message.Message):
     SHA256_FIELD_NUMBER: _ClassVar[int]
     SIZE_BYTES_FIELD_NUMBER: _ClassVar[int]
     OWNER_FIELD_NUMBER: _ClassVar[int]
+    CONVERSATION_ID_FIELD_NUMBER: _ClassVar[int]
     title: str
     original_name: str
     file_name: str
@@ -430,7 +433,8 @@ class AddCatalogDocumentRequest(_message.Message):
     sha256: str
     size_bytes: int
     owner: str
-    def __init__(self, title: _Optional[str] = ..., original_name: _Optional[str] = ..., file_name: _Optional[str] = ..., ext: _Optional[str] = ..., sha256: _Optional[str] = ..., size_bytes: _Optional[int] = ..., owner: _Optional[str] = ...) -> None: ...
+    conversation_id: str
+    def __init__(self, title: _Optional[str] = ..., original_name: _Optional[str] = ..., file_name: _Optional[str] = ..., ext: _Optional[str] = ..., sha256: _Optional[str] = ..., size_bytes: _Optional[int] = ..., owner: _Optional[str] = ..., conversation_id: _Optional[str] = ...) -> None: ...
 
 class FindByHashRequest(_message.Message):
     __slots__ = ("sha256", "owner")

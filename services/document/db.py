@@ -31,7 +31,8 @@ CREATE TABLE IF NOT EXISTS documents (
     status TEXT NOT NULL,             -- processing | indexed | failed
     error TEXT,
     created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+    updated_at TEXT NOT NULL,
+    conversation_id TEXT              -- the chat the file was uploaded in (NULL: uploaded in the library)
 );
 CREATE TABLE IF NOT EXISTS renames (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -103,8 +104,15 @@ _lock = threading.Lock()
 _db: ServiceDB | None = None
 
 
+def _migrate(conn) -> None:
+    """Columns added after the first release (idempotent: each is added only when missing)."""
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(documents)")}
+    if "conversation_id" not in columns:
+        conn.execute("ALTER TABLE documents ADD COLUMN conversation_id TEXT")   # the chat a file was uploaded in
+
+
 def open_db(path=None) -> ServiceDB:
-    return ServiceDB("document", SCHEMA, path)
+    return ServiceDB("document", SCHEMA, path, migrate=_migrate)
 
 
 def shared() -> ServiceDB:

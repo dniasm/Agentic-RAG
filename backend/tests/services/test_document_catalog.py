@@ -501,3 +501,24 @@ def test_migration_of_an_empty_or_missing_database(tmp_path):
     make_source(source)
     with pytest.raises(migrate.MigrationError, match="failed"):
         migrate.migrate(source, "localhost:1", backup_dest=None)
+
+
+def test_a_catalog_from_before_chat_uploads_gets_the_conversation_column_once(tmp_path):
+    path = tmp_path / "old.db"
+    old_schema = db.SCHEMA.replace(
+        ",\n    conversation_id TEXT              -- the chat the file was uploaded in (NULL: uploaded in the library)", "")
+    assert old_schema != db.SCHEMA
+    conn = sqlite3.connect(path)
+    conn.executescript(old_schema)
+    conn.execute("INSERT INTO documents (id, title, original_name, file_name, ext, sha256, size_bytes, status, "
+                 "created_at, updated_at) VALUES ('d1', 'Old', 'o.pdf', 'o.pdf', '.pdf', 'x', 1, 'indexed', 't', 't')")
+    conn.commit()
+    conn.close()
+    for _ in range(2):   # opening it again changes nothing
+        handle = db.open_db(path)
+        with handle.tx() as c:
+            columns = [r[1] for r in c.execute("PRAGMA table_info(documents)")]
+            row = c.execute("SELECT id, title, conversation_id FROM documents").fetchone()
+        handle.close()
+        assert columns.count("conversation_id") == 1
+        assert tuple(row) == ("d1", "Old", None)

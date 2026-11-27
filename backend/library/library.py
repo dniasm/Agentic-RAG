@@ -105,7 +105,8 @@ def _unique_title(title: str, exclude: str | None = None, owner: str = config.OW
 
 
 # ---------------------------------------------------------------- ingest
-def add_file(original_name: str, data: bytes, owner: str = config.OWNER) -> tuple[dict, bool]:
+def add_file(original_name: str, data: bytes, owner: str = config.OWNER,
+             conversation_id: str | None = None) -> tuple[dict, bool]:
     """Store an uploaded file. Returns (document, is_duplicate). Call process() next to index it."""
     original_name = Path(original_name or "").name or "document"
     ext = Path(original_name).suffix.lower()
@@ -131,7 +132,8 @@ def add_file(original_name: str, data: bytes, owner: str = config.OWNER) -> tupl
         file_name = stored_name(owner, provisional, ext)
         (config.LIBRARY_DIR / file_name).write_bytes(data)
         doc = catalog.add_document(title=provisional, original_name=original_name, file_name=file_name, ext=ext,
-                                   sha256=digest, size_bytes=len(data), owner=owner)
+                                   sha256=digest, size_bytes=len(data), owner=owner,
+                                   conversation_id=conversation_id)
     event("upload", doc=doc["id"], file=original_name, bytes=len(data))
     return doc, False
 

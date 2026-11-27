@@ -298,6 +298,7 @@ message CatalogDocument {
   optional string error = 15;
   string created_at = 16;
   string updated_at = 17;
+  optional string conversation_id = 18;   // the chat it was uploaded in (unset: library upload)
 }
 message OptionalCatalogDocument { optional CatalogDocument document = 1; }
 message CatalogDocumentList { repeated CatalogDocument documents = 1; }
@@ -310,6 +311,7 @@ message AddCatalogDocumentRequest {
   string sha256 = 5;
   int64 size_bytes = 6;
   string owner = 7;                   // empty: "library"
+  optional string conversation_id = 8;
 }
 message FindByHashRequest {
   string sha256 = 1;

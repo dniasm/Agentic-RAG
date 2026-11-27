@@ -119,6 +119,48 @@ class LibraryBackedDocuments(unittest.TestCase):
         library_api._resume_unfinished()
         self.assertEqual(len(self.jobs), 1)
 
+    def _conversation(self, user=None):
+        return db.create_conversation((user or self.user)["id"], "chat")["id"]
+
+    def test_an_upload_can_name_the_conversation_it_belongs_to(self):
+        conv = self._conversation()
+        res = self.client.post("/documents/upload", data={"conversation_id": conv},
+                               files={"file": ("notes.txt", b"Some text about BM25.", "text/plain")})
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(set(res.json()), {"status", "filename", "chunks_indexed", "document"})   # shape unchanged
+        doc = catalog.get_document(res.json()["document"]["id"])
+        self.assertEqual(doc["conversation_id"], conv)
+        self.assertEqual([d["id"] for d in catalog.conversation_documents(self.user["id"], conv)], [doc["id"]])
+
+    def test_an_upload_without_a_conversation_has_none(self):
+        doc = catalog.get_document(self.upload().json()["document"]["id"])
+        self.assertIsNone(doc["conversation_id"])
+        self.assertEqual(catalog.conversation_documents(self.user["id"], "nope"), [])
+
+    def test_a_conversation_that_is_not_the_users_is_a_404_and_nothing_is_stored(self):
+        theirs = self._conversation(self.other)
+        for conv in (theirs, "missing"):
+            res = self.client.post("/documents/upload", data={"conversation_id": conv},
+                                   files={"file": ("notes.txt", b"Some text about BM25.", "text/plain")})
+            self.assertEqual(res.status_code, 404)
+        self.assertEqual(catalog.list_documents(owner=self.user["id"]), [])
+
+    def test_conversation_documents_come_newest_first_and_only_from_that_chat(self):
+        conv = self._conversation()
+        for name in ("a.txt", "b.txt"):
+            self.client.post("/documents/upload", data={"conversation_id": conv},
+                             files={"file": (name, name.encode() * 5, "text/plain")})
+        self.client.post("/documents/upload", files={"file": ("c.txt", b"ccccc", "text/plain")})
+        got = catalog.conversation_documents(self.user["id"], conv)
+        self.assertEqual([d["original_name"] for d in got], ["b.txt", "a.txt"])
+
+    def test_uploading_the_same_file_in_another_chat_moves_it_there(self):
+        first, second = self._conversation(), self._conversation()
+        for conv in (first, second):
+            res = self.client.post("/documents/upload", data={"conversation_id": conv},
+                                   files={"file": ("notes.txt", b"Some text about BM25.", "text/plain")})
+        self.assertEqual(catalog.get_document(res.json()["document"]["id"])["conversation_id"], second)
+
     def test_another_users_document_is_not_found(self):
         doc_id = self.upload().json()["document"]["id"]
         self.as_user = self.other

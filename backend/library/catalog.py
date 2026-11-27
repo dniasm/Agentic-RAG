@@ -57,7 +57,8 @@ def _doc(m: pb.CatalogDocument) -> dict:
             "sha256": m.sha256, "original_sha256": _opt(m, "original_sha256"), "size_bytes": m.size_bytes,
             "pages": _opt(m, "pages"), "chunks": _opt(m, "chunks"), "summary": m.summary,
             "keywords": json.loads(m.keywords_json or "[]"), "owner": m.owner, "status": m.status,
-            "error": _opt(m, "error"), "created_at": m.created_at, "updated_at": m.updated_at}
+            "error": _opt(m, "error"), "created_at": m.created_at, "updated_at": m.updated_at,
+            "conversation_id": _opt(m, "conversation_id")}
 
 
 def _optional_doc(reply: pb.OptionalCatalogDocument) -> dict | None:
@@ -66,10 +67,13 @@ def _optional_doc(reply: pb.OptionalCatalogDocument) -> dict | None:
 
 # ---------------------------------------------------------------- documents
 def add_document(*, title: str, original_name: str, file_name: str, ext: str, sha256: str, size_bytes: int,
-                 owner: str = config.OWNER) -> dict:
-    doc = _doc(_call("AddCatalogDocument", pb.AddCatalogDocumentRequest(
+                 owner: str = config.OWNER, conversation_id: str | None = None) -> dict:
+    request = pb.AddCatalogDocumentRequest(
         title=title, original_name=original_name, file_name=file_name, ext=ext, sha256=sha256,
-        size_bytes=size_bytes, owner=owner)))
+        size_bytes=size_bytes, owner=owner)
+    if conversation_id:
+        request.conversation_id = conversation_id
+    doc = _doc(_call("AddCatalogDocument", request))
     _changed()
     return doc
 
@@ -98,6 +102,17 @@ def list_documents(status: str | None = None, owner: str | None = None) -> list[
     """Documents, oldest first: one user's (owner), or everyone's (owner=None, for the server's own work)."""
     request = pb.ListCatalogDocumentsRequest(status=status or None, owner=owner)
     return [_doc(d) for d in _call("ListCatalogDocuments", request).documents]
+
+
+def conversation_documents(owner: str, conversation_id: str) -> list[dict]:
+    """The owner's documents uploaded in this conversation, newest first."""
+    return [d for d in reversed(list_documents(owner=owner)) if d.get("conversation_id") == conversation_id]
+
+
+def latest_document(owner: str, status: str | None = "indexed") -> dict | None:
+    """The owner's most recently uploaded document (ready ones by default)."""
+    docs = list_documents(status=status, owner=owner)
+    return docs[-1] if docs else None
 
 
 _titles: dict[str, tuple[int, list[str]]] = {}   # owner -> (catalog version, titles of indexed documents)

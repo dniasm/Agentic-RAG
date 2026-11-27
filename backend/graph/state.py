@@ -18,6 +18,8 @@ class AgentState(TypedDict, total=False):
     doc_names: list[str]            # user's indexed documents (helps routing & rewriting)
 
     # --- routing
+    doc_ref_ids: list[str]          # documents the message points at ("the file I just uploaded"): read by id, no relevance gate
+    doc_ref_titles: list[str]
     intent: str                     # current source: greeting | rag | web_search | direct
     source_preference: str          # auto | documents | web | model_knowledge (only if the user asked)
     standalone_query: str           # query made self-contained using chat history

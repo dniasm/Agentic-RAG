@@ -23,7 +23,7 @@ def document_pb(d: dict) -> pb.CatalogDocument:
         sha256=d["sha256"], size_bytes=d["size_bytes"], summary=d["summary"], owner=d["owner"], status=d["status"],
         keywords_json=json.dumps(d["keywords"], ensure_ascii=False), created_at=d["created_at"],
         updated_at=d["updated_at"])
-    _set_optional(m, d, ("original_sha256", "pages", "chunks", "error"))
+    _set_optional(m, d, ("original_sha256", "pages", "chunks", "error", "conversation_id"))
     return m
 
 
@@ -83,7 +83,8 @@ class CatalogMixin:
             _required(request.file_name, request.sha256)
             return catalog.add_document(
                 title=request.title, original_name=request.original_name, file_name=request.file_name, ext=request.ext,
-                sha256=request.sha256, size_bytes=request.size_bytes, owner=request.owner or catalog.OWNER)
+                sha256=request.sha256, size_bytes=request.size_bytes, owner=request.owner or catalog.OWNER,
+                conversation_id=request.conversation_id if request.HasField("conversation_id") else None)
         return document_pb(await self._run(context, add))
 
     async def GetCatalogDocument(self, request, context):
